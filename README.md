@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/29972117/README.md)
 # Neural Orchestrator — Middleware für den Neural Intelligence Network Core
 
 Dieses Repository implementiert die logische Brücke und Middleware, die eingehende Aufgaben an den zentralen Neural Core abfängt, auf komplexe mathematisch-logische Workflows klassifiziert und bei Bedarf mit einem High-Urgency-Kontext anreichert.
