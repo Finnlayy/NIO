@@ -8,7 +8,10 @@
     "build": "tsc",
     "prestart": "npm run build",
     "start": "node dist/server.js",
-    "tunnel": "ngrok http 3000",
+    "tunnel": "ngrok http 4000",
+    "ui:dev": "npm --prefix frontend run dev",
+    "ui:build": "npm --prefix frontend run build",
+    "ui:start": "npm --prefix frontend run start",
     "test": "pytest evals/tests",
     "trace:generate": "ts-node --project tsconfig.evals.json evals/tests/run_trace.ts",
     "typecheck": "tsc --noEmit"
