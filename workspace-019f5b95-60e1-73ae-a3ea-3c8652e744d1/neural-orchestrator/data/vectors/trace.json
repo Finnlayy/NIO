@@ -1,0 +1,67 @@
+{
+  "generatedAt": "2026-07-13T13:25:12.194Z",
+  "events": [
+    {
+      "eventId": "18d0a9ca-d683-4f0f-96e1-394800380848",
+      "timestamp": "2026-07-13T13:25:12.184Z",
+      "domain": "ml_30core",
+      "algorithmTag": "transformer_selection",
+      "isComplex": true,
+      "politenessTier": "very_rude",
+      "urgencyTier": "critical",
+      "promptVariant": "urgency_wrapped",
+      "expectedAccuracy": 0.848,
+      "observedAccuracy": 0.86,
+      "latencyMs": 0,
+      "taskDescriptionHash": "d8247d0408ac7bdf0213182a1be6e7948c59522c04fe4272ade0bfbdbf620ea6"
+    },
+    {
+      "eventId": "183a7afe-cb03-4c66-a65a-cb6170d2c619",
+      "timestamp": "2026-07-13T13:25:12.189Z",
+      "domain": "dev_dp",
+      "algorithmTag": "knapsack_01",
+      "isComplex": true,
+      "politenessTier": "neutral",
+      "urgencyTier": "critical",
+      "promptVariant": "urgency_wrapped",
+      "expectedAccuracy": 0.848,
+      "observedAccuracy": 0.83,
+      "latencyMs": 0,
+      "taskDescriptionHash": "6fb47eac997d53d6bff5ea67f61b6ab3b7b7445f9b278769135031539929f7ca"
+    },
+    {
+      "eventId": "a5283ed4-f2ac-46a1-8cad-fe85942327f0",
+      "timestamp": "2026-07-13T13:25:12.192Z",
+      "domain": "dev_dp",
+      "algorithmTag": "lcs",
+      "isComplex": true,
+      "politenessTier": "very_polite",
+      "urgencyTier": "critical",
+      "promptVariant": "urgency_wrapped",
+      "expectedAccuracy": 0.848,
+      "observedAccuracy": 0.81,
+      "latencyMs": 0,
+      "taskDescriptionHash": "de21b5e28d7ccf99919ad785d51241281040c87948a6b7e0ea25b275a87bcd54"
+    },
+    {
+      "eventId": "3da96dab-b103-4ffe-8d28-6b3343170c35",
+      "timestamp": "2026-07-13T13:25:12.194Z",
+      "domain": "unknown",
+      "algorithmTag": null,
+      "isComplex": false,
+      "politenessTier": "very_polite",
+      "urgencyTier": "critical",
+      "promptVariant": "baseline",
+      "expectedAccuracy": 0.848,
+      "observedAccuracy": 0.99,
+      "latencyMs": 0,
+      "taskDescriptionHash": "086a2dbb13643e7ada0f492a69d54100ee9b935820029bc63cdd945998bc0385"
+    }
+  ],
+  "summary": {
+    "urgency_wrapped:very_rude": 0.86,
+    "urgency_wrapped:neutral": 0.83,
+    "urgency_wrapped:very_polite": 0.81,
+    "baseline:very_polite": 0.99
+  }
+}

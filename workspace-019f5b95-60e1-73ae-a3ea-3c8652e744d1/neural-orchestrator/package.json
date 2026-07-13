@@ -1,0 +1,29 @@
+{
+  "name": "neural-orchestrator",
+  "version": "1.0.0",
+  "description": "Modulare Injektions- und Middleware-Schicht für den Neural Intelligence Network Core.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "pytest evals/tests",
+    "trace:generate": "ts-node --project tsconfig.evals.json evals/tests/run_trace.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["orchestrator", "prompt-engineering", "middleware", "typescript"],
+  "author": "Neural Architecture Team",
+  "license": "MIT",
+  "dependencies": {
+    "yaml": "^2.5.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
