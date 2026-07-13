@@ -1,4 +1,4 @@
-import { writeFile } from 'fs/promises';
+import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import {
   DeterministicCoreAdapter,
@@ -101,6 +101,7 @@ async function main(): Promise<void> {
     summary: telemetry.summarize(),
   };
 
+  await mkdir(join(ROOT, 'data', 'vectors'), { recursive: true });
   await writeFile(TRACE_PATH, JSON.stringify(trace, null, 2), 'utf-8');
   console.log(`trace written to ${TRACE_PATH}`);
 }
