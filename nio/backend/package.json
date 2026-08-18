@@ -1,0 +1,38 @@
+{
+  "name": "neural-orchestrator",
+  "version": "1.0.0",
+  "description": "Modulare Injektions- und Middleware-Schicht für den Neural Intelligence Network Core.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prestart": "npm run build",
+    "start": "node dist/backend/src/server.js",
+    "tunnel": "ngrok http 4000",
+    "ui:dev": "npm --prefix frontend run dev",
+    "ui:build": "npm --prefix frontend run build",
+    "ui:start": "npm --prefix frontend run start",
+    "test": "pytest evals/tests",
+    "test:pdc": "npm run build && node --test dist/backend/src/chat_compression/pdc.test.js dist/backend/src/inter_agent/gate_runner.test.js dist/backend/src/inter_agent/format.test.js dist/backend/src/cody_chat.test.js",
+    "trace:generate": "ts-node --project tsconfig.evals.json evals/tests/run_trace.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["orchestrator", "prompt-engineering", "middleware", "typescript"],
+  "author": "Neural Architecture Team",
+  "license": "MIT",
+  "dependencies": {
+    "@nio/shared": "file:../shared",
+    "pg": "^8.13.0",
+    "yaml": "^2.5.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

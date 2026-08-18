@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "defaults": {
+    "fallback_chain": ["economy", "standard", "frontier"],
+    "cost_budget_usd_per_swarm": 2.0,
+    "cost_budget_usd_per_day": 15.0,
+    "on_daily_budget_exceeded": "clamp_to_free_tier",
+    "daily_budget_reset": "heartbeat_midnight_local"
+  },
+  "providers": {
+    "openrouter": {
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "headers_env": {
+        "HTTP-Referer": "OPENROUTER_REFERER",
+        "X-Title": "OPENROUTER_APP_TITLE"
+      }
+    },
+    "openai": {
+      "api_key_env": "OPENAI_API_KEY"
+    },
+    "anthropic": {
+      "api_key_env": "ANTHROPIC_API_KEY"
+    },
+    "cursor": {
+      "note": "Parent Task() model param — no API key in twin"
+    },
+    "jules": {
+      "integration": "github_issues",
+      "docs": "https://jules.google/docs",
+      "note": "Async PR worker only — not realtime orchestration"
+    }
+  },
+  "tiers": {
+    "frontier": {
+      "priority": 1,
+      "models": [
+        { "provider": "anthropic", "model_id": "claude-opus-4-6", "cost_per_1m_input": 15.0 },
+        { "provider": "openai", "model_id": "gpt-5.2", "cost_per_1m_input": 10.0 },
+        { "provider": "openrouter", "model_id": "google/gemini-3.1-pro-preview", "cost_per_1m_input": 2.0 }
+      ]
+    },
+    "standard": {
+      "priority": 2,
+      "models": [
+        { "provider": "openrouter", "model_id": "anthropic/claude-sonnet-4", "cost_per_1m_input": 3.0 },
+        { "provider": "openai", "model_id": "gpt-4o", "cost_per_1m_input": 2.5 }
+      ]
+    },
+    "economy": {
+      "priority": 3,
+      "models": [
+        { "provider": "openrouter", "model_id": "google/gemini-2.5-flash", "cost_per_1m_input": 0.15 },
+        { "provider": "openai", "model_id": "gpt-4o-mini", "cost_per_1m_input": 0.15 }
+      ]
+    },
+    "free": {
+      "priority": 4,
+      "models": [
+        { "provider": "openrouter", "model_id": "google/gemini-2.0-flash-exp:free", "cost_per_1m_input": 0 },
+        { "provider": "openrouter", "model_id": "qwen/qwen-2.5-72b-instruct:free", "cost_per_1m_input": 0 }
+      ],
+      "rate_limit_rpm": 20
+    }
+  },
+  "role_overrides": {
+    "coordinator": "frontier",
+    "judge": "frontier",
+    "gate": "frontier",
+    "worker": "economy",
+    "aggregator": "standard",
+    "heartbeat": "economy",
+    "invent-skills-draft": "free"
+  }
+}

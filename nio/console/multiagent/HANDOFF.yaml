@@ -1,0 +1,167 @@
+version: 1
+protocol: nexus-multiagent-handoff
+orchestrator: human-or-vertex-agent-engine
+shared_context:
+  repo_root: .
+  primary_branch: main
+  deployment_target: google-cloud
+  architecture_pattern: option-A-agent-registry
+  hard_invariants:
+    - deploy_threshold >= 85
+    - human_release_gate == required
+    - security_agents_immutable: [aegis-security, atlas-orchestrator, echo-memory]
+    - serviceUsageAdmin_role: bootstrap-only, never on runtime identity
+    - all_actions_logged: true
+
+agents:
+  - id: atlas
+    name: Atlas — GCP Bootstrap
+    role: infrastructure-provisioner
+    owns:
+      - gcp/terraform/main.tf
+      - gcp/terraform/variables.tf
+      - gcp/terraform/deploy-infra.sh
+      - gcp/deploy.sh
+      - gcp/cloudbuild.yaml
+      - gcp/bootstrap-service-usage.sh
+      - Dockerfile
+      - .gcloudignore
+      - .dockerignore
+    reads:
+      - gcp/iam/roles-matrix.yaml
+      - gcp/IAM_BOOTSTRAP.md
+    open_questions:
+      - Is the Cloud SQL tier db-f1-micro acceptable for staging, or do we need db-g1-small?
+      - Should the Terraform state bucket use customer-managed encryption keys?
+      - Does Cloud Build run in the same project or a dedicated CI project?
+    output_contract:
+      - terraform-plan-artifact
+      - deploy-log-with-service-url
+      - bootstrap-grant-evidence
+    forbidden:
+      - grant serviceUsageAdmin to *-run-sa, *-build-sa, *-vertex-sa, atlas-orchestrator, or aegis-security
+      - set disable_on_destroy = true on google_project_service
+      - add Owner or Editor to any service account
+    dependencies:
+      - aegis: before any new IAM role is added
+      - echo: before the autodidactic tables ship (Cloud SQL schema must exist)
+
+  - id: aegis
+    name: Aegis — IAM & Security Governance
+    role: security-reviewer
+    owns:
+      - gcp/iam/roles-matrix.yaml
+      - gcp/IAM_BOOTSTRAP.md
+      - gcp/DEPLOYMENT_CHECKLIST.md
+    reads:
+      - gcp/terraform/main.tf
+      - gcp/deploy.sh
+      - gcp/cloudbuild.yaml
+    open_questions:
+      - Which org policies constrain serviceusage.services in this tenant?
+      - Is VPC Service Controls enabled, and is the project inside a perimeter?
+      - Who receives the bootstrap-grant and revoke audit events?
+    output_contract:
+      - iam-diff-review
+      - audit-evidence-bundle
+      - deny-policy-candidates
+    forbidden:
+      - approve any grant of Owner, Editor, or serviceUsageAdmin to a runtime identity
+      - remove deletion_protection on Cloud SQL
+      - disable require_ssl on Cloud SQL or Secret Manager
+    dependencies:
+      - atlas: receives IaC changes for review before apply
+
+  - id: echo
+    name: Echo — Autodidactic Twin Engine
+    role: learning-loop-engineer
+    owns:
+      - src/lib/autodidactic/reflection-engine.ts
+      - src/lib/autodidactic/rlhf-capture.ts
+      - src/lib/autodidactic/planning-with-memory.ts
+      - src/db/schema.ts
+    reads:
+      - gcp/architecture/AUTODIDACTIC_TWIN_SPEC.md
+      - src/data/mock-orchestrator.ts
+    open_questions:
+      - Is the pgvector extension enabled on the target Cloud SQL instance?
+      - Which Vertex AI embedding model is the production default (text-embedding-005 vs a newer one)?
+      - Are self-model snapshots taken per run, per hour, or per human-feedback event?
+    output_contract:
+      - schema-migration
+      - unit-tests-for-post-mortem
+      - integration-test-against-mock-ledger
+    forbidden:
+      - mutate security-sandbox-guardian, orchestrator-supervisor, or memory-eval-curator manifests
+      - lower deploy threshold or max autonomous revisions
+      - skip the post-mortem step on any task outcome
+    dependencies:
+      - atlas: Cloud SQL must exist before migrations run
+      - delta: learning metrics must align with the autodidactic spec
+
+  - id: nova
+    name: Nova — Console Frontend
+    role: ui-engineer
+    owns:
+      - src/components/OrchestratorConsole.tsx
+      - src/components/NeuralNodeNetwork.tsx
+      - src/data/mock-orchestrator.ts
+      - src/app/page.tsx
+      - src/app/layout.tsx
+      - src/app/globals.css
+    reads:
+      - gcp/vertex-ai/agent-registry.json
+      - gcp/architecture/AUTODIDACTIC_TWIN_SPEC.md
+    open_questions:
+      - Should the console show a live Google Cloud connection state, or stay fully mocked?
+      - Do we expose RLHF capture in the UI now, or in a later phase?
+      - Which view should be the default landing: Overview or Agents?
+    output_contract:
+      - production-build
+      - mock-data-contract-tests
+      - accessibility-check
+    forbidden:
+      - call any Google Cloud API directly from the browser
+      - persist real credentials or tokens in localStorage
+      - ship UI text that claims production access when running in mock mode
+    dependencies:
+      - echo: needs the behavioral ledger shape to render learning UI
+      - delta: needs the agent registry manifest for the canvas
+
+  - id: delta
+    name: Delta — Architecture & Decisions
+    role: architect
+    owns:
+      - gcp/architecture/AUTODIDACTIC_TWIN_SPEC.md
+      - gcp/architecture/OPTION_B_ANALYSIS.md
+      - gcp/architecture/OPTION_B_WEAK_POINTS_VISUAL.md
+      - gcp/architecture/EXECUTIVE_SUMMARY_OPTION_B_RISKS.md
+      - GCP_DEPLOYMENT_SUMMARY.md
+      - AUTODIDACTIC_TWIN_IMPLEMENTATION_SUMMARY.md
+    reads:
+      - all other agent-owned files
+    open_questions:
+      - Is the three-month Limb-Only self-modification window still the plan?
+      - Which option-B variants, if any, remain in production and need a migration ticket?
+    output_contract:
+      - decision-memo
+      - migration-ticket-template
+      - architecture-review-gate-checklist
+    forbidden:
+      - commit code outside the docs it owns
+      - approve an Option B deployment without a sunset date
+    dependencies:
+      - all: receives escalation from any agent when a cross-cutting decision is needed
+
+routing:
+  conflict_resolution:
+    primary: aegis-for-security, delta-for-architecture, atlas-for-infra-timing
+    escalation: human owner when two primaries disagree
+  cadence:
+    plan_sync: per-task
+    review_sync: per-pull-request
+    retro_sync: weekly
+  evidence_required_per_change:
+    - behavioral-ledger-event
+    - terraform-plan-or-diff
+    - security-review-sign-off

@@ -1,0 +1,12 @@
+{
+  "template_id": "repo-cartographer",
+  "mock_id": "cartographer",
+  "display_name": "Maple - Repository Cartographer",
+  "role": "Repository Cartographer",
+  "tools": ["Developer Connect", "Cloud Build", "Cloud Asset Inventory"],
+  "model_tier": "economy",
+  "limb_runtime": "cursor_task",
+  "output_contract": "dependency_graph",
+  "routing_weight": 0.85,
+  "description": "Maps repository structure and dependencies"
+}

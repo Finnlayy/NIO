@@ -1,0 +1,12 @@
+{
+  "template_id": "c-performance-reviewer",
+  "mock_id": "c-reviewer",
+  "display_name": "Vector - C Performance Reviewer",
+  "role": "C Performance Reviewer",
+  "tools": ["Cloud Build", "Cloud Storage", "Cloud Logging"],
+  "model_tier": "frontier",
+  "limb_runtime": "cursor_task",
+  "output_contract": "performance_review",
+  "routing_weight": 0.9,
+  "description": "Reviews C code for performance and safety"
+}

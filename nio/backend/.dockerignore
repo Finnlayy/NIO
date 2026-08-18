@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+
+# GCP / Terraform (deployed separately)
+gcp/
+*.tf
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Documentation
+*.md
+docs/
+
+# Development
+node_modules/
+.npm/
+*.log
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+
+# Testing
+coverage/
+evals/
+data/
+dist/
+
+# Environment (secrets via Secret Manager in Cloud Run)
+.env
+.env.*
+!.env.example
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Misc
+.DS_Store
+Thumbs.db
+*.tmp
+.cache/

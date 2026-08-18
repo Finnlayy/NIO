@@ -1,0 +1,12 @@
+{
+  "template_id": "pr-review-synthesizer",
+  "mock_id": "review-synth",
+  "display_name": "Scribe - PR Review Synthesizer",
+  "role": "PR Review Synthesizer",
+  "tools": ["Cloud Build", "Cloud Logging", "Cloud Storage"],
+  "model_tier": "frontier",
+  "limb_runtime": "cursor_task",
+  "output_contract": "review_synthesis",
+  "routing_weight": 0.91,
+  "description": "Synthesizes evidence-based review notes"
+}

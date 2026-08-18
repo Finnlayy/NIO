@@ -1,0 +1,59 @@
+name: Neural Orchestrator CI & Benchmark Evaluation
+
+# Diese Zeilen bedeuten: Sobald Code hochgeladen (push) oder ein Pull Request (PR) erstellt wird, startet das Skript
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+
+jobs:
+  build-and-test:
+    name: Typpruefung, Trace und Validierung
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Quellcode von GitHub holen
+    - name: Quellcode auschecken
+      uses: actions/checkout@v4
+
+    # 2. Node.js installieren (wird fuer TypeScript benötigt)
+    - name: Node.js Umgebung einrichten
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+
+    # 3. Alle JavaScript/TypeScript-Abhaengigkeiten aus der package.json installieren
+    - name: Node.js Abhaengigkeiten installieren
+      run: npm ci
+
+    # 4. Den TypeScript-Compiler testen, ob alle Typen fehlerfrei sind
+    - name: TypeScript Typpruefung ausfuehren
+      run: npm run typecheck
+
+    # 5. Den Code kompilieren (erzeugt den dist/ Ordner)
+    - name: TypeScript Quellcode bauen
+      run: npm run build
+
+    # 6. Python installieren (wird fuer die Test-Suite benoetigt)
+    - name: Python Umgebung einrichten
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+
+    # 7. Python-Testwerkzeuge (pytest, pyyaml) installieren
+    - name: Python Test-Abhaengigkeiten installieren
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    # 8. Das Skript ausfuehren, das die trace.json-Datei mit den Benchmarks schreibt
+    - name: Telemetrie-Traces generieren
+      run: npm run trace:generate
+
+    # 9. Pytest starten, um zu pruefen, ob die Genauigkeit den Benchmark von 84.8% haelt
+    - name: Pytest Suite ausfuehren & Genauigkeit validieren
+      run: |
+        python -m pytest evals/tests -v

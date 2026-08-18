@@ -1,0 +1,12 @@
+{
+  "template_id": "ci-evidence-runner",
+  "mock_id": "ci-runner",
+  "display_name": "Forge - CI Evidence Runner",
+  "role": "CI Evidence Runner",
+  "tools": ["Cloud Build", "Artifact Registry", "Cloud Storage", "Cloud Logging"],
+  "model_tier": "economy",
+  "limb_runtime": "jules_github",
+  "output_contract": "ci_evidence_bundle",
+  "routing_weight": 0.87,
+  "description": "Runs isolated CI evidence collection"
+}

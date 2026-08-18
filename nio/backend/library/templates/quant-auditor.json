@@ -1,0 +1,12 @@
+{
+  "template_id": "quant-auditor",
+  "mock_id": "quant-auditor",
+  "display_name": "Delta - Quant Domain Auditor",
+  "role": "Quant Domain Auditor",
+  "tools": ["Vertex AI Evaluation", "BigQuery", "Cloud SQL"],
+  "model_tier": "frontier",
+  "limb_runtime": "cursor_task",
+  "output_contract": "risk_validation",
+  "routing_weight": 0.92,
+  "description": "Validates trading invariants and risk limits"
+}

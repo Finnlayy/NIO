@@ -1,0 +1,63 @@
+# =============================================================================
+# NEXUS — Google Cloud Agent Operations
+# .gcloudignore - Files to exclude from Cloud Build context
+# =============================================================================
+
+# Git
+.git
+.gitignore
+
+# Terraform
+gcp/terraform/
+*.tf
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Development
+node_modules/
+.npm/
+.eslintcache
+*.log
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+coverage/
+.nyc_output/
+test-results/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Build artifacts (uploaded separately)
+.next/
+out/
+dist/
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Cloud Build (already in context)
+!cloudbuild.yaml
+
+# Misc
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp

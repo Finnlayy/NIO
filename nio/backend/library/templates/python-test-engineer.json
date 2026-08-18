@@ -1,0 +1,12 @@
+{
+  "template_id": "python-test-engineer",
+  "mock_id": "python-tester",
+  "display_name": "Pyra - Python Test Engineer",
+  "role": "Python Test Engineer",
+  "tools": ["Cloud Run Jobs", "Cloud Build", "Cloud Storage"],
+  "model_tier": "economy",
+  "limb_runtime": "cursor_task",
+  "output_contract": "test_report",
+  "routing_weight": 0.88,
+  "description": "Executes Python test suites and validates bindings"
+}

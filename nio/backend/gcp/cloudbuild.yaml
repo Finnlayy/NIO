@@ -1,0 +1,110 @@
+# =============================================================================
+# NIO Neural Orchestrator — Cloud Build → Cloud Run
+# Build context: nio/ monorepo root (see backend/Dockerfile)
+# =============================================================================
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  dynamic_substitutions: true
+  machineType: E2_HIGHCPU_8
+  substitution_option: ALLOW_LOOSE
+
+substitutions:
+  _REGION: europe-west3
+  _SERVICE_NAME: nio-orchestrator-dev
+  _REPO_NAME: nio-orchestrator-docker
+  _IMAGE_NAME: nio-orchestrator
+  _ENVIRONMENT: dev
+  _RUNTIME_SERVICE_ACCOUNT: nio-orchestrator-run-sa@$PROJECT_ID.iam.gserviceaccount.com
+
+steps:
+  - name: node:20-alpine
+    id: install-dependencies
+    entrypoint: npm
+    args: ['ci', '--workspace=backend', '--workspace=shared', '--include-workspace-root']
+    dir: nio
+    waitFor: ['-']
+
+  - name: node:20-alpine
+    id: typecheck
+    entrypoint: npm
+    args: ['run', 'typecheck', '--workspace=backend']
+    dir: nio
+    waitFor: ['install-dependencies']
+
+  - name: gcr.io/cloud-builders/docker
+    id: build-docker
+    args:
+      - build
+      - -f
+      - backend/Dockerfile
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/${_IMAGE_NAME}:$SHORT_SHA
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/${_IMAGE_NAME}:latest
+      - .
+    dir: nio
+    waitFor: ['typecheck']
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/${_IMAGE_NAME}:$SHORT_SHA
+    waitFor: ['build-docker']
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-latest
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/${_IMAGE_NAME}:latest
+    waitFor: ['push-docker']
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        gcloud run deploy "${_SERVICE_NAME}" \
+          --project="$PROJECT_ID" \
+          --region="${_REGION}" \
+          --image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/${_IMAGE_NAME}:$SHORT_SHA" \
+          --platform=managed \
+          --allow-unauthenticated \
+          --service-account="${_RUNTIME_SERVICE_ACCOUNT}" \
+          --port=8080 \
+          --set-env-vars="NODE_ENV=production,CORE_ADAPTER_MODE=live,MODEL_MANIFEST_PATH=/app/twin/model-manifest.json" \
+          --set-secrets="OPENROUTER_API_KEY=nio-orchestrator-openrouter-key:latest,OPENAI_API_KEY=nio-orchestrator-openai-key:latest,ANTHROPIC_API_KEY=nio-orchestrator-anthropic-key:latest" \
+          --memory=512Mi \
+          --cpu=1 \
+          --timeout=300 \
+          --min-instances=0 \
+          --max-instances=10 \
+          --concurrency=40
+        gcloud run services describe "${_SERVICE_NAME}" \
+          --project="$PROJECT_ID" \
+          --region="${_REGION}" \
+          --format='value(status.url)' > /workspace/service-url
+    waitFor: ['push-docker']
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: healthcheck
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        SERVICE_URL=$$(cat /workspace/service-url)
+        curl -f --retry 3 --retry-delay 10 "$${SERVICE_URL}/health"
+    waitFor: ['deploy']
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/${_IMAGE_NAME}:$SHORT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/${_IMAGE_NAME}:latest
+
+timeout: 1800s
+
+tags:
+  - nio-orchestrator
+  - nodejs
+  - $_ENVIRONMENT

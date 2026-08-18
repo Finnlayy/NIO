@@ -1,0 +1,12 @@
+{
+  "template_id": "ui-systems-designer",
+  "mock_id": "ui-designer",
+  "display_name": "Nova - UI Systems Designer",
+  "role": "UI Systems Designer",
+  "tools": ["Cloud Run", "Cloud Build", "Cloud Storage"],
+  "model_tier": "economy",
+  "limb_runtime": "cursor_task",
+  "output_contract": "ui_spec",
+  "routing_weight": 0.75,
+  "description": "Designs accessible interfaces"
+}

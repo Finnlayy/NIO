@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: nio_user
+      POSTGRES_PASSWORD: nio_dev_password
+      POSTGRES_DB: nio_db
+    volumes:
+      - nio_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nio_user -d nio_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  nio_pg_data:

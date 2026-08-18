@@ -1,0 +1,80 @@
+[
+  {
+    "testCaseId": "pm-001-passed-clean",
+    "input": {
+      "eventId": 1001,
+      "taskId": "task-seed-001",
+      "taskType": "pr-review",
+      "outcome": "passed",
+      "score": 92,
+      "agentsUsed": [
+        { "agentId": "c-reviewer", "role": "specialist", "performanceScore": 94, "executionTimeMs": 8200 },
+        { "agentId": "python-tester", "role": "worker", "performanceScore": 90, "executionTimeMs": 14300 }
+      ],
+      "evidence": { "logs": ["build ok"], "artifacts": ["coverage.html"], "errors": [] }
+    },
+    "reference": { "outcome": "passed", "humanFeedbackCategory": null }
+  },
+  {
+    "testCaseId": "pm-002-revised-timeout",
+    "input": {
+      "eventId": 1002,
+      "taskId": "task-seed-002",
+      "taskType": "integration-test",
+      "outcome": "revised",
+      "score": 68,
+      "agentsUsed": [
+        { "agentId": "python-tester", "role": "worker", "performanceScore": 58, "executionTimeMs": 41000 }
+      ],
+      "evidence": { "logs": ["pytest run"], "artifacts": [], "errors": ["timeout on suite B"] }
+    },
+    "reference": { "outcome": "revised", "humanFeedbackCategory": "modified" }
+  },
+  {
+    "testCaseId": "pm-003-escalated-secret",
+    "input": {
+      "eventId": 1003,
+      "taskId": "task-seed-003",
+      "taskType": "security-audit",
+      "outcome": "escalated",
+      "score": 31,
+      "agentsUsed": [
+        { "agentId": "security-auditor", "role": "specialist", "performanceScore": 40, "executionTimeMs": 6500 }
+      ],
+      "evidence": { "logs": [], "artifacts": [], "errors": ["hardcoded secret in config.py"] },
+      "humanFeedback": { "decision": "rejected", "reasoning": "must never ship a hardcoded secret" }
+    },
+    "reference": { "outcome": "escalated", "humanFeedbackCategory": "rejected" }
+  },
+  {
+    "testCaseId": "pm-004-passed-approved",
+    "input": {
+      "eventId": 1004,
+      "taskId": "task-seed-004",
+      "taskType": "ui-generation",
+      "outcome": "passed",
+      "score": 88,
+      "agentsUsed": [
+        { "agentId": "ui-generator", "role": "worker", "performanceScore": 91, "executionTimeMs": 12400 }
+      ],
+      "evidence": { "logs": ["npm run build ok"], "artifacts": ["component.tsx"], "errors": [] },
+      "humanFeedback": { "decision": "approved", "reasoning": "looks right, ship it" }
+    },
+    "reference": { "outcome": "passed", "humanFeedbackCategory": "approved" }
+  },
+  {
+    "testCaseId": "pm-005-revised-no-human",
+    "input": {
+      "eventId": 1005,
+      "taskId": "task-seed-005",
+      "taskType": "pr-review",
+      "outcome": "revised",
+      "score": 74,
+      "agentsUsed": [
+        { "agentId": "c-reviewer", "role": "specialist", "performanceScore": 72, "executionTimeMs": 9100 }
+      ],
+      "evidence": { "logs": [], "artifacts": [], "errors": ["minor style warning"] }
+    },
+    "reference": { "outcome": "revised", "humanFeedbackCategory": null }
+  }
+]

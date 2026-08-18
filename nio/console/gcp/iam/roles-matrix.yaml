@@ -1,0 +1,68 @@
+version: 1
+policy: nexus-google-cloud-least-privilege
+
+invariants:
+  - id: service-usage-admin-bootstrap-only
+    role: roles/serviceusage.serviceUsageAdmin
+    allowed_principal_types:
+      - human-bootstrap
+      - dedicated-terraform-bootstrap
+    denied_principal_patterns:
+      - "*-run-sa@*"
+      - "*-build-sa@*"
+      - "*-vertex-sa@*"
+      - "atlas-orchestrator@*"
+      - "aegis-security@*"
+    maximum_grant_duration: 2h
+    required_condition: request.time < timestamp(expiry)
+    revoke_after: terraform-apply
+
+principals:
+  bootstrap:
+    purpose: Enable and inspect required Google Cloud APIs during project bootstrap.
+    roles:
+      - roles/serviceusage.serviceUsageAdmin
+    lifecycle: temporary
+
+  cloud-run-runtime:
+    purpose: Serve the Nexus frontend and access its database secret and Cloud SQL connection.
+    roles:
+      - roles/logging.logWriter
+      - roles/monitoring.metricWriter
+      - roles/cloudtrace.agent
+      - roles/secretmanager.secretAccessor
+      - roles/cloudsql.client
+    forbidden_roles:
+      - roles/serviceusage.serviceUsageAdmin
+      - roles/owner
+      - roles/editor
+
+  cloud-build-deployer:
+    purpose: Build an image and deploy an approved Cloud Run revision.
+    roles:
+      - roles/cloudbuild.builds.builder
+      - roles/run.admin
+      - roles/iam.serviceAccountUser
+    forbidden_roles:
+      - roles/serviceusage.serviceUsageAdmin
+      - roles/owner
+      - roles/editor
+
+  vertex-agent-runtime:
+    purpose: Invoke Vertex AI and consume already-enabled project services and quota.
+    roles:
+      - roles/aiplatform.user
+      - roles/serviceusage.serviceUsageConsumer
+      - roles/logging.logWriter
+      - roles/storage.objectViewer
+    forbidden_roles:
+      - roles/serviceusage.serviceUsageAdmin
+      - roles/owner
+      - roles/editor
+
+required_audit_evidence:
+  - iam-policy-grant
+  - serviceusage-enable-operations
+  - terraform-plan
+  - terraform-apply
+  - iam-policy-revoke

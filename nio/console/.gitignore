@@ -1,0 +1,14 @@
+node_modules/
+.next/
+tsconfig.tsbuildinfo
+.env
+.env.local
+.env.*.local
+
+gcp/.bootstrap-role-expiry
+gcp/terraform/.terraform/
+gcp/terraform/.terraform.lock.hcl
+gcp/terraform/terraform.tfvars
+gcp/terraform/*.tfstate
+gcp/terraform/*.tfstate.*
+gcp/terraform/tfplan

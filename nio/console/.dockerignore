@@ -1,0 +1,77 @@
+# =============================================================================
+# NEXUS — Google Cloud Agent Operations
+# Docker Ignore File
+# =============================================================================
+
+# Git
+.git
+.gitignore
+
+# Terraform / GCP config
+gcp/
+*.tf
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Documentation
+README.md
+docs/
+*.md
+
+# Development
+node_modules/
+.npm/
+.eslintcache
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-*
+
+# Testing
+coverage/
+.nyc_output/
+test-results/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Build artifacts (copied from builder stage)
+.next/
+out/
+dist/
+build/
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Cloud Build
+cloudbuild.yaml
+.gcloudignore
+
+# Misc
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
+.cache/
+
+# Drizzle (database migrations handled separately)
+drizzle/
+drizzle.config.json

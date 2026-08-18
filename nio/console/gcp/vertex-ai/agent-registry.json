@@ -1,0 +1,233 @@
+{
+  "displayName": "Nexus Agent Registry",
+  "description": "Google Cloud Agent Engine configuration for Nexus Console",
+  "version": "1.0.0",
+  "agents": [
+    {
+      "agentId": "orchestrator",
+      "displayName": "Atlas - Supervisor Orchestrator",
+      "description": "Coordinates all agent workflows and manages state transitions",
+      "model": {
+        "modelId": "gemini-2.5-pro",
+        "location": "europe-west3",
+        "contextWindow": "1M tokens"
+      },
+      "runtime": {
+        "engine": "Vertex AI Agent Engine",
+        "serviceAccount": "atlas-orchestrator@PROJECT_ID.iam.gserviceaccount.com",
+        "vpcConfig": {
+          "network": "nexus-vpc",
+          "subnetwork": "nexus-subnet"
+        }
+      },
+      "tools": [
+        "Cloud Workflows API",
+        "Vertex AI Agent Engine",
+        "Pub/Sub API",
+        "Vertex AI Vector Search"
+      ],
+      "allowedGoogleCloudServices": [
+        "workflows.googleapis.com",
+        "aiplatform.googleapis.com",
+        "pubsub.googleapis.com"
+      ]
+    },
+    {
+      "agentId": "cartographer",
+      "displayName": "Maple - Repository Cartographer",
+      "description": "Maps repository structure and dependencies",
+      "model": {
+        "modelId": "gemini-2.5-flash",
+        "location": "europe-west3",
+        "contextWindow": "256K tokens"
+      },
+      "runtime": {
+        "engine": "Vertex AI Agent Engine",
+        "serviceAccount": "maple-cartographer@PROJECT_ID.iam.gserviceaccount.com"
+      },
+      "tools": [
+        "Developer Connect API",
+        "Cloud Build API",
+        "Cloud Asset Inventory API"
+      ]
+    },
+    {
+      "agentId": "c-reviewer",
+      "displayName": "Vector - C Performance Reviewer",
+      "description": "Reviews C code for performance and safety",
+      "model": {
+        "modelId": "gemini-2.5-pro",
+        "location": "europe-west3",
+        "contextWindow": "1M tokens"
+      },
+      "runtime": {
+        "engine": "Vertex AI Agent Engine",
+        "serviceAccount": "vector-review@PROJECT_ID.iam.gserviceaccount.com"
+      },
+      "tools": [
+        "Cloud Build API",
+        "Cloud Storage API",
+        "Cloud Logging API"
+      ]
+    },
+    {
+      "agentId": "python-tester",
+      "displayName": "Pyra - Python Test Engineer",
+      "description": "Executes Python test suites and validates bindings",
+      "model": {
+        "modelId": "gemini-2.5-flash",
+        "location": "europe-west3",
+        "contextWindow": "256K tokens"
+      },
+      "runtime": {
+        "engine": "Vertex AI Agent Engine",
+        "serviceAccount": "pyra-test@PROJECT_ID.iam.gserviceaccount.com"
+      },
+      "tools": [
+        "Cloud Run Jobs API",
+        "Cloud Build API",
+        "Cloud Storage API"
+      ]
+    },
+    {
+      "agentId": "quant-auditor",
+      "displayName": "Delta - Quant Domain Auditor",
+      "description": "Validates trading logic and risk limits",
+      "model": {
+        "modelId": "gemini-2.5-pro",
+        "location": "europe-west3",
+        "contextWindow": "1M tokens"
+      },
+      "runtime": {
+        "engine": "Vertex AI Agent Engine",
+        "serviceAccount": "delta-audit@PROJECT_ID.iam.gserviceaccount.com"
+      },
+      "tools": [
+        "Vertex AI Evaluation",
+        "BigQuery API",
+        "Cloud SQL Admin API"
+      ]
+    },
+    {
+      "agentId": "sandbox",
+      "displayName": "Aegis - Security Guardian",
+      "description": "Enforces security policies and sandbox isolation",
+      "model": {
+        "modelId": "gemini-2.5-flash",
+        "location": "europe-west3",
+        "contextWindow": "256K tokens"
+      },
+      "runtime": {
+        "engine": "Vertex AI Agent Engine",
+        "serviceAccount": "aegis-security@PROJECT_ID.iam.gserviceaccount.com"
+      },
+      "tools": [
+        "Cloud IAM API",
+        "Secret Manager API",
+        "VPC Service Controls",
+        "Cloud Audit Logs"
+      ]
+    },
+    {
+      "agentId": "ui-designer",
+      "displayName": "Nova - UI Systems Designer",
+      "description": "Designs and validates user interfaces",
+      "model": {
+        "modelId": "gemini-2.5-flash",
+        "location": "europe-west3",
+        "contextWindow": "256K tokens"
+      },
+      "runtime": {
+        "engine": "Vertex AI Agent Engine",
+        "serviceAccount": "nova-ui@PROJECT_ID.iam.gserviceaccount.com"
+      },
+      "tools": [
+        "Cloud Run API",
+        "Cloud Build API",
+        "Cloud Storage API"
+      ]
+    },
+    {
+      "agentId": "ci-runner",
+      "displayName": "Forge - CI Evidence Runner",
+      "description": "Executes CI pipelines and collects evidence",
+      "model": {
+        "modelId": "gemini-2.5-flash",
+        "location": "europe-west3",
+        "contextWindow": "256K tokens"
+      },
+      "runtime": {
+        "engine": "Vertex AI Agent Engine",
+        "serviceAccount": "forge-ci@PROJECT_ID.iam.gserviceaccount.com"
+      },
+      "tools": [
+        "Cloud Build API",
+        "Artifact Registry API",
+        "Cloud Storage API",
+        "Cloud Logging API"
+      ]
+    },
+    {
+      "agentId": "review-synth",
+      "displayName": "Scribe - PR Review Synthesizer",
+      "description": "Synthesizes code review findings",
+      "model": {
+        "modelId": "gemini-2.5-pro",
+        "location": "europe-west3",
+        "contextWindow": "1M tokens"
+      },
+      "runtime": {
+        "engine": "Vertex AI Agent Engine",
+        "serviceAccount": "scribe-review@PROJECT_ID.iam.gserviceaccount.com"
+      },
+      "tools": [
+        "Cloud Build API",
+        "Cloud Logging API",
+        "Cloud Storage API"
+      ]
+    },
+    {
+      "agentId": "memory",
+      "displayName": "Echo - Memory & Eval Curator",
+      "description": "Manages vector search and evaluation memory",
+      "model": {
+        "modelId": "text-embedding-005",
+        "location": "europe-west3",
+        "contextWindow": "256K tokens"
+      },
+      "runtime": {
+        "engine": "Vertex AI Agent Engine",
+        "serviceAccount": "echo-memory@PROJECT_ID.iam.gserviceaccount.com"
+      },
+      "tools": [
+        "Vertex AI Vector Search",
+        "Cloud SQL Admin API",
+        "Vertex AI Evaluation",
+        "Cloud Logging API"
+      ]
+    }
+  ],
+  "workflow": {
+    "engine": "Cloud Workflows",
+    "states": [
+      "PLANNING",
+      "EXECUTING",
+      "REVIEWING",
+      "EVALUATING",
+      "REVISING",
+      "DEPLOYING",
+      "ESCALATED"
+    ],
+    "gates": {
+      "deployThreshold": 85,
+      "maxAutonomousRevisions": 2,
+      "humanApprovalRequired": true
+    }
+  },
+  "security": {
+    "vpcServiceControls": true,
+    "privateServiceConnect": true,
+    "secretManager": true,
+    "iamConditions": true
+  }
+}
