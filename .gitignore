@@ -1,5 +1,24 @@
+# --- Bestehend (TypeScript/Node) ---
 node_modules/
 dist/
 data/vectors/trace.json
 *.log
 .DS_Store
+
+# --- Projekt "Neu": Laufzeitdaten gehoeren nicht ins Git ---
+# Queues, Job-Zustaende, Archiv, Backups, Agent-Locks, system.log
+runtime/
+
+# Sandbox des Limbs: nur die Verzeichnismarke wird versioniert
+workspace/*
+!workspace/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Sicherungskopien der Limbs
+*.bak
+*.neu-tmp

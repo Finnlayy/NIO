@@ -1,0 +1,48 @@
+{
+  "$comment": "NEU Dev-Profil: 1 Iteration, 1 Agent, 1 Limb, 1 paralleler Job. Hochskalieren erst, wenn sich das System im Dev-Modus bewaehrt hat -- und nur mit menschlicher Freigabe, weil diese Datei unter dem Constitution Guard steht (core/config.py: human_only_globs).",
+  "mode": "dev",
+  "limits": {
+    "max_iterations": 1,
+    "max_agents": 1,
+    "max_limbs": 1,
+    "max_concurrent_jobs": 1
+  },
+  "timer": {
+    "deadline_s": 60.0,
+    "soft_deadline_s": 45.0,
+    "grace_s": 5.0
+  },
+  "allow_shell_ops": false,
+  "allow_test_ops": false,
+  "allow_repo_write": true,
+  "max_output_bytes": 1048576,
+  "allowed_repo_globs": [
+    "core/*",
+    "orchestrator/*",
+    "limbs/*",
+    "prompts/*",
+    "protocol/*",
+    "tests/*",
+    "docs/*",
+    "workspace/*",
+    "README.md",
+    "neu.config.json"
+  ],
+  "denied_globs": [
+    ".git/*",
+    ".github/*",
+    "runtime/*",
+    "node_modules/*",
+    "dist/*",
+    "frontend/.next/*",
+    "*.bak",
+    "*.log"
+  ],
+  "human_only_globs": [
+    "neu.config.json",
+    "core/policy.py",
+    "core/config.py",
+    ".git/*",
+    ".github/*"
+  ]
+}

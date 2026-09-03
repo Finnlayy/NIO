@@ -14,9 +14,19 @@
     "ui:start": "npm --prefix frontend run start",
     "test": "pytest evals/tests",
     "trace:generate": "ts-node --project tsconfig.evals.json evals/tests/run_trace.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "neu:spec": "python3 -m orchestrator spec",
+    "neu:status": "python3 -m orchestrator status",
+    "neu:test": "python3 -m unittest discover -s tests -t . -v",
+    "neu:jobs": "python3 -m orchestrator job list",
+    "neu:reclaim": "python3 -m orchestrator job reclaim"
   },
-  "keywords": ["orchestrator", "prompt-engineering", "middleware", "typescript"],
+  "keywords": [
+    "orchestrator",
+    "prompt-engineering",
+    "middleware",
+    "typescript"
+  ],
   "author": "Neural Architecture Team",
   "license": "MIT",
   "dependencies": {

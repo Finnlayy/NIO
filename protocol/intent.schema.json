@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Finnlayy/NIO/protocol/intent.schema.json",
+  "title": "NEU Intent (Core -> Orchestrator -> Limb)",
+  "description": "Auftrag fuer genau einen Durchgang eines Jobs. Massgeblich ist die Referenzimplementierung core/protocol.py; dieses Schema spiegelt Protokoll 1.1 fuer Editoren, CI und fremdsprachige Limbs. Unbekannte Schluessel sind verboten (Drift-Frueherkennung); frei erweiterbar sind nur task.params und context.extra.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol", "version", "intent_id", "created_at", "source", "target", "job", "task"],
+  "properties": {
+    "protocol": { "const": "neu/intent" },
+    "version": { "pattern": "^1\\.[01]$", "description": "Protokoll 1.1" },
+    "intent_id": { "$ref": "#/$defs/id", "pattern": "^int_[A-Za-z0-9_-]{6,64}$" },
+    "trace_id": { "$ref": "#/$defs/id", "description": "Korrelations-ID; entspricht per Default der job_id" },
+    "parent_intent_id": { "type": ["string", "null"], "pattern": "^int_[A-Za-z0-9_-]{6,64}$", "description": "Vorgaenger-Durchgang (Autodidaktik)" },
+    "idempotency_key": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "created_at": { "$ref": "#/$defs/timestamp" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "node_id"],
+      "properties": {
+        "role": { "enum": ["core", "orchestrator", "limb", "human"] },
+        "node_id": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["limb"],
+      "properties": {
+        "limb": { "pattern": "^[a-z][a-z0-9_]{0,31}$", "description": "Name gemaess limbs/registry.json" },
+        "version": { "type": ["string", "null"], "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][A-Za-z0-9.-]+)?$" }
+      }
+    },
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job_id"],
+      "description": "Iterationen zaehlen pro Job, nicht pro Agentenaufruf.",
+      "properties": {
+        "job_id": { "type": "string", "pattern": "^job_[A-Za-z0-9_-]{6,64}$" },
+        "goal": { "type": "string", "maxLength": 4096, "description": "Ziel des Jobs; ueber alle Durchgaenge stabil" },
+        "iteration": { "type": "integer", "minimum": 1, "maximum": 2 },
+        "max_iterations": { "type": "integer", "minimum": 1, "maximum": 2, "description": "Hartes Maximum 2; Dev-Profil deckelt auf 1" },
+        "on_failure": { "enum": ["autodidactic", "return_to_core", "abort"] }
+      }
+    },
+    "timer": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Wird vom Orchestrator VOR Anbeginn des Durchgangs geschaerft (armed_at/soft_expires_at/expires_at).",
+      "properties": {
+        "deadline_s": { "type": "number", "exclusiveMinimum": 0, "maximum": 900 },
+        "soft_deadline_s": { "type": "number", "exclusiveMinimum": 0, "maximum": 900, "description": "Hier muss der Limb seinen Statusbericht liefern" },
+        "grace_s": { "type": "number", "minimum": 0, "maximum": 120 },
+        "on_expiry": { "enum": ["iterate", "escalate", "abort"] },
+        "armed_at": { "type": ["string", "null"], "format": "date-time" },
+        "soft_expires_at": { "type": ["string", "null"], "format": "date-time" },
+        "expires_at": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation"],
+      "properties": {
+        "operation": { "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$", "description": "Muss in protocol/operations.json registriert sein" },
+        "params": { "type": "object", "description": "Frei erweiterbar; Schema je Operation im Register" },
+        "title": { "type": "string", "maxLength": 256 },
+        "objective": { "type": "string", "maxLength": 8192, "description": "Ziel in Klartext -- der Limb kennt keinen anderen Kontext" },
+        "acceptance": { "type": "array", "items": { "type": "string", "maxLength": 2048 }, "maxItems": 64 },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "enum": ["none", "file_exists", "hash", "unittest", "pytest", "shell"] },
+            "command": { "type": "string", "maxLength": 4096 },
+            "expect": { "type": "object" }
+          }
+        }
+      }
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sandbox_root": { "type": "string", "description": "Relativ zum Repo-Root; '.' erlaubt nur mit elevation.level=repo_write", "default": "workspace" },
+        "allow_shell": { "type": "boolean", "default": false },
+        "allow_network": { "type": "boolean", "default": false },
+        "max_output_bytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "dry_run": { "type": "boolean", "default": false },
+        "backup": { "type": "boolean", "default": true }
+      }
+    },
+    "elevation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Rechteanhebung fuer Selbstmodifikation (Ouroboros). Ab level != none sind reason (>= 20 Zeichen) und approved_by Pflicht.",
+      "properties": {
+        "level": { "enum": ["none", "workspace", "repo_write"], "default": "none" },
+        "reason": { "type": "string", "maxLength": 2048 },
+        "approved_by": { "enum": ["", "core", "human"], "description": "'human' ist fuer human_only_globs zwingend (Constitution Guard)" },
+        "requested_paths": { "type": "array", "items": { "type": "string" }, "description": "Deklaration aller Zielpfade; nicht deklarierte Pfade werden abgelehnt" }
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "summary": { "type": "string", "maxLength": 16384 },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path"],
+            "properties": {
+              "path": { "type": "string" },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "role": { "type": "string", "maxLength": 32 }
+            }
+          }
+        },
+        "extra": { "type": "object", "description": "Frei erweiterbar (z. B. diagnosis, forbidden_repeats)" }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^(int|res|trc|job)_[A-Za-z0-9_-]{6,64}$" },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$", "description": "ISO-8601 in UTC mit Millisekunden" }
+  }
+}
