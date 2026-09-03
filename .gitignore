@@ -1,5 +1,11 @@
 node_modules/
 dist/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
 data/vectors/trace.json
+data/vectors/learning_trace.json
+data/learning/state.json
 *.log
 .DS_Store

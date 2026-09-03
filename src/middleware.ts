@@ -1,4 +1,8 @@
 import { classifyTask } from './domain_classifier';
+import { ContinuousLearningEngine } from './learning/engine';
+import { createOutcome } from './learning/input';
+import type { Outcome } from './learning/schemas';
+import { InMemoryLearningStore } from './learning/store';
 import { composeUrgencyBlock, enforceUrgencyContext } from './prompt_wrapping';
 import { loadSystemTemplate, renderSystemPrompt } from './system_template_loader';
 import {
@@ -40,6 +44,32 @@ export async function processTask(
   const politeness: PolitenessTier = context.politenessTier ?? config.defaultPolitenessTier ?? 'neutral';
   const expectedAccuracy = config.expectedAccuracy ?? template.metadata.expected_accuracy;
 
+  const learningEngine = config.learning
+    ? new ContinuousLearningEngine({
+        store: config.learning.store ?? new InMemoryLearningStore(),
+        now: config.learning.now,
+      })
+    : null;
+
+  if (learningEngine) {
+    context.learningContext = {
+      riskGuard: learningEngine.guardTask({
+        taskDescription: context.taskDescription,
+        domain: classification.domain,
+        algorithmTag: classification.algorithmTag,
+      }),
+      research: learningEngine.research(
+        {
+          taskDescription: context.taskDescription,
+          domain: classification.domain,
+          algorithmTag: classification.algorithmTag,
+        },
+        { limit: 5 },
+      ),
+      guardAppliedAt: new Date().toISOString(),
+    };
+  }
+
   const urgencyBlock = classification.isComplex
     ? composeUrgencyBlock(classification, politeness)
     : '';
@@ -77,6 +107,38 @@ export async function processTask(
     latencyMs,
   });
   await telemetry.record(event);
+
+  if (learningEngine) {
+    const metadata = coreResponse.metadata;
+    const successValue = typeof metadata.success === 'string' ? metadata.success : undefined;
+    const correctnessScore = typeof metadata.correctnessScore === 'number' ? metadata.correctnessScore : undefined;
+    const outcome = createOutcome({
+      id: `outcome_${event.eventId}`,
+      taskLabel: context.taskDescription.slice(0, 120),
+      taskDescription: context.taskDescription,
+      domain: classification.domain,
+      algorithmTag: classification.algorithmTag,
+      promptVariant: event.promptVariant,
+      politenessTier: event.politenessTier,
+      urgencyTier: event.urgencyTier,
+      success: successValue === 'failure' || successValue === 'partial'
+        ? successValue
+        : 'success',
+      correctnessScore,
+      observedAccuracy: event.observedAccuracy,
+      expectedAccuracy: event.expectedAccuracy,
+      latencyMs: event.latencyMs,
+      errorClass: typeof metadata.errorClass === 'string'
+        ? metadata.errorClass as Outcome['errorClass']
+        : undefined,
+      errorMessage: typeof metadata.errorMessage === 'string' ? metadata.errorMessage : undefined,
+      appliedPolicies: [
+        `prompt_variant:${event.promptVariant}`,
+        `politeness_tier:${event.politenessTier}`,
+      ],
+    });
+    learningEngine.ingestOutcome(outcome);
+  }
 
   return coreResponse;
 }

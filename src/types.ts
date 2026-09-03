@@ -1,3 +1,19 @@
+import type {
+  ResearchResult,
+  RiskGuard,
+} from './learning/schemas';
+import type { LearningEngineConfig } from './learning/engine';
+
+/**
+ * Context attached by the continuous-learning engine before execution.
+ */
+export interface LearningContext {
+  riskGuard?: RiskGuard;
+  research?: ResearchResult[];
+  knowledgeBrief?: string;
+  guardAppliedAt?: string;
+}
+
 /**
  * Core domain identifiers recognized by the classifier.
  */
@@ -33,6 +49,9 @@ export interface PromptContext {
 
   /** Optional desired politeness tier for tone experiments. */
   politenessTier?: PolitenessTier;
+
+  /** Optional continuous-learning context gathered before execution. */
+  learningContext?: LearningContext;
 }
 
 /**
@@ -135,6 +154,10 @@ export interface MiddlewareConfig {
 
   /** Downstream core adapter. */
   coreAdapter: NeuralCoreAdapter;
+
+  /** Optional continuous-learning subsystem. When present, the middleware
+   * guards against recorded errors and learns from every outcome. */
+  learning?: LearningEngineConfig;
 }
 
 /**

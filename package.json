@@ -14,6 +14,7 @@
     "ui:start": "npm --prefix frontend run start",
     "test": "pytest evals/tests",
     "trace:generate": "ts-node --project tsconfig.evals.json evals/tests/run_trace.ts",
+    "learning:trace:generate": "ts-node --project tsconfig.evals.json evals/tests/run_learning_trace.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": ["orchestrator", "prompt-engineering", "middleware", "typescript"],
