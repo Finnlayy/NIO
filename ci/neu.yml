@@ -1,0 +1,115 @@
+name: NEU (Kern, Orchestrator, Limbs)
+
+# Warum dieser Workflow noetig ist: ci-evals.yml prueft das Legacy-Harness
+# (TypeScript + pytest auf evals/). Die NEU-Test-Suite unter tests/ -- Kern,
+# Orchestrator, Limbs, Protokoll 1.2 -- lief dort nie. Dieser Workflow fuehrt sie
+# auf jeder Python-Version der Unterstuetzungsmatrix aus, plus Lint, Typen und
+# einen echten End-to-End-Beweis ueber die CLI.
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neu-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: "1"
+  # Eine unbegrenzt laufende watch-Schleife darf keine Dateideskriptoren
+  # verlieren: Warnungen werden hier zu Fehlern.
+  PYTHONWARNINGS: "error::ResourceWarning"
+
+jobs:
+  tests:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Python ${{ matrix.python-version }} einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          # Kein pip-Install noetig: NEU laeuft auf der Standardbibliothek.
+
+      - name: Bytecode pruefen (Syntax auf dieser Version)
+        run: python -m compileall -q core orchestrator limbs tests scripts
+
+      - name: Test-Suite (echte Subprozesse, echte Timer)
+        run: python -m unittest discover -s tests -t . -v
+
+  quality:
+    name: Lint & Typen
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Entwicklungswerkzeuge installieren
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "ruff>=0.16" "mypy>=1.11"
+
+      - name: ruff (Lint, Konfiguration aus pyproject.toml)
+        run: ruff check .
+
+      - name: mypy (Typen fuer core/, orchestrator/, limbs/)
+        run: mypy
+
+  e2e:
+    name: End-to-End-Beweis (Protokoll 1.2)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Zeit tracken statt begrenzen -- ueber die echte CLI
+        run: python scripts/ci_e2e_unlimited.py
+
+      - name: Protokoll-Selbstauskunft zeigt 1.2
+        run: |
+          set -euo pipefail
+          python -m orchestrator spec | grep -q "NEU-Protokoll 1.2"
+          python -m orchestrator spec | grep -q "unlimited"
+          python -m orchestrator spec | grep -q "finish_job"
+
+      - name: Exit-Code-Vertrag (Nutzungsfehler = 3, Protokollfehler = 1)
+        run: |
+          set -uo pipefail
+          tmp="$(mktemp -d)"
+          python -m orchestrator --runtime-dir "$tmp/rt" --json job run --op sys.ping
+          code=$?
+          if [ "$code" -ne 3 ]; then
+            echo "erwartet Exit 3 (Nutzungsfehler), bekommen $code" >&2
+            exit 1
+          fi
+          python -m orchestrator --runtime-dir "$tmp/rt" --json job run --goal x --op sys.gibtesnicht
+          code=$?
+          if [ "$code" -ne 1 ]; then
+            echo "erwartet Exit 1 (Protokollfehler), bekommen $code" >&2
+            exit 1
+          fi
+          echo "Exit-Code-Vertrag gehalten"

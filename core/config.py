@@ -1,4 +1,4 @@
-"""NEU-Konfiguration (Phase 1, Protokoll 1.1).
+"""NEU-Konfiguration (Protokoll 1.2).
 
 Ein einziger, deterministischer Ort fuer Pfade, Sicherheits-Policy, Timer und
 Skalierungsgrenzen. Core, Orchestrator und Limbs lesen alle dieselbe
@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 CONFIG_FILENAME = "neu.config.json"
 
@@ -67,11 +68,22 @@ DEFAULT_HUMAN_ONLY_GLOBS: tuple[str, ...] = (
 DEFAULT_MAX_OUTPUT_BYTES = 1_048_576
 HARD_MAX_OUTPUT_BYTES = 67_108_864
 
-#: Timer-Defaults (Protokoll 1.1)
+#: Timer-Defaults (Protokoll 1.2)
+DEFAULT_RUNTIME_DIR = "runtime"
+DEFAULT_WORKSPACE_DIR = "workspace"
+DEFAULT_PROTOCOL_DIR = "protocol"
+
 DEFAULT_DEADLINE_S = 60.0
 DEFAULT_SOFT_DEADLINE_S = 45.0
 DEFAULT_GRACE_S = 5.0
 HARD_DEADLINE_S = 900.0
+
+#: Reine Prozess-Hygiene fuer den Unlimited-Modus: kein Aufgabenlimit, sondern
+#: Zombie-Schutz. 0 = wirklich unbegrenzt. Eingriffe melden E_SAFETY_NET.
+DEFAULT_SAFETY_NET_S = 3600.0
+
+#: Tick-Intervall des Schedulers (Auswertung der zeitgesteuerten Trigger)
+DEFAULT_TICK_S = 0.5
 
 #: Iterations-Budget: hartes Maximum ueber alle Profile (vom User festgelegt: 2).
 ABSOLUTE_MAX_ITERATIONS = 2
@@ -83,12 +95,14 @@ SCALE_PROFILES: dict[str, dict[str, Any]] = {
         "max_agents": 1,
         "max_limbs": 1,
         "max_concurrent_jobs": 1,
+        "max_scheduled_jobs": 1,
     },
     "scale": {
         "max_iterations": ABSOLUTE_MAX_ITERATIONS,
         "max_agents": 4,
         "max_limbs": 4,
         "max_concurrent_jobs": 2,
+        "max_scheduled_jobs": 4,
     },
 }
 
@@ -103,6 +117,7 @@ class Limits:
     max_agents: int = 1
     max_limbs: int = 1
     max_concurrent_jobs: int = 1
+    max_scheduled_jobs: int = 1
 
     def to_dict(self) -> dict[str, int]:
         return {
@@ -110,10 +125,11 @@ class Limits:
             "max_agents": self.max_agents,
             "max_limbs": self.max_limbs,
             "max_concurrent_jobs": self.max_concurrent_jobs,
+            "max_scheduled_jobs": self.max_scheduled_jobs,
         }
 
     @classmethod
-    def from_dict(cls, data: Any, mode: str = "dev") -> "Limits":
+    def from_dict(cls, data: Any, mode: str = "dev") -> Limits:
         profile = dict(SCALE_PROFILES.get(mode, SCALE_PROFILES["dev"]))
         if isinstance(data, dict):
             profile.update({k: v for k, v in data.items() if k in profile and v is not None})
@@ -122,30 +138,59 @@ class Limits:
             max_agents=max(1, int(profile["max_agents"])),
             max_limbs=max(1, int(profile["max_limbs"])),
             max_concurrent_jobs=max(1, int(profile["max_concurrent_jobs"])),
+            max_scheduled_jobs=max(1, int(profile.get("max_scheduled_jobs", 1))),
         )
 
 
 @dataclass(frozen=True)
 class TimerDefaults:
-    """Vorgaben fuer den Timer, der vor jedem Auftrag scharf geschaltet wird."""
+    """Vorgaben fuer den Timer, der vor jedem Auftrag scharf geschaltet wird.
 
-    deadline_s: float = DEFAULT_DEADLINE_S
-    soft_deadline_s: float = DEFAULT_SOFT_DEADLINE_S
+    ``deadline_s = None`` bedeutet: Es wird **kein** Limit vorgegeben, die Zeit
+    wird getrackt (``mode="unlimited"``, Protokoll 1.2).
+    """
+
+    deadline_s: float | None = DEFAULT_DEADLINE_S
+    soft_deadline_s: float | None = DEFAULT_SOFT_DEADLINE_S
     grace_s: float = DEFAULT_GRACE_S
+    safety_net_s: float | None = DEFAULT_SAFETY_NET_S
+    tick_s: float = DEFAULT_TICK_S
 
-    def to_dict(self) -> dict[str, float]:
-        return {"deadline_s": self.deadline_s, "soft_deadline_s": self.soft_deadline_s, "grace_s": self.grace_s}
+    @property
+    def unlimited(self) -> bool:
+        return self.deadline_s is None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "deadline_s": self.deadline_s,
+            "soft_deadline_s": self.soft_deadline_s,
+            "grace_s": self.grace_s,
+            "safety_net_s": self.safety_net_s,
+            "tick_s": self.tick_s,
+        }
 
     @classmethod
-    def from_dict(cls, data: Any) -> "TimerDefaults":
+    def from_dict(cls, data: Any) -> TimerDefaults:
         body = dict(data) if isinstance(data, dict) else {}
-        deadline = float(body.get("deadline_s", DEFAULT_DEADLINE_S))
-        soft = float(body.get("soft_deadline_s", DEFAULT_SOFT_DEADLINE_S))
+        raw_deadline = body.get("deadline_s", DEFAULT_DEADLINE_S)
+        raw_soft = body.get("soft_deadline_s", DEFAULT_SOFT_DEADLINE_S)
         grace = float(body.get("grace_s", DEFAULT_GRACE_S))
+        raw_net = body.get("safety_net_s", DEFAULT_SAFETY_NET_S)
+        tick = float(body.get("tick_s", DEFAULT_TICK_S))
+
+        if raw_deadline is None:
+            # Unlimited: keine Fristen, nur Tracking + optionales Safety-Net
+            net = None if raw_net is None else float(raw_net)
+            if net is not None and net < 1.0:
+                raise ValueError("timer.safety_net_s muss >= 1.0 sein (0/null = wirklich unbegrenzt)")
+            return cls(deadline_s=None, soft_deadline_s=None, grace_s=max(0.0, grace), safety_net_s=net, tick_s=max(0.05, tick))
+
+        deadline = float(raw_deadline)
         if not 0.1 <= deadline <= HARD_DEADLINE_S:
             raise ValueError(f"timer.deadline_s muss in [0.1, {HARD_DEADLINE_S}] liegen (gefunden: {deadline})")
-        soft = min(max(0.1, soft), deadline)
-        return cls(deadline_s=deadline, soft_deadline_s=soft, grace_s=max(0.0, grace))
+        soft = None if raw_soft is None else min(max(0.1, float(raw_soft)), deadline)
+        net = None if raw_net is None else float(raw_net)
+        return cls(deadline_s=deadline, soft_deadline_s=soft, grace_s=max(0.0, grace), safety_net_s=net, tick_s=max(0.05, tick))
 
 
 @dataclass(frozen=True)
@@ -154,9 +199,13 @@ class NeuConfig:
 
     repo_root: Path
     mode: str = "dev"
-    runtime_dir: Path | None = None
-    workspace_dir: Path | None = None
-    protocol_dir: Path | None = None
+    # Invariante: Nach ``__post_init__`` sind das immer echte ``Path``-Objekte
+    # (relativ = unterhalb repo_root, absolut = unveraendert). Eingaben duerfen
+    # trotzdem Strings oder None sein -- ``load()`` und ``__post_init__``
+    # normalisieren, damit kein Aufrufer ``Path | None`` weiterschleppen muss.
+    runtime_dir: Path = field(default_factory=lambda: Path(DEFAULT_RUNTIME_DIR))
+    workspace_dir: Path = field(default_factory=lambda: Path(DEFAULT_WORKSPACE_DIR))
+    protocol_dir: Path = field(default_factory=lambda: Path(DEFAULT_PROTOCOL_DIR))
     max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES
     allow_shell_ops: bool = False
     allow_test_ops: bool = False
@@ -171,9 +220,16 @@ class NeuConfig:
     def __post_init__(self) -> None:
         root = Path(self.repo_root).resolve()
         object.__setattr__(self, "repo_root", root)
-        object.__setattr__(self, "runtime_dir", root / (self.runtime_dir or "runtime"))
-        object.__setattr__(self, "workspace_dir", root / (self.workspace_dir or "workspace"))
-        object.__setattr__(self, "protocol_dir", root / (self.protocol_dir or "protocol"))
+        for key, default in (
+            ("runtime_dir", DEFAULT_RUNTIME_DIR),
+            ("workspace_dir", DEFAULT_WORKSPACE_DIR),
+            ("protocol_dir", DEFAULT_PROTOCOL_DIR),
+        ):
+            raw = getattr(self, key)
+            text = str(raw).strip() if raw is not None else ""
+            # ``root / "/abs"`` ergibt "/abs": Ein isoliertes runtime/ ausserhalb
+            # des Repos (CLI ``--runtime-dir``) bleibt damit moeglich.
+            object.__setattr__(self, key, root / Path(text or default))
         if self.mode not in VALID_MODES:
             raise ValueError(f"mode muss eines von {VALID_MODES} sein (gefunden: {self.mode!r})")
         object.__setattr__(self, "limits", Limits.from_dict(self.limits.to_dict() if isinstance(self.limits, Limits) else self.limits, self.mode))
@@ -204,6 +260,15 @@ class NeuConfig:
         return Path(self.runtime_dir) / "locks"
 
     @property
+    def schedules_dir(self) -> Path:
+        """Zustand der zeitgesteuerten Ausloeser (Protokoll 1.2).
+
+        Eigenes Verzeichnis, damit ``runtime/jobs/job_*.json`` eindeutig Jobs
+        bleiben und Trigger-Zustaende die Job-Liste nicht verwirren.
+        """
+        return Path(self.runtime_dir) / "schedules"
+
+    @property
     def system_log_path(self) -> Path:
         """Ziel der Phase-3-Logging-Erweiterung (in Phase 1 noch unbeschrieben)."""
         return Path(self.runtime_dir) / "system.log"
@@ -227,6 +292,7 @@ class NeuConfig:
             self.backup_dir,
             self.jobs_dir,
             self.locks_dir,
+            self.schedules_dir,
             Path(self.workspace_dir),
         ):
             directory.mkdir(parents=True, exist_ok=True)
@@ -258,7 +324,7 @@ class NeuConfig:
 
     # --------------------------------------------------------------- Laden
     @classmethod
-    def load(cls, repo_root: Path | str | None = None, **overrides: Any) -> "NeuConfig":
+    def load(cls, repo_root: Path | str | None = None, **overrides: Any) -> NeuConfig:
         root = Path(
             repo_root
             or os.environ.get("NEU_ROOT")
@@ -290,6 +356,16 @@ class NeuConfig:
         for key in ("allowed_repo_globs", "denied_globs", "human_only_globs"):
             if key in values:
                 values[key] = _as_str_tuple(values[key], key)
+
+        # Pfadfelder: String -> Path, leer/null -> Default der Datenklasse.
+        for key in ("runtime_dir", "workspace_dir", "protocol_dir", "source_file"):
+            if key not in values:
+                continue
+            value = values[key]
+            if value is None or (isinstance(value, str) and not value.strip()):
+                values.pop(key)
+            elif not isinstance(value, Path):
+                values[key] = Path(str(value))
 
         mode = str(values.get("mode", "dev"))
         if "limits" in values and not isinstance(values["limits"], Limits):

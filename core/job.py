@@ -1,4 +1,4 @@
-"""Job-Lebenszyklus und Iterationszaehlung (Protokoll 1.1).
+"""Job-Lebenszyklus und Iterationszaehlung (Protokoll 1.2).
 
 Grundregel des Users, hier maschinell durchgesetzt:
 
@@ -22,14 +22,23 @@ Zustaende::
 
 from __future__ import annotations
 
+import builtins
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from .config import ABSOLUTE_MAX_ITERATIONS, NeuConfig
 from .protocol import format_timestamp, new_id, parse_timestamp, utc_now
+
+#: Job-Arten: vom Kern/User beauftragt ("job") oder vom Scheduler getriggert
+#: ("scheduled"). Getriggerte Kontrollen verbrauchen kein Iterations-Budget des
+#: beobachteten Jobs -- sie sind eigene Jobs mit eigener Spur.
+JOB_KIND_TASK = "job"
+JOB_KIND_SCHEDULED = "scheduled"
+VALID_JOB_KINDS = (JOB_KIND_TASK, JOB_KIND_SCHEDULED)
 
 JOB_OPEN = "open"
 JOB_RUNNING = "running"
@@ -84,7 +93,7 @@ class IterationEntry:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "IterationEntry":
+    def from_dict(cls, data: Mapping[str, Any]) -> IterationEntry:
         return cls(
             iteration=int(data.get("iteration", 1)),
             intent_id=str(data.get("intent_id", "")),
@@ -113,7 +122,11 @@ class JobRecord:
     iteration: int = 0
     max_iterations: int = 1
     mode: str = "dev"
-    deadline_s: float = 60.0
+    deadline_s: float | None = 60.0
+    timer_mode: str = "deadline"
+    kind: str = JOB_KIND_TASK
+    parent_job_id: str = ""
+    trigger_id: str = ""
     limbs_used: tuple[str, ...] = ()
     operations_used: tuple[str, ...] = ()
     measures_taken: int = 0
@@ -122,6 +135,15 @@ class JobRecord:
     outcome: dict[str, Any] = field(default_factory=dict)
 
     # ------------------------------------------------------------ Eigenschaften
+    @property
+    def t0(self) -> str:
+        """Referenzpunkt der Job-Uhr (``t_unlimited`` zaehlt ab hier)."""
+        return self.created_at
+
+    @property
+    def unlimited(self) -> bool:
+        return self.timer_mode == "unlimited"
+
     @property
     def is_active(self) -> bool:
         return self.status in ACTIVE_STATES
@@ -158,6 +180,17 @@ class JobRecord:
             "max_iterations": self.max_iterations,
             "mode": self.mode,
             "deadline_s": self.deadline_s,
+            "timer_mode": self.timer_mode,
+            # Abgeleitet, aber absichtlich serialisiert: Wer den Ledger liest,
+            # soll dieselbe Uhr sehen wie Intent und Result -- t0 als Anker und
+            # t_unlimited als laufende Sekundenzahl seit t0. from_dict() liest
+            # beide nicht zurueck (sie werden berechnet), sie sind reine Auskunft.
+            "t0": self.t0,
+            "unlimited": self.unlimited,
+            "t_unlimited_s": elapsed_s(self),
+            "kind": self.kind,
+            "parent_job_id": self.parent_job_id,
+            "trigger_id": self.trigger_id,
             "limbs_used": list(self.limbs_used),
             "operations_used": list(self.operations_used),
             "measures_taken": self.measures_taken,
@@ -167,7 +200,7 @@ class JobRecord:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "JobRecord":
+    def from_dict(cls, data: Mapping[str, Any]) -> JobRecord:
         return cls(
             job_id=str(data.get("job_id", "")),
             goal=str(data.get("goal", "")),
@@ -177,7 +210,11 @@ class JobRecord:
             iteration=int(data.get("iteration", 0)),
             max_iterations=int(data.get("max_iterations", 1)),
             mode=str(data.get("mode", "dev")),
-            deadline_s=float(data.get("deadline_s", 60.0)),
+            deadline_s=None if data.get("deadline_s") is None else float(data.get("deadline_s", 60.0)),
+            timer_mode=str(data.get("timer_mode", "deadline")),
+            kind=str(data.get("kind", JOB_KIND_TASK)),
+            parent_job_id=str(data.get("parent_job_id", "")),
+            trigger_id=str(data.get("trigger_id", "")),
             limbs_used=tuple(str(x) for x in data.get("limbs_used", ())),
             operations_used=tuple(str(x) for x in data.get("operations_used", ())),
             measures_taken=int(data.get("measures_taken", 0)),
@@ -202,11 +239,41 @@ class JobStore:
         return self.config.jobs_dir / f"{job_id}.history.jsonl"
 
     # ---------------------------------------------------------------- Anlegen
-    def create(self, goal: str, *, max_iterations: int | None = None, deadline_s: float | None = None, job_id: str | None = None) -> JobRecord:
+    def create(
+        self,
+        goal: str,
+        *,
+        max_iterations: int | None = None,
+        deadline_s: float | None = None,
+        timer_mode: str = "deadline",
+        kind: str = JOB_KIND_TASK,
+        parent_job_id: str = "",
+        trigger_id: str = "",
+        job_id: str | None = None,
+    ) -> JobRecord:
+        """Legt einen Job an. ``created_at`` ist damit der Nullpunkt der Job-Uhr.
+
+        ``deadline_s=None`` (bzw. ``timer_mode="unlimited"``) bedeutet: Die Zeit
+        wird getrackt, nicht begrenzt.
+        """
         cap = self.config.limits.max_iterations
         requested = int(max_iterations if max_iterations is not None else cap)
         effective = max(1, min(requested, cap, ABSOLUTE_MAX_ITERATIONS))
         now = format_timestamp(utc_now())
+        # Eindeutige Aufloesung (Protokoll 1.2): deadline_s=None bedeutet
+        # "kein Limit" -- entweder weil der Modus unlimited ist oder weil die
+        # Konfiguration kein Default-Limit vorgibt (TimerDefaults.unlimited).
+        resolved_deadline: float | None
+        if timer_mode == "unlimited":
+            resolved_deadline = None
+        elif deadline_s is not None:
+            resolved_deadline = float(deadline_s)
+        elif self.config.timer.unlimited:
+            resolved_deadline = None
+        else:
+            resolved_deadline = self.config.timer.deadline_s
+        if kind not in VALID_JOB_KINDS:
+            raise ValueError(f"kind muss eines von {VALID_JOB_KINDS} sein (gefunden: {kind!r})")
         record = JobRecord(
             job_id=job_id or new_id("job"),
             goal=goal.strip()[:4000],
@@ -216,7 +283,11 @@ class JobStore:
             iteration=0,
             max_iterations=effective,
             mode=self.config.mode,
-            deadline_s=float(deadline_s if deadline_s is not None else self.config.timer.deadline_s),
+            deadline_s=resolved_deadline,
+            timer_mode="unlimited" if resolved_deadline is None else "deadline",
+            kind=kind,
+            parent_job_id=parent_job_id,
+            trigger_id=trigger_id,
         )
         self.save(record)
         self._append_history(record.job_id, {"event": "job.created", "at": now, **record.to_dict()})
@@ -243,7 +314,7 @@ class JobStore:
         tmp.replace(path)
         return stamped
 
-    def list(self, *, limit: int = 25, active_only: bool = False) -> list[JobRecord]:
+    def list(self, *, limit: int = 25, active_only: bool = False, kind: str | None = None) -> list[JobRecord]:
         if not self.config.jobs_dir.is_dir():
             return []
         records: list[JobRecord] = []
@@ -254,6 +325,8 @@ class JobStore:
                 continue
             if active_only and not record.is_active:
                 continue
+            if kind is not None and record.kind != kind:
+                continue
             records.append(record)
             if len(records) >= limit:
                 break
@@ -262,9 +335,13 @@ class JobStore:
     def stale_after_s(self, record: JobRecord) -> float:
         """Ab wann ein aktiver Job als verwaist gilt (Prozessabsturz).
 
-        Knapp bemessen: Ein Job, der laenger als sein Timer plus Puffer nicht
-        aktualisiert wurde, blockiert im Dev-Modus sonst die ganze Pipeline.
+        Deadline-Modus: Timer plus Puffer -- knapp, damit ein Absturz die
+        Pipeline nicht blockiert.
+        Unlimited-Modus: Es gibt keinen Timer, also zaehlt nur der Heartbeat des
+        Schedulers (``updated_at``).
         """
+        if record.unlimited or record.deadline_s is None:
+            return max(30.0, self.config.timer.tick_s * 12 + 25.0)
         return max(30.0, record.deadline_s + 25.0)
 
     def is_stale(self, record: JobRecord, *, now: datetime | None = None) -> bool:
@@ -272,22 +349,30 @@ class JobStore:
             return False
         try:
             updated = parse_timestamp(record.updated_at, "$.updated_at")
-        except Exception:  # noqa: BLE001 - unlesbarer Zeitstempel gilt als verwaist
+        except Exception:
             return True
         moment = now or utc_now()
         return (moment - updated).total_seconds() > self.stale_after_s(record)
 
-    def active_jobs(self) -> list[JobRecord]:
+    # ``builtins.list`` statt ``list``: Die Klasse hat eine Methode namens
+    # ``list``, die im Klassen-Scope das Builtin beschattet -- Annotationen
+    # wuerden sonst die Methode als Typ lesen (mypy: valid-type).
+    def active_jobs(self, *, kind: str | None = None) -> builtins.list[JobRecord]:
         """Aktive Jobs ohne verwaiste (abgestuerzte) Eintraege."""
-        return [record for record in self.list(limit=1000, active_only=True) if not self.is_stale(record)]
+        return [record for record in self.list(limit=1000, active_only=True, kind=kind) if not self.is_stale(record)]
 
-    def stale_jobs(self) -> list[JobRecord]:
+    def stale_jobs(self) -> builtins.list[JobRecord]:
         return [record for record in self.list(limit=1000, active_only=True) if self.is_stale(record)]
 
-    def active_count(self) -> int:
-        return len(self.active_jobs())
+    def active_count(self, *, kind: str = JOB_KIND_TASK) -> int:
+        """Zaehlt aktive Jobs einer Art.
 
-    def reclaim_stale(self) -> list[JobRecord]:
+        Getriggerte Kontroll-Jobs (``kind="scheduled"``) werden getrennt gezaehlt,
+        damit eine periodische Kontrolle nicht das Aufgaben-Budget blockiert.
+        """
+        return len(self.active_jobs(kind=kind))
+
+    def reclaim_stale(self) -> builtins.list[JobRecord]:
         """Verwaiste Jobs eskalieren statt sie ewig als 'aktiv' zu zaehlen."""
         reclaimed: list[JobRecord] = []
         for record in self.stale_jobs():
@@ -307,6 +392,23 @@ class JobStore:
         return reclaimed
 
     # ------------------------------------------------------------- Fortschritt
+    def heartbeat(self, job_id: str, *, note: str = "") -> JobRecord | None:
+        """Aktualisiert ``updated_at`` eines aktiven Jobs.
+
+        Lebenszeichen fuer die Waisen-Erkennung: Im Unlimited-Modus gibt es
+        keinen Timer, an dem man Fortschritt ablesen koennte -- also meldet der
+        Scheduler pro Tick, dass der Auftrag noch betreut wird. Ohne Heartbeat
+        wuerde ``is_stale()`` eine langlaufende Beobachtung fuer einen Absturz
+        halten und sie eskalieren.
+        """
+        record = self.get(job_id)
+        if record is None or not record.is_active:
+            return record
+        outcome = dict(record.outcome)
+        if note:
+            outcome["heartbeat"] = note[:400]
+        return self.save(replace(record, updated_at=format_timestamp(utc_now()), outcome=outcome))
+
     def begin_iteration(self, job_id: str, *, operation: str, limb: str) -> JobRecord:
         """Markiert den Start eines Durchgangs (Iteration zaehlt hier hoch)."""
         record = self.require(job_id)
@@ -370,7 +472,7 @@ class JobStore:
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(dict(entry), ensure_ascii=False) + "\n")
 
-    def read_history(self, job_id: str) -> list[dict[str, Any]]:
+    def read_history(self, job_id: str) -> builtins.list[dict[str, Any]]:
         path = self.history_path(job_id)
         if not path.is_file():
             return []
@@ -386,12 +488,23 @@ class JobStore:
         return entries
 
 
-def summarize(record: JobRecord) -> str:
+def elapsed_s(record: JobRecord, *, now: datetime | None = None) -> float:
+    """``t_unlimited``: Sekunden seit Job-Erstellung."""
+    if not record.created_at:
+        return 0.0
+    moment = now or utc_now()
+    return round(max(0.0, (moment - parse_timestamp(record.created_at, "$.created_at")).total_seconds()), 3)
+
+
+def summarize(record: JobRecord, *, now: datetime | None = None) -> str:
     """Einzeiler fuer CLI/Logs."""
     last = record.history[-1] if record.history else None
     tail = f" | letzter Durchgang: {last.status}/{last.verdict}" if last else ""
+    clock = "t_unlimited" if record.unlimited else f"limit={record.deadline_s}s"
+    kind = "" if record.kind == JOB_KIND_TASK else f" kind={record.kind}"
     return (
         f"{record.job_id} [{record.status}] '{record.goal[:60]}' "
-        f"iter={record.iteration}/{record.max_iterations} massnahmen={record.measures_taken}"
+        f"iter={record.iteration}/{record.max_iterations} massnahmen={record.measures_taken} "
+        f"{clock} elapsed={elapsed_s(record, now=now)}s{kind}"
         f"{f' failure={record.failure_kind}' if record.failure_kind else ''}{tail}"
     )

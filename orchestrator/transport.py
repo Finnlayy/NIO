@@ -20,9 +20,10 @@ import os
 import shutil
 import tempfile
 import time
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from core.config import NeuConfig
 from core.protocol import Intent, Result, sha256_file, utc_now_iso
@@ -43,7 +44,7 @@ def write_json_atomic(path: Path | str, data: Mapping[str, Any] | Iterable[Any],
     """Schreibt JSON crash-sicher: erst Temp-Datei, dann atomares Umbenennen."""
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    handle = tempfile.NamedTemporaryFile(
+    handle = tempfile.NamedTemporaryFile(  # noqa: SIM115 - delete=False ist Absicht: os.replace braucht die Datei
         "w",
         encoding="utf-8",
         delete=False,

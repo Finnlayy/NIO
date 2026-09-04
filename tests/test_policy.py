@@ -5,13 +5,13 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from . import REPO_ROOT  # noqa: F401
-
 from core.config import NeuConfig
 from core.job import JOB_RUNNING, JobRecord
 from core.kernel import Kernel
 from core.policy import Policy
 from core.protocol import ErrorCode, Operations, ProtocolError
+
+from . import REPO_ROOT  # noqa: F401
 
 CONFIG = NeuConfig.load()
 OPERATIONS = Operations.load(CONFIG.protocol_dir / "operations.json")
@@ -22,7 +22,7 @@ ELEVATION_REASON = "Ouroboros-Test: Der Orchestrator soll durch den Limb erweite
 
 
 def intent(**kwargs):
-    base = dict(operation="sys.echo", params={"message": "x"}, limb="echo", goal="Policy-Test")
+    base = {"operation": "sys.echo", "params": {"message": "x"}, "limb": "echo", "goal": "Policy-Test"}
     base.update(kwargs)
     return KERNEL.build_intent(**base)
 
@@ -47,21 +47,26 @@ class TestSandbox(unittest.TestCase):
             POLICY.resolve_path("demo/x\x00.txt", intent())
 
 
+def elevated(path: str, approved_by: str = "core", **kwargs):
+    """Schreib-Auftrag mit Rechteanhebung und deklariertem Zielpfad."""
+    return intent(
+        operation="fs.write_file",
+        params={"path": path, "content": "x", "mode": "overwrite"},
+        limb="bootstrap",
+        elevation={
+            "level": "repo_write",
+            "reason": ELEVATION_REASON,
+            "approved_by": approved_by,
+            "requested_paths": (path,),
+        },
+        constraints={"sandbox_root": "."},
+        **kwargs,
+    )
+
+
 class TestElevation(unittest.TestCase):
     def _elevated(self, path: str, approved_by: str = "core", **kwargs):
-        return intent(
-            operation="fs.write_file",
-            params={"path": path, "content": "x", "mode": "overwrite"},
-            limb="bootstrap",
-            elevation={
-                "level": "repo_write",
-                "reason": ELEVATION_REASON,
-                "approved_by": approved_by,
-                "requested_paths": (path,),
-            },
-            constraints={"sandbox_root": "."},
-            **kwargs,
-        )
+        return elevated(path, approved_by, **kwargs)
 
     def test_systemdatei_mit_core_freigabe_ist_erlaubt(self):
         target = POLICY.resolve_path("orchestrator/events.py", self._elevated("orchestrator/events.py"))
@@ -95,6 +100,58 @@ class TestElevation(unittest.TestCase):
                 limb="bootstrap",
                 elevation={"level": "repo_write", "reason": "zu kurz", "approved_by": "core"},
             )
+
+
+class TestPhase3Grenze(unittest.TestCase):
+    """Voraussetzungen des Ouroboros-Tests (docs/ARCHITECTURE.md, Abschnitt 6).
+
+    Phase 3 verlangt eine genaue Arbeitsteilung: Der Limb **patcht** den
+    Event-Bus (``orchestrator/events.py``), aber er **schreibt niemals** das
+    Log selbst. ``denied_globs`` wird vor ``allowed_repo_globs`` und vor
+    ``human_only_globs`` geprueft und kennt keine Ausnahme -- deshalb ist das
+    Log fuer Arme unerreichbar, auch mit menschlicher Freigabe im Intent.
+    """
+
+    def test_patch_ziel_ist_erlaubt_und_der_anker_steht_noch_da(self):
+        target = POLICY.resolve_path("orchestrator/events.py", elevated("orchestrator/events.py"))
+        self.assertEqual(target, (CONFIG.repo_root / "orchestrator" / "events.py").resolve())
+        self.assertIn(
+            "NEU-PHASE-3-ANCHOR",
+            target.read_text(encoding="utf-8"),
+            "die Andockstelle fuer den File-Sink darf nicht still verschwinden",
+        )
+
+    def test_log_ist_fuer_limbs_unerreichbar_auch_mit_mensch(self):
+        for approved_by in ("core", "human"):
+            with self.assertRaises(ProtocolError) as ctx:
+                elevated("runtime/system.log", approved_by=approved_by)
+            self.assertEqual(ctx.exception.code, ErrorCode.POLICY_DENIED)
+            self.assertIn("denied_globs", ctx.exception.message)
+
+    def test_laufzeitzustand_ist_unerreichbar(self):
+        """Jobs, Zeitplaene und Locks sind Buchhaltung des Kerns, nicht Limb-Material."""
+        for path in ("runtime/jobs/job_x.json", "runtime/schedules/job_x.json", "runtime/locks/agent-1.lock"):
+            with self.assertRaises(ProtocolError) as ctx:
+                elevated(path)
+            self.assertEqual(ctx.exception.code, ErrorCode.POLICY_DENIED, path)
+
+    def test_ci_tor_ist_fuer_das_system_unerreichbar(self):
+        """Das System darf sein eigenes Qualitaetstor nicht lockern koennen.
+
+        Beide Orte der CI-Definition sind gesperrt, jeweils aus anderem Grund:
+        ``.github/*`` steht in ``denied_globs`` (schlaegt sogar
+        ``approved_by="human"``), ``ci/*`` ist schlicht nicht durch
+        ``allowed_repo_globs`` freigegeben.
+        """
+        for path in (".github/workflows/ci-evals.yml", ".github/workflows/neu.yml", "ci/neu.yml", "Makefile"):
+            with self.assertRaises(ProtocolError) as ctx:
+                elevated(path, approved_by="human")
+            self.assertEqual(ctx.exception.code, ErrorCode.POLICY_DENIED, path)
+
+    def test_doku_und_tests_darf_der_kern_selbst_aendern(self):
+        for path in ("docs/ARCHITECTURE.md", "tests/test_policy.py"):
+            target = POLICY.resolve_path(path, elevated(path))
+            self.assertEqual(target, (CONFIG.repo_root / path).resolve())
 
 
 class TestSkalierungsdeckel(unittest.TestCase):

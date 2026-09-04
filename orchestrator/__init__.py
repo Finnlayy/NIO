@@ -1,4 +1,4 @@
-"""NEU-Orchestrator (Phase 1, Protokoll 1.1).
+"""NEU-Orchestrator (Protokoll 1.2).
 
 Oeffentliche Schnittstelle::
 

@@ -1,4 +1,4 @@
-"""Autodidaktischer Re-Planer (Protokoll 1.1).
+"""Autodidaktischer Re-Planer (Protokoll 1.2).
 
 Wenn ein Durchgang scheitert oder der Timer ablaeuft, entwirft **der
 Orchestrator** den Auftrag fuer den zweiten Durchgang -- einen "optimalen
@@ -24,12 +24,14 @@ wirklich failed (bzw. eskaliert).
 
 from __future__ import annotations
 
+import contextlib
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
-from core.config import ABSOLUTE_MAX_ITERATIONS, NeuConfig
+from core.config import ABSOLUTE_MAX_ITERATIONS, DEFAULT_DEADLINE_S, NeuConfig
 from core.kernel import Kernel, Verdict
 from core.protocol import ErrorCode, Intent, Operations, ProtocolError, Result, sha256_text
 
@@ -93,10 +95,52 @@ class IterationPlanner:
         params = dict(intent.task.params)
         repeat_guard = (sha256_text(json.dumps({"op": intent.operation, "params": params}, sort_keys=True, ensure_ascii=False))[:16],)
 
+        # ---------------- Safety-Netz (Protokoll 1.2): Mensch, kein 2. Durchgang ----------------
+        if code == ErrorCode.SAFETY_NET:
+            elapsed = result.timer.elapsed_s
+            return Diagnosis(
+                code=code,
+                cause=(
+                    f"Safety-Netz {intent.timer.safety_net_s}s hat bei t_unlimited={elapsed}s eingegriffen. "
+                    f"Der Auftrag lief im Unlimited-Modus, wurde aber nicht selbst beendet; "
+                    f"kein Ausloeser hat rechtzeitig abgeschlossen. Statusbericht: "
+                    f"{(report.explanation[:400] if report else '') or 'nicht geliefert'}"
+                ),
+                measure=(
+                    "Kein automatischer 2. Durchgang: Unlimited heisst 'Zeit tracken', nicht 'ewig laufen'. "
+                    "Menschliche Entscheidung noetig -- entweder den Auftrag zerlegen, einen Ausloeser "
+                    "(finish_job/check) mit realistischer Schwelle setzen oder safety_net_s bewusst anheben."
+                ),
+                escalate=True,
+                escalation_reason="Safety-Netz im Unlimited-Modus ausgeloest -- Schwelle ist Menschenentscheid.",
+                forbidden_repeats=repeat_guard,
+            )
+
+        # ---------------- Zeitplan fehlerhaft: Kern repariert, Limb ist unschuldig ----------------
+        if code == ErrorCode.TRIGGER_INVALID:
+            return Diagnosis(
+                code=code,
+                cause=f"Zeitplan-Ausloeser abgelehnt: {message[:400]}",
+                measure=(
+                    "Auftrag neu komponieren: Ausloeser-Bedingung an die Grammatik anpassen "
+                    "(z. B. 'elapsed >= 30'), Operation des check-Ausloesers auf einen registrierten "
+                    "Limb legen, Rechte/Sandbox-Einstellungen des Zeitplans pruefen."
+                ),
+                escalate=False,
+                timer_patch={},
+                forbidden_repeats=repeat_guard,
+                extra_acceptance=("Ausloeser-Bedingung entspricht der Trigger-Grammatik.",),
+            )
+
         # ---------------- Zeitablauf: Budget + Umfang ----------------
         if result.status == "timeout" or code in {ErrorCode.TIMEOUT, ErrorCode.DEADLINE_EXCEEDED}:
+            budget = (
+                f"safety_net={intent.timer.safety_net_s}s (unlimited)"
+                if intent.timer.unlimited
+                else f"Budget {intent.timer.deadline_s}s"
+            )
             cause = (
-                f"Timer abgelaufen nach {result.duration_ms} ms (Budget {intent.timer.deadline_s}s, "
+                f"Timer abgelaufen nach {result.duration_ms} ms ({budget}, "
                 f"Soft-Report {'ja' if result.timer.self_reported else 'nein'})."
             )
             if report and report.explanation:
@@ -341,8 +385,19 @@ class IterationPlanner:
         elevation = dict(diag.elevation_patch) if diag.elevation_patch else intent.elevation.to_dict()
 
         timer_patch = dict(diag.timer_patch)
-        deadline = float(timer_patch.get("deadline_s", intent.timer.deadline_s))
-        soft = float(timer_patch.get("soft_deadline_s", min(intent.timer.soft_deadline_s, deadline)))
+        unlimited = intent.timer.unlimited
+        if unlimited:
+            # Kein Budget -> nichts zu skalieren. Der Korrekturdurchgang bleibt im
+            # Tracking-Modus und erbt t0 des Jobs (eine Uhr pro Auftrag).
+            deadline: float | None = None
+            soft: float | None = None
+        else:
+            # Der Zweig ist per Definition nicht unlimited; fehlt trotzdem eine
+            # Zahl (unvollstaendig geschaerfter Timer), gilt die Protokoll-Default.
+            current = intent.timer.deadline_s if intent.timer.deadline_s is not None else DEFAULT_DEADLINE_S
+            deadline = float(timer_patch.get("deadline_s", current))
+            soft_default = intent.timer.soft_deadline_s if intent.timer.soft_deadline_s is not None else deadline
+            soft = float(timer_patch.get("soft_deadline_s", min(soft_default, deadline)))
         grace = float(timer_patch.get("grace_s", intent.timer.grace_s))
 
         briefing = self._briefing(intent, result, verdict, diag)
@@ -361,6 +416,13 @@ class IterationPlanner:
             deadline_s=deadline,
             soft_deadline_s=soft,
             grace_s=grace,
+            unlimited=unlimited,
+            safety_net_s=intent.timer.safety_net_s,
+            # Zeitplan mitnehmen: Der Korrekturdurchgang setzt dieselbe Uhr und
+            # denselben Zustand fort (attach() erhalt bereits erfolgte Feuerungen),
+            # statt Ausloeser von vorn zu zaehlen.
+            schedule=[trigger.to_dict() for trigger in intent.schedule.triggers] or None,
+            tick_s=intent.schedule.tick_s,
             title=f"Korrektur D{intent.job.iteration + 1}: {intent.task.title or operation}"[:250],
             objective=(
                 f"Ziel (unveraendert): {intent.job.goal or intent.task.objective}\n"
@@ -410,8 +472,13 @@ class IterationPlanner:
             f"Ergebnis: status={result.status} code={diag.code} dauer={result.duration_ms}ms",
             f"Ursache: {diag.cause}",
             f"Massnahme: {diag.measure}",
-            f"Timer: deadline={intent.timer.deadline_s}s soft={intent.timer.soft_deadline_s}s "
-            f"self_reported={result.timer.self_reported} overrun={result.timer.overrun_ms}ms",
+            (
+                f"Timer: mode=unlimited t0={intent.timer.t0} t_unlimited={result.timer.elapsed_s}s "
+                f"safety_net={intent.timer.safety_net_s}s self_reported={result.timer.self_reported}"
+                if intent.timer.unlimited
+                else f"Timer: deadline={intent.timer.deadline_s}s soft={intent.timer.soft_deadline_s}s "
+                     f"self_reported={result.timer.self_reported} overrun={result.timer.overrun_ms}ms"
+            ),
         ]
         if report:
             lines.append(f"Statusbericht: state={report.state} erklaerung={report.explanation[:400]}")
@@ -430,7 +497,15 @@ class IterationPlanner:
         return "\n".join(lines)
 
     def _scaled_timer(self, intent: Intent, *, factor: float = 1.5) -> dict[str, float]:
-        """Mehr Zeit fuer den Korrekturdurchgang -- aber nie ueber dem harten Limit."""
+        """Mehr Zeit fuer den Korrekturdurchgang -- aber nie ueber dem harten Limit.
+
+        Im Unlimited-Modus (Protokoll 1.2) gibt es **kein** Budget zu skalieren:
+        Die Zeit wird getrackt, nicht begrenzt. Dann bleibt der Patch leer, und
+        ``compose`` uebernimmt Modus, Safety-Netz und Zeitplan unveraendert.
+        """
+        if intent.timer.unlimited or intent.timer.deadline_s is None:
+            return {}
+
         from core.config import HARD_DEADLINE_S
 
         deadline = min(HARD_DEADLINE_S, round(intent.timer.deadline_s * factor, 3))
@@ -487,10 +562,8 @@ class IterationPlanner:
             if text.startswith("int") and isinstance(patched[key], str) and patched[key].lstrip("-").isdigit():
                 patched[key] = int(patched[key])
             if text.startswith("number") and isinstance(patched[key], str):
-                try:
+                with contextlib.suppress(ValueError):
                     patched[key] = float(patched[key])
-                except ValueError:
-                    pass
             if text.startswith("bool") and isinstance(patched[key], str):
                 patched[key] = patched[key].lower() in {"true", "1", "yes", "ja"}
         return patched

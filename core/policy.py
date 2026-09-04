@@ -17,9 +17,10 @@ explizit freigeben.
 from __future__ import annotations
 
 import fnmatch
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 from .config import NeuConfig
 from .protocol import ErrorCode, Intent, Operations, ProtocolError
@@ -102,10 +103,7 @@ class Policy:
         relative = self._join_safe(raw_path, where)
         elevation = intent.elevation
 
-        if elevation.level == "repo_write":
-            base = self.config.repo_root
-        else:
-            base = self.sandbox_root(intent)
+        base = self.config.repo_root if elevation.level == "repo_write" else self.sandbox_root(intent)
 
         target = (base / relative).resolve()
 
@@ -200,7 +198,146 @@ class Policy:
                     intent,
                 )
 
+        # ---- Zeitgesteuerte Ausloeser (Protokoll 1.2): fail-fast ----
+        # Ein Trigger darf spaeter nichts duerfen, was der Auftrag jetzt nicht
+        # duerfte. Deshalb werden check-Operationen hier geprueft wie der
+        # Hauptauftrag -- statt zur Laufzeit (oder nie) aufzufallen.
+        denial = self._check_schedule(intent)
+        if denial is not None:
+            return denial
+
         return self._check_common(intent)
+
+    def _check_schedule(self, intent: Intent) -> PolicyDecision | None:
+        """Prueft ``intent.schedule`` -- ``None`` bedeutet: zulaessig.
+
+        Regeln (Protokoll 1.2, siehe ``protocol/PROTOCOL.md`` §3.3):
+
+        * ``check``-Trigger nennen Operationen. Jede wird gegen das
+          Operationsregister, das Rechte-Profil (``shell``/``test``), die
+          Elevation des Auftrags und die Sandbox geprueft -- mit denselben
+          Massstaeben wie der Hauptauftrag.
+        * Pfadparameter der Kontroll-Operationen werden *jetzt* aufgeloest: Ein
+          Sandbox-Escape ueber die Zeitachse ist ein Escapes, kein spaeter Fehler.
+        * Kontingente: Die Zahl der Kontroll-Ausloeser wird gegen
+          ``limits.max_scheduled_jobs`` gespiegelt (Warnung, wenn sie sich
+          gegenseitig ausbremsen koennen), und ein Intervall unterhalb der
+          Tick-Rate kann nicht schneller feuern als getickt wird.
+        """
+        schedule = intent.schedule
+        if not schedule.triggers:
+            return None
+
+        warnings: list[str] = []
+        check_triggers = 0
+
+        for trigger in schedule.triggers:
+            where = f"$.schedule.triggers[{trigger.id}]"
+
+            if trigger.action == "check":
+                check_triggers += 1
+                raw_entries: list[dict[str, Any]]
+                checks = trigger.payload.get("checks")
+                if isinstance(checks, list) and checks:
+                    raw_entries = [dict(entry) for entry in checks]
+                else:
+                    raw_entries = [{"operation": trigger.payload.get("operation"), "params": trigger.payload.get("params", {})}]
+
+                for index, entry in enumerate(raw_entries):
+                    operation = str(entry.get("operation") or "")
+                    entry_where = f"{where}.payload.checks[{index}]"
+                    if not self.operations.known(operation):
+                        return self._deny_trigger(
+                            ErrorCode.UNSUPPORTED_OP,
+                            f"{where}: Kontroll-Operation '{operation}' ist im Register unbekannt.",
+                            intent,
+                        )
+                    spec = self.operations.spec(operation)
+
+                    if spec.family in {"shell", "test"} or operation in EXEC_OPERATIONS:
+                        if operation == "shell.exec" and not self.config.allow_shell_ops:
+                            return self._deny_trigger(
+                                ErrorCode.SHELL_BLOCKED,
+                                f"{entry_where}: shell.exec ist deaktiviert (allow_shell_ops=false).",
+                                intent,
+                            )
+                        if operation == "test.run" and not self.config.allow_test_ops:
+                            return self._deny_trigger(
+                                ErrorCode.POLICY_DENIED,
+                                f"{entry_where}: test.run ist deaktiviert (allow_test_ops=false).",
+                                intent,
+                            )
+                        if not intent.constraints.allow_shell:
+                            return self._deny_trigger(
+                                ErrorCode.SHELL_BLOCKED,
+                                f"{entry_where}: Kontroll-Operation braucht constraints.allow_shell=true.",
+                                intent,
+                            )
+
+                    if spec.requires_elevation != "none" and intent.elevation.level == "none":
+                        return self._deny_trigger(
+                            ErrorCode.POLICY_DENIED,
+                            f"{entry_where}: '{operation}' erfordert elevation.level='{spec.requires_elevation}' "
+                            f"(Auftrag hat '{intent.elevation.level}').",
+                            intent,
+                        )
+
+                    if spec.implemented_by:
+                        limb = str(trigger.payload.get("limb") or intent.target_limb)
+                        if limb not in spec.implemented_by:
+                            return self._deny_trigger(
+                                ErrorCode.TARGET_NOT_FOUND,
+                                f"{entry_where}: Limb '{limb}' implementiert '{operation}' nicht "
+                                f"(erwartet: {list(spec.implemented_by)}).",
+                                intent,
+                            )
+
+                    raw_params = entry.get("params")
+                    params: Mapping[str, Any] = raw_params if isinstance(raw_params, Mapping) else {}
+                    for param_name in spec.path_params:
+                        value = params.get(param_name)
+                        if value is None:
+                            continue
+                        try:
+                            self.resolve_path(str(value), intent, where=f"{entry_where}.params.{param_name}")
+                        except ProtocolError as exc:
+                            return self._deny_trigger(exc.code, f"{entry_where}: {exc.message}", intent)
+
+            if trigger.every_s is not None and trigger.every_s < schedule.tick_s:
+                warnings.append(
+                    f"{where}: every_s={trigger.every_s}s liegt unter der Tick-Rate "
+                    f"({schedule.tick_s}s) -- der Ausloeser feuert spaetestens pro Tick."
+                )
+
+        quota = self.config.limits.max_scheduled_jobs
+        if check_triggers > quota:
+            warnings.append(
+                f"{check_triggers} check-Trigger, aber max_scheduled_jobs={quota} "
+                f"(mode={self.config.mode}): ueberzaehlige Feuerungen werden als "
+                "timer.skipped dokumentiert, nicht ausgefuehrt."
+            )
+
+        if warnings:
+            return PolicyDecision(
+                allowed=True,
+                sandbox_root=self.config.relative(self.sandbox_root(intent)),
+                warnings=tuple(warnings),
+            )
+        return None
+
+    def _deny_trigger(self, code: str, reason: str, intent: Intent) -> PolicyDecision:
+        """Ablehnung eines Ausloesers: ``E_TRIGGER_INVALID`` mit Ursachencode im Text.
+
+        Der Auftrag ist nicht "irgendwie unerlaubt", sondern sein Zeitplan ist es --
+        das muss im Code sichtbar bleiben, damit der Kern den Trigger korrigiert
+        und nicht den ganzen Auftrag verwirft.
+        """
+        return PolicyDecision(
+            allowed=False,
+            code=ErrorCode.TRIGGER_INVALID,
+            reason=f"{reason} (Ursache: {code})",
+            sandbox_root=self.config.relative(self.sandbox_root(intent)),
+        )
 
     def _check_common(self, intent: Intent, *, warnings: list[str] | None = None) -> PolicyDecision:
         """Sandbox-, Operations- und Rechte-Gating (Orchestrator *und* Limb)."""

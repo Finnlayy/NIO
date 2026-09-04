@@ -11,16 +11,19 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from dataclasses import replace
+from datetime import timedelta
 from pathlib import Path
-
-from . import REPO_ROOT  # noqa: F401
 
 from core.config import NeuConfig
 from core.job import FAILURE_BUDGET_EXHAUSTED, FAILURE_ESCALATION, JOB_ESCALATED, JOB_FAILED, JOB_RESOLVED, JobStore
-from core.kernel import Kernel
-from core.protocol import ErrorCode, Intent, Operations, ProtocolError
+from core.kernel import arm_timer
+from core.protocol import ErrorCode, Intent, format_timestamp, utc_now
+from orchestrator.events import CollectingSink, build_event_bus
 from orchestrator.locks import AgentPool, NoSlotAvailable
 from orchestrator.runner import Orchestrator
+
+from . import REPO_ROOT
 
 DEV_LIMITS = {"max_iterations": 1, "max_agents": 1, "max_limbs": 1, "max_concurrent_jobs": 1}
 SCALE_LIMITS = {"max_iterations": 2, "max_agents": 2, "max_limbs": 2, "max_concurrent_jobs": 2}
@@ -51,7 +54,7 @@ class OrchestratorTestCase(unittest.TestCase):
 
     # ------------------------------------------------------------- Helfer
     def run_job(self, **kwargs):
-        base = dict(goal="Test-Job", operation="sys.echo", params={"message": "ping"}, limb="echo")
+        base = {"goal": "Test-Job", "operation": "sys.echo", "params": {"message": "ping"}, "limb": "echo"}
         base.update(kwargs)
         return self.orch.run_job(**base)
 
@@ -158,7 +161,7 @@ class TestTimerAblauf(OrchestratorTestCase):
 
     def test_harter_kill_wird_vom_orchestrator_berichtet(self):
         """Wenn der Limb stumm bleibt, synthetisiert der Orchestrator den Bericht."""
-        result = self.orch._timeout_result(  # noqa: SLF001 - gezielter Unit-Zugriff
+        result = self.orch._timeout_result(
             self.kernel.build_intent(operation="sys.simulate", params={"mode": "timeout"}, limb="echo", goal="Kill", deadline_s=1.0),
             "2026-09-03T00:00:00.000Z",
             stdout="",
@@ -170,6 +173,57 @@ class TestTimerAblauf(OrchestratorTestCase):
         self.assertEqual(result.error_code, ErrorCode.TIMEOUT)
         self.assertEqual(result.status_report.state, "timeout")
         self.assertTrue(result.status_report.explanation)
+
+
+    def test_stummer_limb_ueber_deadline_bekommt_synthese_und_event(self):
+        """Regression: Dieser Zweig brach mit ``NameError`` ab.
+
+        Ueberzieht ein Limb die harte Deadline und schreibt nichts Parsbares auf
+        stdout, musste der Orchestrator ``timer.expired`` melden und den Bericht
+        synthetisieren. Der Event-Zweig griff dabei auf ein ``spec`` zu, das es
+        in ``_parse_child_output`` nie gab -- der Timeout-Pfad (der wichtigste
+        Fehlerpfad ueberhaupt) warf also statt zu berichten.
+        """
+        collector = CollectingSink()
+        orch = Orchestrator(self.config, bus=build_event_bus(quiet=True, collector=collector), quiet=True)
+
+        intent = self.kernel.build_intent(
+            operation="sys.simulate",
+            params={"mode": "timeout", "seconds": 30},
+            limb="echo",
+            goal="Stummer Langlaeufer",
+            deadline_s=1.0,
+            grace_s=0.0,
+        )
+        armed = arm_timer(intent, config=self.config)
+        # Uhr in die Vergangenheit drehen: harte Deadline ist ueberschritten.
+        past = utc_now() - timedelta(seconds=20)
+        overdue = replace(
+            armed,
+            timer=replace(
+                armed.timer,
+                armed_at=format_timestamp(past),
+                expires_at=format_timestamp(past + timedelta(seconds=1)),
+            ),
+        )
+
+        result, spawned, code = orch._parse_child_output(
+            overdue,
+            stdout="",
+            stderr="nur Geraeusche, kein JSON",
+            returncode=-9,
+            started_at=format_timestamp(past),
+        )
+        self.assertTrue(spawned)
+        self.assertEqual(code, -9)
+        self.assertEqual(result.status, "timeout")
+        self.assertEqual(result.error_code, ErrorCode.TIMEOUT)
+        self.assertFalse(result.timer.self_reported, "Der Limb hat nichts gemeldet -- die Synthese ist ehrlich")
+        self.assertEqual(result.status_report.state, "timeout")
+        expired = [record for record in collector.records if record.get("kind") == "timer.expired"]
+        self.assertEqual(len(expired), 1, "timer.expired muss genau einmal geschrieben werden")
+        self.assertEqual(expired[0]["payload"]["hard_kill"], False)
+        self.assertGreater(expired[0]["payload"]["overrun_ms"], 0)
 
 
 class TestAutodidaktik(OrchestratorTestCase):

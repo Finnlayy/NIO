@@ -1,6 +1,6 @@
 # Rollen-Spezifikation: Bootstrap-Limb (Phase 2)
 
-Version 1.1 · Ziel-Datei `limbs/bootstrap_limb.py` · Register-Name `bootstrap`
+Version 1.2 · Ziel-Datei `limbs/bootstrap_limb.py` · Register-Name `bootstrap`
 
 Der Bootstrap-Limb ist der **erste echte Arm**: Er manipuliert Dateien und
 liefert Nachweise. Er ist zugleich das Werkzeug, mit dem das System sich ab
@@ -32,10 +32,21 @@ Sie bleiben im Register auf `phase: 4` und werden von der Policy blockiert.
 2. **Pfadprüfung ausschließlich über `ctx.resolve()`** (→
    `core/policy.py::Policy.resolve_path`). Niemals eigene Pfadlogik, niemals
    `open()` mit rohen Intent-Pfaden.
-3. **Timer einhalten.** Der Handler setzt Checkpoints (`ctx.plan(...)`,
-   `ctx.checkpoint(...)`, `ctx.finish_step(...)`), damit ein Statusbericht bei
-   Ablauf substanziell ist. Die Basis-Laufzeit bricht bei der Soft-Deadline ab
-   und meldet `status="timeout"`.
+3. **Uhr einhalten — in beiden Modi.** Der Handler setzt Checkpoints
+   (`ctx.plan(...)`, `ctx.checkpoint(...)`, `ctx.finish_step(...)`), damit ein
+   Statusbericht bei Ablauf substanziell ist.
+   * `timer.mode="deadline"`: Die Basis-Laufzeit bricht bei der Soft-Deadline
+     ab und meldet `status="timeout"` mit `status_report`.
+   * `timer.mode="unlimited"`: **Kein selbst erfundenes Limit.** Der Limb
+     wartet auf das Safety-Netz (`safety_net_s`, Prozess-Hygiene) und meldet
+     dessen Eingriff als Blocker — nicht als eigene Deadline. Im Result stehen
+     `timer.mode`, `t0` und `elapsed_s` (= `t_unlimited`), `remaining_ms` ist
+     `null`; die Basis-Laufzeit liefert das, der Limb darf nichts davon erfinden.
+   * **Planmäßiger Stopp:** Ein `finish_job`-/`escalate`-Trigger kann den Limb
+     mitten in der Arbeit beenden (SIGTERM, dann Nachfrist). Deshalb: atomar
+     schreiben (`ctx.write_atomic`), Backup **vor** dem Überschreiben, und nach
+     jedem Checkpoint einen konsistenten Zwischenstand hinterlassen. Ein Stopp
+     darf keine halben Dateien zurücklassen.
 4. **Backup vor Überschreiben** (`ctx.backup(path)`), Pfad im Result als
    `artifacts[].backup_path` nachweisen.
 5. **Atomar schreiben** (`ctx.write_atomic`) — keine halben Dateien.
@@ -62,7 +73,11 @@ Jeder Schritt ist ein eigener Job mit Acceptance-Kriterien:
    `phase=2`; Operationen im Register als `implemented_by: ["bootstrap"]`
    bestätigen (stehen bereits so dort).
 6. Testsuite erweitern: Sandbox-Grenze, Backup-Nachweis, Patch-No-Match,
-   Hash-Drift, Timer-Ablauf bei großem Inhalt.
+   Hash-Drift, Timer-Ablauf bei großem Inhalt — **und** die Uhr von 1.2:
+   Auftrag im Unlimited-Modus, der während des Schreibens per `finish_job`
+   gestoppt wird (keine halbe Datei, konsistenter Statusbericht), sowie ein
+   `check`-Trigger, der während eines langen Schreibvorgangs einen Kontroll-Job
+   ausführt, ohne dessen Iterationsbudget zu verbrauchen.
 
 ---
 

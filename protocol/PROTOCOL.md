@@ -1,4 +1,4 @@
-# NEU-Kommunikationsprotokoll 1.1
+# NEU-Kommunikationsprotokoll 1.2
 
 Normative Spezifikation der Kommunikation zwischen **KI-Kern (Core)**,
 **Orchestrator** und **Limbs**.
@@ -12,9 +12,12 @@ Normative Spezifikation der Kommunikation zwischen **KI-Kern (Core)**,
 | Limb-Register | `limbs/registry.json` | welche Limbs existieren, Status, Entrypoint, Laufzeit |
 | Beispiele (echte Läufe) | `protocol/examples/` | aus `runtime/archive/` kopiert und validiert |
 
-Protokoll-ID: `neu/intent` und `neu/result`, Version `1.1`.
+Protokoll-ID: `neu/intent` und `neu/result`, Version `1.2`.
 Kompatibilitätsregel: gleiche Major-Version = kompatibel, Minor-Erweiterungen
 sind erlaubt, unbekannte Schlüssel auf Envelope-Ebene sind **Fehler**.
+Umschläge mit `version: "1.0"`/`"1.1"` werden weiterhin gelesen und beim
+Serialisieren auf `1.2` gehoben (Upgrade beim Lesen, kein Bruch: alle neuen
+Felder haben Defaults — `timer.mode="deadline"`, `schedule.triggers=[]`).
 
 ---
 
@@ -40,7 +43,7 @@ oder Bash liest dieselbe Datei.
 ```jsonc
 {
   "protocol": "neu/intent",
-  "version": "1.1",
+  "version": "1.2",
   "intent_id": "int_20260903T130118Z_ffcc23",   // Pflicht, sortierbar
   "trace_id": "job_20260903T130118Z_69591b",     // = job_id (Korrelation)
   "parent_intent_id": null,                      // Vorgänger bei Korrekturdurchgang
@@ -58,14 +61,20 @@ oder Bash liest dieselbe Datei.
   },
 
   "timer": {                                     // wird VOR ANBEGINN geschaerft
-    "deadline_s": 2.0,                           // hartes Budget
+    "mode": "deadline",                          // deadline | unlimited  (1.2)
+    "deadline_s": 2.0,                           // hartes Budget; null = unlimited
     "soft_deadline_s": 1.0,                      // hier: Pflicht-Statusbericht
     "grace_s": 1.0,                              // Nachfrist bis zum harten Kill
-    "on_expiry": "iterate",                      // iterate | escalate | abort
+    "on_expiry": "iterate",                      // iterate | escalate | abort | none
+    "safety_net_s": 3600.0,                      // Prozess-Hygiene, kein Aufgabenlimit (1.2)
+    "t0": "2026-09-03T13:01:18.000Z",            // Nullpunkt der Uhr (1.2)
     "armed_at": "2026-09-03T13:01:18.524Z",      // vom Orchestrator gesetzt
     "soft_expires_at": "2026-09-03T13:01:19.524Z",
-    "expires_at": "2026-09-03T13:01:20.524Z"
+    "expires_at": "2026-09-03T13:01:20.524Z",
+    "elapsed_s": 0.524                           // t_unlimited seit t0 (1.2)
   },
+
+  "schedule": { "triggers": [], "tick_s": 0.5 },  // zeitgesteuerte Ausloeser, siehe §3.3
 
   "task": {
     "operation": "sys.simulate",                 // muss im Register stehen
@@ -129,6 +138,108 @@ created_at ──▶ armed_at ──┬─▶ soft_expires_at ──┬─▶ ex
 
 Der Subprozess-Timeout des Orchestrators ist `timer.hard_timeout_s()`
 (= `deadline_s + grace_s`, gedeckelt auf 900 s).
+
+### 3.1 Zwei Zeit-Modi (`timer.mode`) — neu in 1.2
+
+| Modus | `deadline_s` | Bedeutung | `hard_timeout_s()` |
+|---|---|---|---|
+| `deadline` | Zahl > 0 | Zeit wird **begrenzt**; Ablauf erzwingt den Statusbericht | `deadline_s + grace_s` |
+| `unlimited` | `null` | Zeit wird **getrackt**, nicht begrenzt | `safety_net_s` (oder `None`) |
+
+Regel: **`deadline_s = null` ⇔ `mode = "unlimited"`.** Wird dem Orchestrator kein
+Zeitlimit vorgegeben (weder vom Benutzer noch vom Kern), entsteht kein
+„riesiges Limit", sondern der Tracking-Modus. Das Schema verbietet die
+Mischform (`mode="unlimited"` mit `deadline_s` belegt → ungültig), damit es
+niemals zwei Wahrheiten über denselben Auftrag gibt.
+
+Im Unlimited-Modus gilt:
+
+* `timer.t0` ist der **Nullpunkt** (Job-Erstellung; beim Schärfen wird
+  `armed_at` gesetzt, `t0` bleibt die Job-Uhr).
+* `elapsed_s` ist die seit `t0` vergangene Zeit — im Projekt **`t_unlimited`**
+  genannt. Sie steht im Intent (nach dem Schärfen), in **jedem Event**
+  (`clock_s`) und im Result (`timer.elapsed_s`).
+* `on_expiry` ist zwingend `"none"`: Es gibt keinen Ablauf, also keine
+  Ablaufaktion. `soft_deadline_s` ist `null`.
+* Der Limb wartet **ohne** Watchdog-Abbruch; `remaining_ms` im Result ist `null`.
+
+### 3.2 Safety-Netz (`timer.safety_net_s`) — Prozess-Hygiene, kein Aufgabenlimit
+
+Das Safety-Netz verhindert Zombies (hängender Prozess, blockierte Pipeline). Es
+begrenzt **nicht** die Aufgabe. Default `3600 s`, `0`/`null` = wirklich
+unbegrenzt (nur mit menschlicher Freigabe sinnvoll, weil `neu.config.json` unter
+dem Constitution Guard steht).
+
+Greift das Netz, meldet der Limb (oder der Orchestrator, falls der Limb selbst
+hängt) `status="failed"` mit `error.code="E_SAFETY_NET"` und einem vollständigen
+`status_report` (`state="blocked"`). Der Kern **eskaliert** dann
+(`next_action="escalate_to_human"`) statt zu iterieren: Ein zweiter Durchgang
+würde dieselbe Uhr erneut überlaufen. Maßnahmen: Auftrag zerlegen oder
+`safety_net_s` bewusst anheben.
+
+### 3.3 Zeitgesteuerte Auslöser (`intent.schedule`) — neu in 1.2
+
+`schedule.triggers[]` macht die Job-Uhr zur **Ereignisquelle**: „Wenn
+`t_unlimited` ≥/≤/= `event_time`, führe X aus" und „prüfe alle X Sekunden X und
+Y". Der Orchestrator tickt (`schedule.tick_s`, Default `0.5 s`), vergleicht
+`elapsed` mit den Auslösern und führt fällige Aktionen aus.
+
+```jsonc
+"schedule": {
+  "tick_s": 0.5,
+  "triggers": [
+    { "id": "kontrolle", "action": "check", "every_s": 10,
+      "payload": { "operation": "sys.echo", "params": { "message": "Status?" } } },
+    { "id": "schwelle", "action": "emit_event", "when": "elapsed >= 30",
+      "payload": { "kind": "timer.threshold" } },
+    { "id": "marken",  "action": "log", "at_s": [5, 15] },
+    { "id": "ende",    "action": "finish_job", "when": "elapsed >= 120" }
+  ]
+}
+```
+
+**Auslöser** (mindestens einer pro Trigger, kombinierbar):
+
+| Feld | Semantik | Feuerungsverhalten |
+|---|---|---|
+| `when` | Bedingung `elapsed <op> <sekunden>`, `op ∈ {<=, >=, ==, !=, <, >}` | **kantengesteuert**: feuert in dem Tick, in dem sie wahr *wird* |
+| `every_s` | Intervall („alle N Sekunden") | wiederholend; mit `when` zählt das Intervall erst ab Eintritt der Bedingung |
+| `at_s` | diskrete Zeitmarken (Sekunden seit `t0`) | jede Marke feuert genau einmal, die Liste wird abgearbeitet |
+
+`tolerance_s` (Default `0.25`) gilt **nur** für `==`/`!=`: Ticks sind diskret,
+Gleichheit braucht ein Fenster. Ordnungsvergleiche sind exakt — „`elapsed >= 30`"
+darf nicht bei 29,8 s feuern. Verspätung ist erlaubt und wird dokumentiert:
+`elapsed_s` im Event zeigt die echte Uhrzeit der Feuerung, `catch_up` die Zahl
+nachgeholter Intervalle.
+
+**Aktionen:**
+
+| `action` | Wirkung | `payload` |
+|---|---|---|
+| `emit_event` | Event auf dem Bus (`payload.kind`, Default `timer.trigger`) | optional |
+| `log` | Freitext-Logeintrag (`timer.log`) | optional (`message`) |
+| `check` | **eigenen Kontroll-Job** dispatchen (`kind="scheduled"`) | **Pflicht**: `operation`+`params` oder `checks[]` (bis 8) |
+| `escalate` | Eskalation markieren (`needs_human=true`, `timer.escalation`) | optional (`reason`) |
+| `finish_job` | beobachteten Auftrag als abgeschlossen beenden (`timer.finished`) | optional |
+
+**Budget-Trennung (wichtig):** `check`-Trigger verbrauchen **kein**
+Iterations-Budget des beobachteten Jobs. Sie erzeugen eigene Jobs mit eigener
+Spur (`kind="scheduled"`, `parent_job_id`, `trigger_id`) und eigenem
+Slot-Kontingent (`limits.max_scheduled_jobs`, Dev-Profil `1`). Eine laufende
+Beobachtung blockiert ihre eigenen Kontrollen damit nicht — und Kontrollen
+können den Auftrag nicht „aufbrauchen".
+
+`once` (Default: `true` bei reiner `when`-Kante, sonst `false`) und `max_fires`
+(`0` = unbegrenzt) begrenzen die Feuerungen. Der Trigger-Zustand ist persistent
+(`runtime/schedules/<job_id>.json`): Ein Neustart des Orchestrators setzt weder
+`t0` zurück noch vergisst er erfolgte Feuerungen. Kann ein Auslöser nicht
+ausgeführt werden (z. B. Kontingent belegt), entsteht ein `timer.skipped`-Event —
+**kein stiller Verlust**.
+
+**Validierung:** Trigger werden beim Intent-Pre-Flight geprüft
+(`core/policy.py`): Aktions-Whitelist, `check`-Operationen gegen das
+Operationsregister, Rechte wie beim Hauptauftrag, Anzahl gegen
+`limits.max_scheduled_jobs`. Verstöße → `E_TRIGGER_INVALID` **vor** dem Start.
 
 ---
 
@@ -204,7 +315,9 @@ Der Subprozess-Timeout des Orchestrators ist `timer.hard_timeout_s()`
 | `E_PATH_NOT_FOUND` | Ziel existiert nicht | `mode=create` bzw. Pfad korrigieren |
 | `E_ALREADY_EXISTS` | Ziel existiert schon | `mode=overwrite` + `expect_sha256` |
 | `E_PATCH_NO_MATCH` | Suchtext von `fs.patch` nicht gefunden | erst lesen, dann ganz schreiben |
-| `E_TIMEOUT` | Timer abgelaufen | Umfang verkleinern, Timer anpassen |
+| `E_TIMEOUT` | Timer abgelaufen (Modus `deadline`) | Umfang verkleinern, Timer anpassen |
+| `E_SAFETY_NET` | Safety-Netz hat den Prozess beendet (**kein** Aufgabenlimit) | eskalieren: Auftrag zerlegen oder `safety_net_s` anheben |
+| `E_TRIGGER_INVALID` | `schedule.triggers[]` ungültig (Grammatik, Aktion, Payload, Rechte) | Trigger korrigieren; wird vor dem Start abgelehnt |
 | `E_DEADLINE_EXCEEDED` | Deadline im Limb überschritten | dito |
 | `E_BUDGET_EXHAUSTED` | Iterations-Budget des Jobs erschöpft | Job neu aufsetzen oder Profil anheben |
 | `E_SHELL_BLOCKED` | `shell.exec` ohne Freigabe | `allow_shell_ops` + `constraints.allow_shell` |
@@ -337,3 +450,43 @@ cat intent.json | python3 limbs/<name>_limb.py --stdin
 * Exit-Code `0` = Result erzeugt (auch bei `failed`/`timeout`);
   `70` = kein Result möglich → Orchestrator synthetisiert `E_LIMB_CRASH`.
 * Der Orchestrator reicht `--iteration` und `--profile` durch.
+
+---
+
+## 11. Änderungsprotokoll
+
+### 1.2 (2026-09-04) — Zeit tracken statt begrenzen + zeitgesteuerte Auslöser
+
+* `timer.mode` (`deadline` | `unlimited`); `deadline_s`/`soft_deadline_s` sind
+  nullable. **`deadline_s = null` ⇔ unlimited**: Ohne Vorgabe wird die Zeit
+  aufgezeichnet, nicht begrenzt.
+* `timer.t0` (Nullpunkt) und `timer.elapsed_s` (**`t_unlimited`**) — im Intent,
+  im Result (`timer.mode`, `timer.t0`, `timer.elapsed_s`, `remaining_ms`
+  nullable) und in jedem Event (`clock_s`).
+* `timer.safety_net_s` + Fehlercode `E_SAFETY_NET`: Prozess-Hygiene statt
+  Aufgabenlimit; Eingriff eskaliert (kein 2. Durchgang, der dieselbe Uhr
+  überlaufen würde).
+* `intent.schedule.triggers[]` mit `when` (kantengesteuert), `every_s`
+  (Intervall) und `at_s` (Marken); Aktionen `emit_event`, `log`, `check`,
+  `escalate`, `finish_job`; `once`, `max_fires`, `tolerance_s`, `clock`.
+* `check`-Trigger erzeugen Jobs mit `kind="scheduled"` (eigene Spur, eigenes
+  Kontingent `limits.max_scheduled_jobs`) — sie verbrauchen kein
+  Iterations-Budget des beobachteten Jobs.
+* Fehlercode `E_TRIGGER_INVALID`; Trigger werden beim Pre-Flight geprüft
+  (fail-fast statt Laufzeitfehler).
+* Persistenter Trigger-Zustand (`runtime/schedules/<job_id>.json`), übersprungene
+  Feuerungen als `timer.skipped`-Event (kein stiller Verlust).
+* Abwärtskompatibel: 1.0/1.1-Umschläge bleiben gültig; Schemas akzeptieren
+  `^1\.[0-2]$`. Parität zwischen Parser und Schema wird maschinell geprüft
+  (`tests/test_schema_parity.py`).
+
+### 1.1 (2026-09-03) — Timer-, Statusberichts- und Autodidaktik-Semantik
+
+* Timer wird **vor Anbeginn** vom Orchestrator geschärft; Ablauf erzwingt einen
+  vollständigen `status_report` (`self_reported` unterscheidet Limb und
+  Synthese).
+* Iterationen zählen pro Job (hartes Maximum 2); kein stilles Retry.
+* Autodidaktischer Modus: Nach einem Fehlschlag entwirft der Kern den zweiten
+  Durchgang. „Failed" gilt erst, wenn keine Maßnahme ergriffen wurde.
+* `retry_policy` entfernt; Skalierungsprofile (`dev`, `scale`); Constitution
+  Guard für menschenpflichtige Dateien.

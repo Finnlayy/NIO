@@ -1,2 +1,6 @@
+# Legacy-Harness unter evals/ (pytest, PyYAML).
+# NEU selbst -- core/, orchestrator/, limbs/ -- braucht KEINE Pakete: Python 3.11+
+# Standardbibliothek. Entwicklungswerkzeuge (ruff, mypy) stehen in pyproject.toml
+# unter [project.optional-dependencies].dev:  python3 -m pip install -e '.[dev]'
 pytest>=8.0.0
 pyyaml>=6.0.1

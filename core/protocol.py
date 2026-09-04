@@ -1,4 +1,4 @@
-"""NEU-Kommunikationsprotokoll v1.1 -- ausfuehrbare Referenzimplementierung.
+"""NEU-Kommunikationsprotokoll v1.2 -- ausfuehrbare Referenzimplementierung.
 
 Dieses Modul ist die *massgebliche* Implementierung des Protokolls. Die
 JSON-Schema-Dateien unter ``protocol/`` spiegeln denselben Stand und dienen
@@ -8,6 +8,24 @@ Zwei Envelopes:
 
 ``neu/intent``  Core -> Orchestrator -> Limb   (Auftrag, strikt isoliert)
 ``neu/result``  Limb -> Orchestrator -> Core   (Ergebnis, immer genau eines)
+
+**Neu in 1.2 (Zeit-Tracking und zeitgesteuerte Trigger):**
+
+* ``timer.mode`` -- ``"deadline"`` (begrenzt) oder ``"unlimited"`` (unbegrenzt).
+  Ohne Vorgabe eines Limits (``deadline_s = null``) wird die Zeit **nicht**
+  begrenzt, sondern **getrackt**: ``timer.t0`` ist der Referenzpunkt,
+  ``elapsed_s`` die seit Job-Erstellung vergangene Zeit (``t_unlimited``).
+* ``timer.safety_net_s`` -- reine Prozess-Hygiene (Zombie-Schutz), kein
+  Aufgabenlimit. Ein Eingriff wird als ``E_SAFETY_NET`` berichtet, nicht als
+  inhaltliches Scheitern.
+* ``intent.schedule.triggers[]`` -- zeitgesteuerte Ereignisse: Bedingung
+  (``elapsed >= 30``), Intervall (``every_s``) oder Zeitmarken (``at_s``) plus
+  Aktion (``emit_event`` | ``check`` | ``escalate`` | ``finish_job`` | ``log``).
+  Damit lassen sich sowohl Schwellwerte als auch "pruefe alle N Sekunden X und Y"
+  abbilden. Trigger-Zustaende werden persistiert, jeder Trigger-Event traegt
+  ``elapsed_s`` -- Korrelation fuer das Phase-3-Logging.
+* Events und Results tragen ``elapsed_s``/``t0``/``mode``, sodass jeder
+  Datensatz gegen die Job-Uhr einordenbar ist.
 
 **Neu in 1.1 (Timer- und Iterations-Semantik):**
 
@@ -37,17 +55,18 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any
 
 from .config import ABSOLUTE_MAX_ITERATIONS, HARD_DEADLINE_S
 
 PROTOCOL_INTENT = "neu/intent"
 PROTOCOL_RESULT = "neu/result"
 PROTOCOL_MAJOR = 1
-PROTOCOL_MINOR = 1
+PROTOCOL_MINOR = 2
 PROTOCOL_VERSION = f"{PROTOCOL_MAJOR}.{PROTOCOL_MINOR}"
 
 _ID_RE = re.compile(r"^(int|res|trc|job)_[A-Za-z0-9_-]{6,64}$")
@@ -63,7 +82,17 @@ VALID_RESULT_STATUSES = ("success", "failed", "rejected", "partial", "timeout")
 VALID_VERIFICATION_TYPES = ("none", "file_exists", "hash", "unittest", "pytest", "shell")
 VALID_ARTIFACT_ACTIONS = ("created", "modified", "deleted", "read", "unchanged")
 VALID_ON_FAILURE = ("autodidactic", "return_to_core", "abort")
-VALID_ON_EXPIRY = ("iterate", "escalate", "abort")
+VALID_ON_EXPIRY = ("iterate", "escalate", "abort", "none")
+
+#: Timer-Betriebsarten (Protokoll 1.2)
+VALID_TIMER_MODES = ("deadline", "unlimited")
+
+#: Zeitgesteuerte Trigger: was der Orchestrator tun darf, wenn die Uhr einen
+#: Schwellwert erreicht oder ein Intervall verstreicht.
+VALID_TRIGGER_ACTIONS = ("emit_event", "check", "escalate", "finish_job", "log")
+VALID_TRIGGER_CLOCKS = ("job", "intent")
+VALID_COMPARISONS = ("<=", ">=", "==", "!=", "<", ">")
+_TRIGGER_ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,39}$")  # 1..40 Zeichen
 VALID_REPORT_STATES = ("completed", "partial", "blocked", "timeout")
 
 
@@ -80,6 +109,8 @@ class ErrorCode:
     PATCH_NO_MATCH = "E_PATCH_NO_MATCH"
     TIMEOUT = "E_TIMEOUT"
     DEADLINE_EXCEEDED = "E_DEADLINE_EXCEEDED"
+    SAFETY_NET = "E_SAFETY_NET"
+    TRIGGER_INVALID = "E_TRIGGER_INVALID"
     BUDGET_EXHAUSTED = "E_BUDGET_EXHAUSTED"
     SHELL_BLOCKED = "E_SHELL_BLOCKED"
     IO = "E_IO"
@@ -97,6 +128,8 @@ class ErrorCode:
         PATCH_NO_MATCH,
         TIMEOUT,
         DEADLINE_EXCEEDED,
+        SAFETY_NET,
+        TRIGGER_INVALID,
         BUDGET_EXHAUSTED,
         SHELL_BLOCKED,
         IO,
@@ -122,7 +155,7 @@ class ProtocolError(ValueError):
 # Hilfsfunktionen
 # --------------------------------------------------------------------------- #
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def utc_now_iso() -> str:
@@ -131,7 +164,7 @@ def utc_now_iso() -> str:
 
 
 def format_timestamp(moment: datetime) -> str:
-    return moment.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return moment.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def new_id(prefix: str, *, when: datetime | None = None, rng: Callable[[], int] | None = None) -> str:
@@ -139,7 +172,7 @@ def new_id(prefix: str, *, when: datetime | None = None, rng: Callable[[], int] 
     if prefix not in {"int", "res", "trc", "job"}:
         raise ProtocolError(ErrorCode.INTERNAL, f"unbekannter ID-Praefix '{prefix}'")
     moment = when or utc_now()
-    stamp = moment.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = moment.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
     suffix = format((rng() if rng else uuid.uuid4().int) % 0xFFFFFF, "06x")
     return f"{prefix}_{stamp}_{suffix}"
 
@@ -154,7 +187,7 @@ def parse_timestamp(value: Any, path: str) -> datetime:
         raise ProtocolError(ErrorCode.SCHEMA_INVALID, f"kein ISO-8601-Zeitstempel: {value!r}", path) from exc
     if parsed.tzinfo is None:
         raise ProtocolError(ErrorCode.SCHEMA_INVALID, "Zeitstempel muss eine Zeitzone tragen (UTC/Z)", path)
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(UTC)
 
 
 def _optional_timestamp(value: Any, path: str) -> str | None:
@@ -302,7 +335,7 @@ class Operations:
         self._specs = dict(specs)
 
     @classmethod
-    def load(cls, path: Path | str | None = None) -> "Operations":
+    def load(cls, path: Path | str | None = None) -> Operations:
         registry = Path(path) if path else Path(__file__).resolve().parent.parent / "protocol" / "operations.json"
         if not registry.is_file():
             raise ProtocolError(ErrorCode.INTERNAL, f"Operations-Register nicht gefunden: {registry}")
@@ -374,7 +407,7 @@ class Constraints:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any] | None, path: str = "$.constraints") -> "Constraints":
+    def from_dict(cls, data: Mapping[str, Any] | None, path: str = "$.constraints") -> Constraints:
         if data is None:
             return cls()
         body = _as_dict(data, path)
@@ -418,7 +451,7 @@ class Elevation:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any] | None, path: str = "$.elevation") -> "Elevation":
+    def from_dict(cls, data: Mapping[str, Any] | None, path: str = "$.elevation") -> Elevation:
         if data is None:
             return cls()
         body = _as_dict(data, path)
@@ -460,7 +493,7 @@ class Verification:
         return {"type": self.type, "command": self.command, "expect": dict(self.expect)}
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any] | None, path: str = "$.task.verification") -> "Verification | None":
+    def from_dict(cls, data: Mapping[str, Any] | None, path: str = "$.task.verification") -> Verification | None:
         if data is None:
             return None
         body = _as_dict(data, path)
@@ -496,7 +529,7 @@ class Task:
         return body
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any], *, operations: Operations | None = None, path: str = "$.task") -> "Task":
+    def from_dict(cls, data: Mapping[str, Any], *, operations: Operations | None = None, path: str = "$.task") -> Task:
         body = _as_dict(data, path)
         _reject_unknown(body, cls.ALLOWED_KEYS, path)
         operation = _as_str(_req(body, "operation", path), f"{path}.operation", max_len=64, pattern=_OPERATION_RE)
@@ -543,7 +576,7 @@ class Job:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any] | None, path: str = "$.job") -> "Job":
+    def from_dict(cls, data: Mapping[str, Any] | None, path: str = "$.job") -> Job:
         body = _as_dict(data if data is not None else {}, path)
         _reject_unknown(body, cls.ALLOWED_KEYS, path)
         job_id = _as_str(_req(body, "job_id", path), f"{path}.job_id", max_len=80, pattern=_ID_RE)
@@ -568,82 +601,368 @@ class Job:
 
 @dataclass(frozen=True)
 class Timer:
-    """Timer, der **vor Anbeginn** der Ausfuehrung vom Orchestrator geschaerft wird.
+    """Timer mit zwei Betriebsarten (Protokoll 1.2).
 
-    ``deadline_s``       hartes Budget dieses Durchgangs (Orchestrator killt danach)
-    ``soft_deadline_s``  weiche Marke: hier muss der Limb einen Statusbericht liefern
-    ``grace_s``          Nachfrist zwischen Soft-Report und hartem Kill
+    ``mode="deadline"``
+        Klassischer Fall: ``deadline_s`` begrenzt den Durchgang, der Limb muss
+        bei ``soft_deadline_s`` einen Statusbericht liefern, danach killt der
+        Orchestrator (``grace_s`` Nachfrist).
+
+    ``mode="unlimited"``
+        **Kein** Limit vorgegeben (``deadline_s = null``). Die Zeit wird dann
+        nicht begrenzt, sondern *getrackt*: ``t0`` ist der Referenzpunkt
+        (Job-Erstellung), ``elapsed_s`` die vergangene Zeit -- das ist das
+        ``t_unlimited`` des Users. Der Orchestrator schreibt den Wert in jeden
+        Event und jedes Result, und zeitgesteuerte Trigger
+        (``intent.schedule.triggers``) vergleichen dagegen.
+
+    ``safety_net_s`` ist in beiden Modi reine Prozess-Hygiene (Zombie-Schutz),
+    kein Aufgabenlimit: Ein Eingriff wird als ``E_SAFETY_NET`` berichtet und
+    eskaliert, nicht als inhaltliches Scheitern gewertet.
     """
 
-    deadline_s: float = 60.0
-    soft_deadline_s: float = 45.0
+    mode: str = "deadline"
+    deadline_s: float | None = 60.0
+    soft_deadline_s: float | None = 45.0
     grace_s: float = 5.0
     on_expiry: str = "iterate"
+    safety_net_s: float | None = None
+    t0: str | None = None
     armed_at: str | None = None
     soft_expires_at: str | None = None
     expires_at: str | None = None
+    elapsed_s: float | None = None
 
-    ALLOWED_KEYS = ("deadline_s", "soft_deadline_s", "grace_s", "on_expiry", "armed_at", "soft_expires_at", "expires_at")
+    ALLOWED_KEYS = (
+        "mode",
+        "deadline_s",
+        "soft_deadline_s",
+        "grace_s",
+        "on_expiry",
+        "safety_net_s",
+        "t0",
+        "armed_at",
+        "soft_expires_at",
+        "expires_at",
+        "elapsed_s",
+    )
+
+    @property
+    def unlimited(self) -> bool:
+        return self.mode == "unlimited"
 
     @property
     def armed(self) -> bool:
-        return bool(self.armed_at and self.expires_at)
+        """Geschaerft = Referenzpunkt gesetzt (in beiden Modi)."""
+        return bool(self.armed_at and self.t0)
 
-    def arm(self, *, now: datetime | None = None) -> "Timer":
-        """Schaerft den Timer. Wird vom Orchestrator vor dem Start des Limbs aufgerufen."""
+    def arm(self, *, now: datetime | None = None) -> Timer:
+        """Schaerft den Timer **vor Anbeginn** des Durchgangs.
+
+        Im Deadline-Modus entstehen absolute Fristen; im Unlimited-Modus wird
+        nur die Uhr gestartet (``t0``/``armed_at``) -- es gibt nichts zu killen.
+        """
         moment = now or utc_now()
+        stamp = format_timestamp(moment)
+        if self.unlimited:
+            return replace(
+                self,
+                armed_at=stamp,
+                t0=self.t0 or stamp,
+                soft_expires_at=None,
+                expires_at=None,
+            )
+        deadline = float(self.deadline_s or 0.0)
+        soft = float(self.soft_deadline_s if self.soft_deadline_s is not None else min(45.0, deadline))
         return replace(
             self,
-            armed_at=format_timestamp(moment),
-            soft_expires_at=format_timestamp(moment + timedelta(seconds=self.soft_deadline_s)),
-            expires_at=format_timestamp(moment + timedelta(seconds=self.deadline_s)),
+            armed_at=stamp,
+            t0=self.t0 or stamp,
+            soft_expires_at=format_timestamp(moment + timedelta(seconds=soft)),
+            expires_at=format_timestamp(moment + timedelta(seconds=deadline)),
         )
 
+    def elapsed(self, *, now: datetime | None = None, reference: str | None = None) -> float:
+        """Vergangene Sekunden seit ``reference`` (Default: ``t0``).
+
+        Das ist der Wert, gegen den Trigger vergleichen (``t_unlimited``).
+        """
+        anchor = reference or self.t0 or self.armed_at
+        if not anchor:
+            return 0.0
+        moment = now or utc_now()
+        start = parse_timestamp(anchor, "$.timer.t0")
+        return round(max(0.0, (moment - start).total_seconds()), 3)
+
     def remaining_s(self, *, now: datetime | None = None) -> float | None:
-        if not self.expires_at:
+        """Restbudget; ``None`` im Unlimited-Modus (es gibt keins)."""
+        if self.unlimited or not self.expires_at:
             return None
         moment = now or utc_now()
         return (parse_timestamp(self.expires_at, "$.timer.expires_at") - moment).total_seconds()
 
     def soft_remaining_s(self, *, now: datetime | None = None) -> float | None:
-        if not self.soft_expires_at:
+        if self.unlimited or not self.soft_expires_at:
             return None
         moment = now or utc_now()
         return (parse_timestamp(self.soft_expires_at, "$.timer.soft_expires_at") - moment).total_seconds()
 
-    def hard_timeout_s(self) -> float:
-        """Wann der Orchestrator den Subprozess spaetestens abbricht."""
-        return min(HARD_DEADLINE_S, self.deadline_s + self.grace_s)
+    def hard_timeout_s(self) -> float | None:
+        """Subprozess-Timeout des Orchestrators; ``None`` = unbegrenzt.
+
+        Deadline-Modus: ``deadline_s + grace_s``.
+        Unlimited-Modus: nur das ``safety_net_s`` (Zombie-Schutz), sonst None.
+        """
+        if self.unlimited:
+            if not self.safety_net_s:
+                return None
+            return min(HARD_DEADLINE_S * 8, float(self.safety_net_s))
+        return min(HARD_DEADLINE_S, float(self.deadline_s or 0.0) + self.grace_s)
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "mode": self.mode,
             "deadline_s": self.deadline_s,
             "soft_deadline_s": self.soft_deadline_s,
             "grace_s": self.grace_s,
             "on_expiry": self.on_expiry,
+            "safety_net_s": self.safety_net_s,
+            "t0": self.t0,
             "armed_at": self.armed_at,
             "soft_expires_at": self.soft_expires_at,
             "expires_at": self.expires_at,
+            "elapsed_s": self.elapsed_s,
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any] | None, path: str = "$.timer") -> "Timer":
+    def from_dict(cls, data: Mapping[str, Any] | None, path: str = "$.timer") -> Timer:
         body = _as_dict(data if data is not None else {}, path)
         _reject_unknown(body, cls.ALLOWED_KEYS, path)
-        deadline = float(_as_number(_opt(body, "deadline_s", 60.0), f"{path}.deadline_s", minimum=0.1, maximum=HARD_DEADLINE_S))
-        soft = float(_as_number(_opt(body, "soft_deadline_s", min(45.0, deadline)), f"{path}.soft_deadline_s", minimum=0.1, maximum=HARD_DEADLINE_S))
-        if soft > deadline:
-            raise ProtocolError(ErrorCode.SCHEMA_INVALID, f"soft_deadline_s ({soft}) darf nicht ueber deadline_s ({deadline}) liegen", f"{path}.soft_deadline_s")
+        mode = _as_enum(_opt(body, "mode", "deadline"), f"{path}.mode", VALID_TIMER_MODES)
+
+        raw_deadline = body.get("deadline_s", None)
+        # None bleibt None: unlimited (Protokoll 1.2) kennt kein Budget.
+        deadline = None if raw_deadline is None else float(
+            _as_number(raw_deadline, f"{path}.deadline_s", minimum=0.1, maximum=HARD_DEADLINE_S)
+        )
+
+        raw_soft = body.get("soft_deadline_s", None)
+        soft = None if raw_soft is None else float(
+            _as_number(raw_soft, f"{path}.soft_deadline_s", minimum=0.1, maximum=HARD_DEADLINE_S)
+        )
+
         grace = float(_as_number(_opt(body, "grace_s", 5.0), f"{path}.grace_s", minimum=0.0, maximum=120.0))
+
+        raw_net = body.get("safety_net_s", None)
+        safety_net = None if raw_net is None else float(_as_number(raw_net, f"{path}.safety_net_s", minimum=1.0, maximum=HARD_DEADLINE_S * 8))
+
+        raw_elapsed = body.get("elapsed_s", None)
+        elapsed = None if raw_elapsed is None else float(_as_number(raw_elapsed, f"{path}.elapsed_s", minimum=0.0, maximum=86_400_000.0))
+
+        if mode == "unlimited":
+            if deadline is not None:
+                raise ProtocolError(
+                    ErrorCode.SCHEMA_INVALID,
+                    "mode='unlimited' verbietet deadline_s (null lassen -- die Zeit wird getrackt, nicht begrenzt)",
+                    f"{path}.deadline_s",
+                )
+            if soft is not None:
+                raise ProtocolError(ErrorCode.SCHEMA_INVALID, "mode='unlimited' verbietet soft_deadline_s", f"{path}.soft_deadline_s")
+            on_expiry = _as_enum(_opt(body, "on_expiry", "none"), f"{path}.on_expiry", ("none",))
+            deadline_out: float | None = None
+            soft_out: float | None = None
+        else:
+            if deadline is None:
+                raise ProtocolError(ErrorCode.SCHEMA_INVALID, "mode='deadline' braucht deadline_s (oder mode='unlimited' setzen)", f"{path}.deadline_s")
+            if soft is None:
+                soft = min(45.0, deadline)
+            if soft > deadline:
+                raise ProtocolError(
+                    ErrorCode.SCHEMA_INVALID,
+                    f"soft_deadline_s ({soft}) darf nicht ueber deadline_s ({deadline}) liegen",
+                    f"{path}.soft_deadline_s",
+                )
+            on_expiry = _as_enum(_opt(body, "on_expiry", "iterate"), f"{path}.on_expiry", VALID_ON_EXPIRY)
+            deadline_out, soft_out = deadline, soft
+
         return cls(
-            deadline_s=deadline,
-            soft_deadline_s=soft,
+            mode=mode,
+            deadline_s=deadline_out,
+            soft_deadline_s=soft_out,
             grace_s=grace,
-            on_expiry=_as_enum(_opt(body, "on_expiry", "iterate"), f"{path}.on_expiry", VALID_ON_EXPIRY),
+            on_expiry=on_expiry,
+            safety_net_s=safety_net,
+            t0=_optional_timestamp(body.get("t0"), f"{path}.t0"),
             armed_at=_optional_timestamp(body.get("armed_at"), f"{path}.armed_at"),
             soft_expires_at=_optional_timestamp(body.get("soft_expires_at"), f"{path}.soft_expires_at"),
             expires_at=_optional_timestamp(body.get("expires_at"), f"{path}.expires_at"),
+            elapsed_s=elapsed,
         )
+
+
+@dataclass(frozen=True)
+class Trigger:
+    """Zeitgesteuertes Ereignis, ausgewertet gegen die Job-Uhr (``t_unlimited``).
+
+    Drei Ausloeser, kombinierbar:
+
+    ``when``     Bedingung, z. B. ``"elapsed >= 30"``, ``"elapsed == 10"``,
+                 ``"elapsed < 5"``. Vergleiche sind kantengesteuert: Sie feuern
+                 in dem Tick, in dem die Bedingung (erstmals) wahr wird.
+    ``every_s``  Intervall: "pruefe alle N Sekunden". Zusammen mit ``when``
+                 feuert das Intervall erst, nachdem die Bedingung wahr ist.
+    ``at_s``     diskrete Zeitmarken in Sekunden seit ``t0``.
+
+    Aktionen: ``emit_event`` (Event/Logging), ``check`` (einen Kontrollauftrag
+    als *eigenen* Job dispatchen -- verbraucht kein Iterations-Budget des
+    beobachteten Jobs), ``escalate``, ``finish_job``, ``log``.
+    """
+
+    id: str
+    action: str = "emit_event"
+    when: str | None = None
+    every_s: float | None = None
+    at_s: tuple[float, ...] = ()
+    clock: str = "job"
+    tolerance_s: float = 0.25
+    max_fires: int = 0
+    once: bool = True
+    payload: dict[str, Any] = field(default_factory=dict)
+
+    ALLOWED_KEYS = ("id", "action", "when", "every_s", "at_s", "clock", "tolerance_s", "max_fires", "once", "payload")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "action": self.action,
+            "when": self.when,
+            "every_s": self.every_s,
+            "at_s": list(self.at_s),
+            "clock": self.clock,
+            "tolerance_s": self.tolerance_s,
+            "max_fires": self.max_fires,
+            "once": self.once,
+            "payload": dict(self.payload),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any], path: str = "$.schedule.triggers[]") -> Trigger:
+        body = _as_dict(data, path)
+        _reject_unknown(body, cls.ALLOWED_KEYS, path)
+        trigger_id = _as_str(_req(body, "id", path), f"{path}.id", max_len=40, pattern=_TRIGGER_ID_RE)
+        action = _as_enum(_opt(body, "action", "emit_event"), f"{path}.action", VALID_TRIGGER_ACTIONS)
+        # when ist *nullable*: None = keine Bedingung (nur every_s/at_s).
+        # Ein Leerstring wird auf None normalisiert -- dieselbe Semantik wie
+        # deadline_s=null fuer unlimited, statt Zauber-Leerstrings.
+        raw_when = body.get("when", None)
+        if raw_when is None:
+            when: str | None = None
+        else:
+            when = _as_str(raw_when, f"{path}.when", min_len=0, max_len=120).strip() or None
+
+        raw_every = body.get("every_s", None)
+        every_s = None if raw_every is None else float(_as_number(raw_every, f"{path}.every_s", minimum=0.05, maximum=86_400.0))
+
+        raw_marks = body.get("at_s", [])
+        if not isinstance(raw_marks, (list, tuple)):
+            raise ProtocolError(ErrorCode.TRIGGER_INVALID, "at_s muss eine Liste von Sekundenwerten sein", f"{path}.at_s")
+        marks: list[float] = []
+        for index, mark in enumerate(raw_marks):
+            value = float(_as_number(mark, f"{path}.at_s[{index}]", minimum=0.0, maximum=86_400_000.0))
+            if value not in marks:
+                marks.append(value)
+        at_s = tuple(sorted(marks))
+
+        if not when and every_s is None and not at_s:
+            raise ProtocolError(
+                ErrorCode.TRIGGER_INVALID,
+                "Trigger braucht mindestens einen Ausloeser: when, every_s oder at_s",
+                path,
+            )
+        if when:
+            _validate_condition(when, f"{path}.when")
+
+        payload = _as_dict(_opt(body, "payload", {}), f"{path}.payload")
+        if action == "check":
+            has_single = isinstance(payload.get("operation"), str) and payload.get("operation")
+            checks = payload.get("checks")
+            has_list = isinstance(checks, list) and bool(checks)
+            if not (has_single or has_list):
+                raise ProtocolError(
+                    ErrorCode.TRIGGER_INVALID,
+                    "action='check' braucht payload.operation oder payload.checks[]",
+                    f"{path}.payload",
+                )
+            entries = [{"operation": payload["operation"], "params": payload.get("params", {})}] if has_single else list(checks or [])
+            for index, entry in enumerate(entries):
+                entry = _as_dict(entry, f"{path}.payload.checks[{index}]")
+                _as_str(entry.get("operation", ""), f"{path}.payload.checks[{index}].operation", max_len=64, pattern=_OPERATION_RE)
+        if action == "emit_event":
+            kind = payload.get("kind")
+            if kind is not None:
+                _as_str(kind, f"{path}.payload.kind", max_len=64)
+
+        return cls(
+            id=trigger_id,
+            action=action,
+            when=when,
+            every_s=every_s,
+            at_s=at_s,
+            clock=_as_enum(_opt(body, "clock", "job"), f"{path}.clock", VALID_TRIGGER_CLOCKS),
+            tolerance_s=float(_as_number(_opt(body, "tolerance_s", 0.25), f"{path}.tolerance_s", minimum=0.0, maximum=60.0)),
+            max_fires=int(_as_number(_opt(body, "max_fires", 0), f"{path}.max_fires", minimum=0, maximum=10_000, integer=True)),
+            # once-Default: nur eine reine when-Kante ist "einmalig". Ein
+            # Intervall (every_s) wiederholt sich, und eine at_s-Liste feuert
+            # alle Marken ab -- sonst wuerde die zweite Marke verschluckt.
+            once=_as_bool(body["once"], f"{path}.once")
+            if "once" in body and body["once"] is not None
+            else (every_s is None and not at_s),
+            payload=payload,
+        )
+
+
+@dataclass(frozen=True)
+class Schedule:
+    """Zeitgesteuerte Ereignisse eines Auftrags (leer = keine Trigger)."""
+
+    triggers: tuple[Trigger, ...] = ()
+    tick_s: float = 0.5
+
+    ALLOWED_KEYS = ("triggers", "tick_s")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"triggers": [t.to_dict() for t in self.triggers], "tick_s": self.tick_s}
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None, path: str = "$.schedule") -> Schedule:
+        body = _as_dict(data if data is not None else {}, path)
+        _reject_unknown(body, cls.ALLOWED_KEYS, path)
+        raw = body.get("triggers", [])
+        if not isinstance(raw, (list, tuple)):
+            raise ProtocolError(ErrorCode.TRIGGER_INVALID, "triggers muss eine Liste sein", f"{path}.triggers")
+        if len(raw) > 32:
+            raise ProtocolError(ErrorCode.TRIGGER_INVALID, "mehr als 32 Trigger pro Auftrag", f"{path}.triggers")
+        triggers = tuple(Trigger.from_dict(item, f"{path}.triggers[{i}]") for i, item in enumerate(raw))
+        ids = [t.id for t in triggers]
+        if len(set(ids)) != len(ids):
+            raise ProtocolError(ErrorCode.TRIGGER_INVALID, "Trigger-IDs muessen eindeutig sein", f"{path}.triggers")
+        tick = float(_as_number(_opt(body, "tick_s", 0.5), f"{path}.tick_s", minimum=0.05, maximum=60.0))
+        return cls(triggers=triggers, tick_s=tick)
+
+
+_CONDITION_RE = re.compile(r"^elapsed\s*(<=|>=|==|!=|<|>)\s*(\d+(?:\.\d+)?)$")
+
+
+def _validate_condition(text: str, path: str) -> tuple[str, float]:
+    """Parst ``"elapsed >= 30"`` -> (operator, Schwellwert in Sekunden)."""
+    match = _CONDITION_RE.match(" ".join(text.split()))
+    if not match:
+        raise ProtocolError(
+            ErrorCode.TRIGGER_INVALID,
+            f"Bedingung ungueltig: {text!r}. Erlaubt: 'elapsed <op> <sekunden>' mit op in {list(VALID_COMPARISONS)}",
+            path,
+        )
+    return match.group(1), float(match.group(2))
 
 
 @dataclass(frozen=True)
@@ -665,6 +984,7 @@ class Intent:
     target_version: str = ""
     constraints: Constraints = field(default_factory=Constraints)
     elevation: Elevation = field(default_factory=Elevation)
+    schedule: Schedule = field(default_factory=Schedule)
     context_summary: str = ""
     context_artifacts: tuple[dict[str, Any], ...] = ()
     context_extra: dict[str, Any] = field(default_factory=dict)
@@ -681,6 +1001,7 @@ class Intent:
         "target",
         "job",
         "timer",
+        "schedule",
         "task",
         "constraints",
         "elevation",
@@ -713,6 +1034,7 @@ class Intent:
             "target": {"limb": self.target_limb, "version": self.target_version or None},
             "job": self.job.to_dict(),
             "timer": self.timer.to_dict(),
+            "schedule": self.schedule.to_dict(),
             "task": self.task.to_dict(),
             "constraints": self.constraints.to_dict(),
             "elevation": self.elevation.to_dict(),
@@ -727,7 +1049,7 @@ class Intent:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False, sort_keys=False)
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any], *, operations: Operations | None = None) -> "Intent":
+    def from_dict(cls, data: Mapping[str, Any], *, operations: Operations | None = None) -> Intent:
         body = _as_dict(data, "$")
         _reject_unknown(body, cls.ALLOWED_KEYS, "$")
 
@@ -758,6 +1080,7 @@ class Intent:
         task = Task.from_dict(_req(body, "task", "$"), operations=operations)
         constraints = Constraints.from_dict(body.get("constraints"))
         elevation = Elevation.from_dict(body.get("elevation"))
+        schedule = Schedule.from_dict(body.get("schedule"))
 
         context = _as_dict(_opt(body, "context", {}), "$.context")
         _reject_unknown(context, ("summary", "artifacts", "extra"), "$.context")
@@ -798,13 +1121,14 @@ class Intent:
             target_version=target_version,
             constraints=constraints,
             elevation=elevation,
+            schedule=schedule,
             context_summary=_as_str(_opt(context, "summary", ""), "$.context.summary", min_len=0, max_len=16384),
             context_artifacts=tuple(artifacts),
             context_extra=_as_dict(_opt(context, "extra", {}), "$.context.extra"),
         )
 
     @classmethod
-    def from_json(cls, text: str | bytes, *, operations: Operations | None = None) -> "Intent":
+    def from_json(cls, text: str | bytes, *, operations: Operations | None = None) -> Intent:
         try:
             data = json.loads(text)
         except json.JSONDecodeError as exc:
@@ -812,7 +1136,7 @@ class Intent:
         return cls.from_dict(data, operations=operations)
 
     @classmethod
-    def from_file(cls, path: Path | str, *, operations: Operations | None = None) -> "Intent":
+    def from_file(cls, path: Path | str, *, operations: Operations | None = None) -> Intent:
         file_path = Path(path)
         if not file_path.is_file():
             raise ProtocolError(ErrorCode.PATH_NOT_FOUND, f"Intent-Datei fehlt: {file_path}")
@@ -839,7 +1163,7 @@ class Artifact:
         return body
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any], path: str = "$.artifacts[]") -> "Artifact":
+    def from_dict(cls, data: Mapping[str, Any], path: str = "$.artifacts[]") -> Artifact:
         body = _as_dict(data, path)
         _reject_unknown(body, ("path", "action", "bytes", "sha256", "backup_path"), path)
         digest = body.get("sha256", "")
@@ -883,7 +1207,7 @@ class StatusReport:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any] | None, path: str = "$.status_report") -> "StatusReport | None":
+    def from_dict(cls, data: Mapping[str, Any] | None, path: str = "$.status_report") -> StatusReport | None:
         if data is None:
             return None
         body = _as_dict(data, path)
@@ -922,36 +1246,58 @@ class StatusReport:
 
 @dataclass(frozen=True)
 class TimerReport:
-    """Timer-Nachweis im Result: wann geschaerft, wann berichtet, Ueberzug."""
+    """Timer-Nachweis im Result.
 
+    Im Deadline-Modus: Fristen, Restzeit, Ueberzug.
+    Im Unlimited-Modus: ``mode="unlimited"``, ``expires_at=null`` und die
+    **getrackte** Zeit ``elapsed_s`` seit ``t0`` -- derselbe Wert, den die
+    Trigger des Orchestrators vergleichen.
+    """
+
+    mode: str = "deadline"
+    t0: str | None = None
     armed_at: str | None = None
     expires_at: str | None = None
     reported_at: str = ""
-    remaining_ms: int = 0
+    elapsed_s: float | None = None
+    remaining_ms: int | None = None
     overrun_ms: int = 0
     self_reported: bool = False
 
-    ALLOWED_KEYS = ("armed_at", "expires_at", "reported_at", "remaining_ms", "overrun_ms", "self_reported")
+    ALLOWED_KEYS = ("mode", "t0", "armed_at", "expires_at", "reported_at", "elapsed_s", "remaining_ms", "overrun_ms", "self_reported")
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "mode": self.mode,
+            "t0": self.t0,
             "armed_at": self.armed_at,
             "expires_at": self.expires_at,
             "reported_at": self.reported_at,
+            "elapsed_s": self.elapsed_s,
             "remaining_ms": self.remaining_ms,
             "overrun_ms": self.overrun_ms,
             "self_reported": self.self_reported,
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any] | None, path: str = "$.timer") -> "TimerReport":
+    def from_dict(cls, data: Mapping[str, Any] | None, path: str = "$.timer") -> TimerReport:
         body = _as_dict(data if data is not None else {}, path)
         _reject_unknown(body, cls.ALLOWED_KEYS, path)
+        raw_elapsed = body.get("elapsed_s", None)
         return cls(
+            mode=_as_enum(_opt(body, "mode", "deadline"), f"{path}.mode", VALID_TIMER_MODES),
+            t0=_optional_timestamp(body.get("t0"), f"{path}.t0"),
             armed_at=_optional_timestamp(body.get("armed_at"), f"{path}.armed_at"),
             expires_at=_optional_timestamp(body.get("expires_at"), f"{path}.expires_at"),
             reported_at=_as_str(_opt(body, "reported_at", ""), f"{path}.reported_at", min_len=0, max_len=40),
-            remaining_ms=int(_as_number(_opt(body, "remaining_ms", 0), f"{path}.remaining_ms", minimum=-86_400_000, maximum=86_400_000, integer=True)),
+            elapsed_s=None if raw_elapsed is None else float(_as_number(raw_elapsed, f"{path}.elapsed_s", minimum=0.0, maximum=86_400_000.0)),
+            # null im Unlimited-Modus: Es gibt kein Budget, das verbleiben koennte.
+            # (Eine 0 wuerde "Budget exakt aufgebraucht" bedeuten -- eine Luege.)
+            remaining_ms=(
+                None
+                if body.get("remaining_ms") is None
+                else int(_as_number(body["remaining_ms"], f"{path}.remaining_ms", minimum=-86_400_000, maximum=86_400_000, integer=True))
+            ),
             overrun_ms=int(_as_number(_opt(body, "overrun_ms", 0), f"{path}.overrun_ms", minimum=0, maximum=86_400_000, integer=True)),
             self_reported=_as_bool(_opt(body, "self_reported", False), f"{path}.self_reported"),
         )
@@ -1060,7 +1406,7 @@ class Result:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any], *, intent: Intent | None = None) -> "Result":
+    def from_dict(cls, data: Mapping[str, Any], *, intent: Intent | None = None) -> Result:
         body = _as_dict(data, "$")
         _reject_unknown(body, cls.ALLOWED_KEYS, "$")
 
@@ -1179,7 +1525,7 @@ class Result:
         )
 
     @classmethod
-    def from_json(cls, text: str | bytes, *, intent: Intent | None = None) -> "Result":
+    def from_json(cls, text: str | bytes, *, intent: Intent | None = None) -> Result:
         try:
             data = json.loads(text)
         except json.JSONDecodeError as exc:
@@ -1187,7 +1533,7 @@ class Result:
         return cls.from_dict(data, intent=intent)
 
     @classmethod
-    def from_file(cls, path: Path | str, *, intent: Intent | None = None) -> "Result":
+    def from_file(cls, path: Path | str, *, intent: Intent | None = None) -> Result:
         file_path = Path(path)
         if not file_path.is_file():
             raise ProtocolError(ErrorCode.PATH_NOT_FOUND, f"Result-Datei fehlt: {file_path}")

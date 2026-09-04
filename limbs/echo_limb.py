@@ -17,17 +17,28 @@ import os
 import platform
 import sys
 import time
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any
+
+# Zwei Aufrufwege, ein Modul:
+#   * Skript  -- so startet der Orchestrator Limbs (``python3 limbs/echo_limb.py``),
+#                dann ist ``__package__`` leer und ``base`` liegt auf sys.path.
+#   * Paket   -- Tests und Tooling importieren ``limbs.echo_limb``.
+# Relative Importe (``..core``) sind hier **unmoeglich**: ``limbs`` ist bereits
+# ein Top-Level-Paket, ``from ..core import ...`` wirft ImportError. Deshalb wird
+# in beiden Faellen absolut importiert -- mit dem Repo-Root auf sys.path.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+for _entry in (str(Path(__file__).resolve().parent), str(_REPO_ROOT)):
+    if _entry not in sys.path:
+        sys.path.insert(0, _entry)
 
 if __package__ in (None, ""):  # direkter Skriptaufruf durch den Orchestrator
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from base import LimbBase, LimbContext, LimbError  # type: ignore[no-redef]
-    from core.protocol import ErrorCode  # type: ignore[no-redef]
+    from base import LimbBase, LimbContext, LimbError  # type: ignore[import-not-found]
 else:  # Import als Paket (Tests, Tooling)
-    from .base import LimbBase, LimbContext, LimbError
-    from ..core.protocol import ErrorCode
+    from limbs.base import LimbBase, LimbContext, LimbError
+
+from core.protocol import PROTOCOL_VERSION, ErrorCode  # noqa: E402
 
 VALID_MODES = ("fail", "timeout", "partial", "crash", "success")
 
@@ -53,7 +64,7 @@ class EchoLimb(LimbBase):
             "operations": sorted(self.handlers()),
             "python": platform.python_version(),
             "sandbox_root": ctx.rel(ctx.sandbox_root),
-            "protocol": "1.1",
+            "protocol": PROTOCOL_VERSION,
             "timer_armed": ctx.armed,
             "deadline": ctx.intent.timer.expires_at,
         }

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import unittest
 
-from . import REPO_ROOT  # noqa: F401
-
 from core.config import NeuConfig
 from core.kernel import Kernel
 from core.protocol import ErrorCode, Operations, ProtocolError, Result
 from orchestrator.planner import IterationPlanner
+
+from . import REPO_ROOT  # noqa: F401
 
 CONFIG = NeuConfig.load(mode="scale", limits={"max_iterations": 2, "max_agents": 2, "max_limbs": 2, "max_concurrent_jobs": 2})
 KERNEL = Kernel(CONFIG, Operations.load(CONFIG.protocol_dir / "operations.json"))
@@ -17,7 +17,16 @@ PLANNER = IterationPlanner(KERNEL, CONFIG)
 
 
 def build(operation="sys.simulate", params=None, **kwargs):
-    base = dict(operation=operation, params=params or {"mode": "timeout", "seconds": 4}, limb="echo", goal="Planner-Test", iteration=1, max_iterations=2, deadline_s=2.0, soft_deadline_s=1.0)
+    base = {
+        "operation": operation,
+        "params": params or {"mode": "timeout", "seconds": 4},
+        "limb": "echo",
+        "goal": "Planner-Test",
+        "iteration": 1,
+        "max_iterations": 2,
+        "deadline_s": 2.0,
+        "soft_deadline_s": 1.0,
+    }
     base.update(kwargs)
     return KERNEL.build_intent(**base)
 

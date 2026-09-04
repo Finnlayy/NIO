@@ -1,11 +1,11 @@
-"""Limb-Basislaufzeit (Phase 1, Protokoll 1.1).
+"""Limb-Basislaufzeit (Protokoll 1.2).
 
 Ein *Limb* ist ein ausfuehrender Arm: Er liest genau einen Intent, fuehrt ihn
 strikt aus und gibt genau ein Result zurueck. Er kennt keine Konversation,
 keine anderen Intents und keinen Chat-Kontext -- alles, was er weiss, steht im
 Intent.
 
-**Timer-Pflicht (Protokoll 1.1):** Der Orchestrator schaerft den Timer, bevor
+**Timer-Pflicht (seit 1.1, erweitert in 1.2):** Der Orchestrator schaerft den Timer, bevor
 der Limb startet. Der Limb ueberwacht dieselbe Deadline und liefert bei Ablauf
 einen klaren Statusbericht (``status="timeout"`` + ``status_report``), statt
 stum zu sterben:
@@ -33,9 +33,11 @@ import sys
 import tempfile
 import threading
 import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 for _entry in (str(Path(__file__).resolve().parent), str(_REPO_ROOT)):
@@ -45,6 +47,7 @@ for _entry in (str(Path(__file__).resolve().parent), str(_REPO_ROOT)):
 from core.config import NeuConfig  # noqa: E402
 from core.policy import Policy  # noqa: E402
 from core.protocol import (  # noqa: E402
+    PROTOCOL_VERSION,
     Artifact,
     ErrorCode,
     Intent,
@@ -103,10 +106,12 @@ class LimbContext:
     def armed(self) -> bool:
         return self.intent.timer.armed
 
-    def expires_at(self):
+    def expires_at(self) -> datetime | None:
+        """Harte Deadline; ``None`` im Unlimited-Modus (Zeit wird nur getrackt)."""
         return parse_timestamp(self.intent.timer.expires_at, "$.timer.expires_at") if self.intent.timer.expires_at else None
 
-    def soft_expires_at(self):
+    def soft_expires_at(self) -> datetime | None:
+        """Soft-Deadline fuer den eigenen Statusbericht; ``None`` = unbegrenzt."""
         return parse_timestamp(self.intent.timer.soft_expires_at, "$.timer.soft_expires_at") if self.intent.timer.soft_expires_at else None
 
     def remaining_s(self) -> float | None:
@@ -166,7 +171,7 @@ class LimbContext:
     def write_atomic(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
         """Schreibt ueber temporaere Datei + os.replace (keine halben Dateien)."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        handle = tempfile.NamedTemporaryFile(
+        handle = tempfile.NamedTemporaryFile(  # noqa: SIM115 - delete=False ist Absicht: os.replace braucht die Datei
             "w",
             encoding=encoding,
             delete=False,
@@ -240,15 +245,17 @@ class LimbBase:
         ) -> Result:
             now = utc_now()
             overrun = 0
-            remaining_ms = 0
+            remaining_ms: int | None = None
             if intent.timer.expires_at:
                 expires = parse_timestamp(intent.timer.expires_at, "$.timer.expires_at")
                 delta_ms = int((expires - now).total_seconds() * 1000)
                 remaining_ms = delta_ms
                 overrun = max(0, -delta_ms)
+            elif not intent.timer.unlimited:
+                remaining_ms = 0  # Deadline-Modus ohne geschaerfte Frist (Sonderfall)
             payload = {
                 "protocol": "neu/result",
-                "version": "1.1",
+                "version": PROTOCOL_VERSION,
                 "result_id": new_id("res"),
                 "intent_id": intent.intent_id,
                 "trace_id": intent.trace_id,
@@ -264,9 +271,14 @@ class LimbBase:
                 "artifacts": [a.to_dict() for a in artifacts],
                 "status_report": report.to_dict() if report else None,
                 "timer": TimerReport(
+                    mode=intent.timer.mode,
+                    t0=intent.timer.t0,
                     armed_at=intent.timer.armed_at,
                     expires_at=intent.timer.expires_at,
                     reported_at=format_timestamp(now),
+                    # Im Unlimited-Modus ist elapsed_s der eigentliche Nachweis:
+                    # Die Zeit wurde getrackt, nicht begrenzt (remaining_ms=null).
+                    elapsed_s=intent.timer.elapsed(now=now),
                     remaining_ms=remaining_ms,
                     overrun_ms=overrun,
                     self_reported=self_reported,
@@ -319,7 +331,7 @@ class LimbBase:
         def worker() -> None:
             try:
                 box["output"] = handlers[intent.operation](intent.task.params, context) or {}
-            except BaseException as exc:  # noqa: BLE001 - Fehler wandert ins Result
+            except BaseException as exc:
                 box["error"] = exc
 
         thread = threading.Thread(target=worker, name=f"{self.name}-{intent.operation}", daemon=True)
@@ -328,8 +340,47 @@ class LimbBase:
         wait_s = self._wait_budget(intent)
         thread.join(wait_s)
 
+        if thread.is_alive() and intent.timer.unlimited:
+            # Unlimited: kein Aufgabenlimit verletzt -- das Safety-Netz hat nur den
+            # Prozess beendet. Kein inhaltliches Scheitern, aber eine Entscheidung.
+            net = intent.timer.safety_net_s
+            net_report = StatusReport(
+                state="blocked",
+                explanation=(
+                    f"Safety-Netz ausgeloesst: Der Handler fuer '{intent.operation}' lief laenger als "
+                    f"{net}s (t_unlimited={intent.timer.elapsed():.3f}s ab t0={intent.timer.t0}). "
+                    f"Es bestand kein Zeitlimit fuer die Aufgabe; der Abbruch dient der Prozess-Hygiene. "
+                    f"Erledigt bis zum Abbruch: {len(context.done)} Schritt(e)."
+                ),
+                done=tuple(context.done) or ("Handler lief noch; nichts abgeschlossen meldbar.",),
+                remaining=tuple(context.remaining)
+                or ("Auftrag laeuft laenger als ein Prozessfenster: in Teilauftraege zerlegen oder safety_net_s anheben.",),
+                blockers=(
+                    {
+                        "code": ErrorCode.SAFETY_NET,
+                        "message": f"Safety-Netz bei {net}s; t_unlimited={intent.timer.elapsed():.3f}s.",
+                        "hint": "Menschliche Entscheidung: Zerlegung oder Konfigurationsanpassung (safety_net_s).",
+                    },
+                ),
+                suggested_next="An Core eskalieren: Auftrag zerlegen oder safety_net_s bewusst anheben.",
+            )
+            context.note("safety-net: prozess-hygiene, kein aufgabenlimit")
+            return build(
+                "failed",
+                {"handler_alive": True, "done_steps": list(context.done), "elapsed_s": intent.timer.elapsed(), "timer_mode": "unlimited"},
+                error={
+                    "code": ErrorCode.SAFETY_NET,
+                    "message": net_report.explanation,
+                    "hint": net_report.suggested_next,
+                },
+                artifacts=context.artifacts,
+                report=net_report,
+                notes=context.notes,
+                confidence=0.3,
+            )
+
         if thread.is_alive():
-            report = StatusReport(
+            soft_report = StatusReport(
                 state="timeout",
                 explanation=(
                     f"Timer abgelaufen: Der Handler fuer '{intent.operation}' war nach "
@@ -352,9 +403,9 @@ class LimbBase:
             return build(
                 "timeout",
                 {"handler_alive": True, "done_steps": list(context.done)},
-                error={"code": ErrorCode.TIMEOUT, "message": report.explanation, "hint": report.suggested_next},
+                error={"code": ErrorCode.TIMEOUT, "message": soft_report.explanation, "hint": soft_report.suggested_next},
                 artifacts=context.artifacts,
-                report=report,
+                report=soft_report,
                 notes=context.notes,
                 confidence=0.2,
             )
@@ -363,7 +414,7 @@ class LimbBase:
         if isinstance(exc, ProtocolError):
             return build("rejected", {}, error={"code": exc.code, "message": exc.message, "hint": "Intent-Korrektur noetig."}, artifacts=context.artifacts, notes=context.notes)
         if isinstance(exc, DeadlineExceeded):
-            report = StatusReport(
+            deadline_report = StatusReport(
                 state="timeout",
                 explanation=str(exc),
                 done=tuple(context.done),
@@ -371,9 +422,9 @@ class LimbBase:
                 blockers=({"code": ErrorCode.TIMEOUT, "message": str(exc), "hint": "Checkpoint-Liste verkleinern."},),
                 suggested_next="Naechster Durchgang setzt am letzten Checkpoint an.",
             )
-            return build("timeout", {}, error={"code": ErrorCode.TIMEOUT, "message": str(exc), "hint": ""}, artifacts=context.artifacts, report=report, notes=context.notes, confidence=0.3)
+            return build("timeout", {}, error={"code": ErrorCode.TIMEOUT, "message": str(exc), "hint": ""}, artifacts=context.artifacts, report=deadline_report, notes=context.notes, confidence=0.3)
         if isinstance(exc, LimbError):
-            report = StatusReport(
+            blocked_report = StatusReport(
                 state="blocked",
                 explanation=f"{exc.code}: {exc.message}",
                 done=tuple(context.done),
@@ -386,7 +437,7 @@ class LimbBase:
                 {},
                 error={"code": exc.code, "message": exc.message, "hint": exc.hint},
                 artifacts=context.artifacts,
-                report=report,
+                report=blocked_report,
                 notes=context.notes,
                 confidence=0.4,
             )
@@ -417,7 +468,8 @@ class LimbBase:
         confidence = float(output.pop("__confidence__", 1.0))
         notes = list(output.pop("__notes__", []))
         report_data = output.pop("__status_report__", None)
-        report = StatusReport.from_dict(report_data) if isinstance(report_data, Mapping) else None
+        # Der Handler darf einen Bericht liefern -- muss aber nicht.
+        report: StatusReport | None = StatusReport.from_dict(report_data) if isinstance(report_data, Mapping) else None
         if status in {"timeout", "partial"} and report is None:
             report = StatusReport(
                 state=status,
@@ -440,7 +492,16 @@ class LimbBase:
 
     # ------------------------------------------------------------------ Uhr
     def _wait_budget(self, intent: Intent) -> float | None:
-        """Wie lange auf den Handler gewartet wird, bevor der Bericht gebaut wird."""
+        """Wie lange auf den Handler gewartet wird, bevor der Bericht gebaut wird.
+
+        Deadline-Modus: Soft-Deadline minus Reserve fuer den Statusbericht.
+        Unlimited-Modus: Es gibt kein Aufgabenlimit -- gewartet wird auf das
+        Safety-Netz (Prozess-Hygiene). Ist keins gesetzt, wartet der Limb, bis
+        der Handler fertig ist (``None``).
+        """
+        if intent.timer.unlimited:
+            net = intent.timer.hard_timeout_s()
+            return None if net is None else max(0.05, net - REPORT_RESERVE_S)
         soft = intent.timer.soft_remaining_s()
         hard = intent.timer.remaining_s()
         if soft is None and hard is None:
@@ -491,14 +552,14 @@ class LimbBase:
         except ProtocolError as exc:
             print(json.dumps(_synthetic_error(self, exc.code, exc.message), ensure_ascii=False), flush=True)
             return EXIT_OK
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"[{self.name}] Intent konnte nicht geladen werden: {exc}", file=sys.stderr)
             print(json.dumps(_synthetic_error(self, ErrorCode.SCHEMA_INVALID, str(exc)), ensure_ascii=False), flush=True)
             return EXIT_OK
 
         print(
             f"[{self.name}] intent={intent.intent_id} job={intent.job_id} iter={intent.iteration} "
-            f"op={intent.operation} deadline={intent.timer.expires_at}",
+            f"op={intent.operation} mode={intent.timer.mode} expires={intent.timer.expires_at}",
             file=sys.stderr,
         )
         result = self.execute(intent, attempt=args.iteration if args.iteration is not None else args.attempt)
@@ -516,7 +577,7 @@ def _synthetic_error(limb: LimbBase, code: str, message: str) -> dict[str, Any]:
     now = utc_now_iso()
     return {
         "protocol": "neu/result",
-        "version": "1.1",
+        "version": PROTOCOL_VERSION,
         "result_id": new_id("res"),
         "intent_id": "int_unknown_000000",
         "trace_id": "int_unknown_000000",
@@ -531,9 +592,19 @@ def _synthetic_error(limb: LimbBase, code: str, message: str) -> dict[str, Any]:
         "output": {},
         "artifacts": [],
         "status_report": None,
-        "timer": {"armed_at": None, "expires_at": None, "reported_at": now, "remaining_ms": 0, "overrun_ms": 0, "self_reported": False},
+        "timer": {
+            "mode": "deadline",
+            "t0": None,
+            "armed_at": None,
+            "expires_at": None,
+            "reported_at": now,
+            "elapsed_s": None,
+            "remaining_ms": None,
+            "overrun_ms": 0,
+            "self_reported": False,
+        },
         "diagnostics": {"stdout": "", "stderr": "", "exit_code": None},
-        "error": {"code": code, "message": message[:16000], "hint": "Intent entspricht nicht Protokoll 1.1."},
+        "error": {"code": code, "message": message[:16000], "hint": f"Intent entspricht nicht Protokoll {PROTOCOL_VERSION}."},
         "self_report": {"confidence": 0.0, "notes": "Intent-Eingang fehlerhaft"},
     }
 

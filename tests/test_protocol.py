@@ -7,11 +7,11 @@ import json
 import unittest
 from datetime import timedelta
 
-from . import REPO_ROOT  # noqa: F401  (stellt sys.path sicher)
-
 from core.config import ABSOLUTE_MAX_ITERATIONS, NeuConfig
 from core.kernel import Kernel, arm_timer
 from core.protocol import (
+    PROTOCOL_MAJOR,
+    PROTOCOL_MINOR,
     PROTOCOL_VERSION,
     ErrorCode,
     Intent,
@@ -22,6 +22,8 @@ from core.protocol import (
     parse_timestamp,
     utc_now,
 )
+
+from . import REPO_ROOT  # noqa: F401  (stellt sys.path sicher)
 
 CONFIG = NeuConfig.load()
 OPERATIONS = Operations.load(CONFIG.protocol_dir / "operations.json")
@@ -55,7 +57,33 @@ class TestEnvelope(unittest.TestCase):
         data = sample_intent_dict()
         self.assertEqual(data["protocol"], "neu/intent")
         self.assertEqual(data["version"], PROTOCOL_VERSION)
-        self.assertEqual(PROTOCOL_VERSION, "1.1")
+        # Protokoll 1.2: unlimited-Timer + zeitgesteuerte Trigger.
+        self.assertEqual(PROTOCOL_VERSION, "1.2")
+        self.assertEqual((PROTOCOL_MAJOR, PROTOCOL_MINOR), (1, 2))
+
+    def test_version_1_1_wird_gelesen_und_auf_1_2_gehoben(self):
+        """Abwaertskompatibilitaet: 1.1-Umschlaege bleiben lesbar.
+
+        Beim Serialisieren schreibt der Parser die eigene Version (1.2) -- ein
+        Upgrade beim Lesen, kein Bruch: 1.2 ist zu 1.1 datengleich, die neuen
+        Felder (``timer.mode``, ``schedule``) haben Defaults.
+        """
+        data = sample_intent_dict()
+        data["version"] = "1.1"
+        data["timer"].pop("mode", None)
+        data.pop("schedule", None)
+        intent = Intent.from_dict(data, operations=OPERATIONS)
+        self.assertEqual(intent.to_dict()["version"], PROTOCOL_VERSION)
+        # Alte Auftraege bleiben Deadline-Auftraege -- kein stiller Moduswechsel.
+        self.assertEqual(intent.timer.mode, "deadline")
+        self.assertEqual(intent.schedule.triggers, ())
+
+    def test_version_ausserhalb_1_x_wird_abgelehnt(self):
+        data = sample_intent_dict()
+        data["version"] = "2.0"
+        with self.assertRaises(ProtocolError) as ctx:
+            Intent.from_dict(data, operations=OPERATIONS)
+        self.assertEqual(ctx.exception.code, ErrorCode.SCHEMA_INVALID)
 
     def test_unbekannte_schluessel_werden_abgelehnt(self):
         data = sample_intent_dict()

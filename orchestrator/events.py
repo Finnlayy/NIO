@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Iterable, Mapping, Protocol, TextIO
+from datetime import UTC, datetime
+from typing import Any, Protocol, TextIO
 
 
 class EventSink(Protocol):
@@ -29,8 +30,58 @@ class EventSink(Protocol):
         ...
 
 
+#: Bekannte Event-Arten (Namensschema: ``bereich.ereignis``). Der Bus validiert
+#: bewusst nicht -- ein Log-Sink darf nie der Grund fuer Datenverlust sein --
+#: aber Tests, Doku und die CLI ziehen diese Liste heran. Die ``timer.*``-Kinds
+#: ab ``timer.armed`` gehoeren zu Protokoll 1.2 (Zeit-Tracking + Trigger).
+VALID_EVENT_KINDS: tuple[str, ...] = (
+    "job.created",
+    "job.finished",
+    "job.aborted",
+    "job.measure",
+    "job.diagnosed",
+    "job.iteration.started",
+    "job.iteration.planned",
+    "job.scheduled",       # 1.2: durch einen check-Trigger erzeugter Kontroll-Job
+    "jobs.reclaimed",
+    "intent.accepted",
+    "intent.rejected",
+    "inbox.rejected",
+    "policy.decided",
+    "agent.lock.acquired",
+    "agent.lock.released",
+    "limb.spawned",
+    "loop.tick",
+    "loop.supervised",     # 1.2: Bilanz eines ueberwachten (asynchronen) Laufs
+    "result.recorded",
+    "result.verdict",
+    "transport.archived",
+    # --- Zeit-Tracking & zeitgesteuerte Ausloeser (Protokoll 1.2) ---
+    "timer.armed",         # Uhr gestartet: deadline oder unlimited (t0 gesetzt)
+    "timer.expired",       # Deadline-Modus: Zeitbudget abgelaufen
+    "timer.tick",          # Scheduler-Tick, traegt t_unlimited (clock_s)
+    "timer.trigger",       # Ausloeser hat gefeuert
+    "timer.skipped",       # Ausloeser uebersprungen (Limit belegt) -- kein stiller Verlust
+    "timer.safety_net",    # Safety-Netz hat einen Prozess beendet (Hygiene, kein Aufgabenlimit)
+    "timer.log",           # Freitext-Log eines log-Triggers
+    "timer.escalation",    # escalate-Trigger: Entscheidung durch Mensch/Core noetig
+    "timer.finished",      # finish_job-Trigger: Auftrag gilt als abgeschlossen
+    "schedule.attached",   # 1.2: Trigger-Zustand fuer einen Auftrag angelegt
+    "schedule.detached",   # 1.2: Trigger-Zustand nach Abschluss entfernt
+    "limb.terminated",     # 1.2: Limb wurde durch Zeitplan oder Safety-Netz gestoppt
+)
+
+
 @dataclass(frozen=True)
 class Event:
+    """Ein Ereignis auf dem Bus.
+
+    ``clock_s`` ist ``t_unlimited``: Sekunden seit ``t0`` (Job-Erstellung). Es
+    wird bei jedem Event mitgeschrieben, damit zeitgesteuerte Ausloeser und die
+    spaetere Log-Analyse (Phase 3) exakt dieselbe Uhr referenzieren. ``None``
+    bedeutet: kein Job-Kontext (z. B. reine Konfigurationsausgabe).
+    """
+
     kind: str
     payload: dict[str, Any] = field(default_factory=dict)
     seq: int = 0
@@ -39,6 +90,7 @@ class Event:
     trace_id: str = ""
     intent_id: str = ""
     limb: str = ""
+    clock_s: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -49,6 +101,7 @@ class Event:
             "trace_id": self.trace_id,
             "intent_id": self.intent_id,
             "limb": self.limb,
+            "clock_s": self.clock_s,
             "payload": dict(self.payload),
         }
 
@@ -114,23 +167,25 @@ class EventBus:
         trace_id: str = "",
         intent_id: str = "",
         limb: str = "",
+        clock_s: float | None = None,
     ) -> Event:
         self._seq += 1
         event = Event(
             kind=kind,
             payload=dict(payload or {}),
             seq=self._seq,
-            timestamp=datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            timestamp=datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             job_id=job_id or trace_id,
             trace_id=trace_id,
             intent_id=intent_id,
             limb=limb,
+            clock_s=None if clock_s is None else round(float(clock_s), 3),
         )
         record = event.to_dict()
         for sink in self._sinks:
             try:
                 sink.write(record)
-            except Exception as exc:  # noqa: BLE001 - Logging ist niemals fatal
+            except Exception as exc:
                 sys.stderr.write(f"[events] Sink '{getattr(sink, 'name', '?')} scheiterte: {exc}\n")
         return event
 
