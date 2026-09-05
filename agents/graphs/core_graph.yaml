@@ -1,6 +1,6 @@
 graph:
   name: neural_core_graph
-  version: "1.0.0"
+  version: "1.1.0"
   entrypoint: ingress
 
   nodes:
@@ -13,34 +13,62 @@ graph:
       type: decision
       description: Determines domain and complexity using deterministic signatures.
       next:
-        complex: [urgency_wrapper]
+        complex: [learning_guard]
         simple: [core_executor]
+
+    - id: learning_guard
+      type: learning
+      description: Runs the continuous-learning guard against recorded error patterns and Knowledge Base anti-patterns.
+      next: [urgency_wrapper]
 
     - id: urgency_wrapper
       type: prompt_enrichment
-      description: Injects high-urgency constraints for complex workflows.
+      description: Injects high-urgency constraints and retrieved Knowledge Base context for complex workflows.
       next: [core_executor]
 
     - id: core_executor
       type: agent
       description: Neural Core reasoning node.
+      next: [outcome_evaluator]
+
+    - id: outcome_evaluator
+      type: learning
+      description: Evaluates the data processed and the outcome of the executed work.
       next: [telemetry]
 
     - id: telemetry
       type: sink
       description: Records latency, variant and accuracy for empirical analysis.
+      next: [learning_scheduler]
+
+    - id: learning_scheduler
+      type: learning
+      description: Turns outcomes, feedback, errors and Knowledge Base changes into scheduled learning work.
+      next: [knowledge_base_writer]
+
+    - id: knowledge_base_writer
+      type: knowledge
+      description: Promotes validated corrections and researched better solutions into the Knowledge Base and skill profiles.
       next: []
 
   edges:
     - from: ingress
       to: classifier
     - from: classifier
-      to: urgency_wrapper
+      to: learning_guard
       condition: is_complex
     - from: classifier
       to: core_executor
       condition: not is_complex
+    - from: learning_guard
+      to: urgency_wrapper
     - from: urgency_wrapper
       to: core_executor
     - from: core_executor
+      to: outcome_evaluator
+    - from: outcome_evaluator
       to: telemetry
+    - from: telemetry
+      to: learning_scheduler
+    - from: learning_scheduler
+      to: knowledge_base_writer
