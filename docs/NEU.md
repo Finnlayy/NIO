@@ -1,7 +1,7 @@
 # Projekt „Neu" — Bootstrapping & rekursive Selbstentwicklung
 
-Stand: **Phase 1 abgeschlossen** (Fundament & Basis-Orchestrierung) **+ Zeit-Schicht
-1.2** (Zeit-Tracking, zeitgesteuerte Auslöser, überwachte Ausführung), Protokoll **1.2**.
+Stand: **Phase 1 + Zeit-Schicht 1.2 + Phase 2 abgeschlossen** (Fundament,
+Zeit-Tracking, erster echter Arm: Bootstrap-Limb), Protokoll **1.2**.
 
 Dieses Dokument ist der Bauplan. Es beschreibt Rollen, Schichten, den
 Phasenplan und die Operationsregeln des KI-Kerns. Die normative
@@ -36,7 +36,7 @@ bewerten), damit Entscheidungen nachvollziehbar und testbar bleiben.
 │ orchestrator/     runner · scheduler · planner · events · locks    │
 │                   transport · cli                                  │
 ├────────────────────────────────────────────────────────────────────┤
-│ limbs/            base (Limb-Laufzeit) · echo_limb                 │
+│ limbs/            base (Limb-Laufzeit) · echo_limb · bootstrap_limb │
 │                   registry.json                                    │
 ├────────────────────────────────────────────────────────────────────┤
 │ core/             protocol · config · policy · job · kernel        │
@@ -254,13 +254,14 @@ Wichtige Event-Arten: `timer.armed`, `timer.tick`, `timer.trigger`,
       `finish_job` bei `t_unlimited ≈ 2,1 s` endet, obwohl der Limb 30 s
       gewartet hätte — 15 Nachweise in `scripts/ci_e2e_unlimited.py`
 
-### Phase 2 — Limb-Integration (der erste Arm) ⏭
+### Phase 2 — Limb-Integration (der erste Arm) ✅
 
-* [ ] `limbs/bootstrap_limb.py` gemäß [`prompts/limbs/bootstrap_limb.md`](../prompts/limbs/bootstrap_limb.md)
+* [x] `limbs/bootstrap_limb.py` gemäß [`prompts/limbs/bootstrap_limb.md`](../prompts/limbs/bootstrap_limb.md)
       (`fs.read_file`, `fs.write_file`, `fs.patch`, `fs.list`, `fs.mkdir`)
-* [ ] Register-Eintrag `bootstrap` von `planned` → `active`
-* [ ] Meilenstein: Der Kern lässt über den Limb eine Datei in `workspace/`
+* [x] Register-Eintrag `bootstrap` von `planned` → `active` (`version=1.0.0`)
+* [x] Meilenstein: Der Kern lässt über den Limb eine Datei in `workspace/`
       anlegen — mit Artefakt- und Hash-Nachweis im Result
+      (`tests/test_bootstrap.py::TestMeilensteinOrchestrator`)
 
 ### Phase 3 — Ouroboros-Test (Selbstmodifikation)
 
@@ -333,6 +334,12 @@ python3 -m orchestrator status
 python3 -m orchestrator job run --goal "Roundtrip beweisen" \
   --op sys.echo --param message="Hallo Kern"
 
+# Phase 2: Datei in der Sandbox anlegen (Bootstrap-Limb)
+python3 -m orchestrator job run --goal "Der Kern laesst eine Datei anlegen" \
+  --limb bootstrap --op fs.write_file \
+  --params '{"path":"hallo.txt","content":"Phase 2","mode":"create"}' \
+  --deadline 15 --soft-deadline 10
+
 python3 -m orchestrator job run --goal "Langlauf" --op sys.simulate \
   --params '{"mode":"timeout","seconds":30}' --deadline 2 --soft-deadline 1
 
@@ -389,7 +396,7 @@ Laufzeit: **Python 3.11+, Standardbibliothek only** — keine Installation, kein
 
 ```bash
 make check        # dasselbe Tor wie CI: compile · lint · types · test · e2e
-make test         # 184 Tests (unittest, echte Subprozesse und echte Timer)
+make test         # 210 Tests (unittest, echte Subprozesse und echte Timer)
 make lint         # ruff (Konfiguration in pyproject.toml)
 make types        # mypy über core/, orchestrator/, limbs/
 make e2e          # End-to-End-Beweis für Protokoll 1.2
@@ -402,19 +409,20 @@ fd-Leck im Dauerbetrieb kein stiller Fehler ist), ein Lint-/Typen-Job und ein
 End-to-End-Job, der die echte CLI fährt und den Exit-Code-Vertrag prüft.
 (`ci-evals.yml` prüft weiterhin das Legacy-Harness unter `evals/`.)
 
-### Test-Inventar (184)
+### Test-Inventar (210)
 
 | Modul | Anzahl | Was bewiesen wird |
 |---|---|---|
 | `tests/test_protocol.py` | 26 | Envelopes, strikte Validierung, Timer, Abwärtskompatibilität 1.1 → 1.2 |
-| `tests/test_policy.py` | 17 | Sandbox, Elevation, Constitution Guard, Trigger-Policy |
+| `tests/test_policy.py` | 22 | Sandbox, Elevation, Constitution Guard, Trigger-Policy, Phase-3-Grenze |
 | `tests/test_orchestrator.py` | 24 | End-to-End mit echten Limbs: Roundtrip, Timeout, Autodidaktik, Job-Store |
 | `tests/test_planner.py` | 9 | Diagnose, Maßnahmen, Budget, Korrektur-Intent |
 | `tests/test_schema_parity.py` | 32 | JSON Schemas ≡ Referenzimplementierung (Stdlib-Prüfer) |
 | `tests/test_schedule.py` | 33 | Scheduler-Semantik mit virtueller Uhr, Persistenz/Re-attach, CLI-Zeitplan |
 | `tests/test_unlimited.py` | 19 | `t_unlimited`, Trigger während der Limb läuft, Safety-Netz, Budget-Trennung |
-| `tests/test_limbs.py` | 8 | Beide Aufrufwege eines Limbs, Versions-/Register-Drift, Limb-Uhr |
-| `tests/test_cli_contract.py` | 16 | Einstiegspunkt, Exit-Codes, `--json`-Kanäle, `--runtime-dir`-Isolation |
+| `tests/test_limbs.py` | 9 | Beide Aufrufwege, Versions-/Register-Drift, Limb-Uhr, Bootstrap-Register |
+| `tests/test_bootstrap.py` | 18 | Phase 2: fs.*, Sandbox, Backup, Patch, Hash, Meilenstein über den Orchestrator |
+| `tests/test_cli_contract.py` | 18 | Einstiegspunkt, Exit-Codes, `--json`-Kanäle, `--runtime-dir`-Isolation |
 
 `scripts/ci_e2e_unlimited.py` ergänzt die Suite um den Nachweis am lebenden
 System: 15 Prüfungen über die echte CLI, darunter `deadline_s/expires_at/

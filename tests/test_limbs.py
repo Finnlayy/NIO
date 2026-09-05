@@ -28,12 +28,14 @@ import limbs.base as limb_base
 from core.config import NeuConfig
 from core.kernel import Kernel, arm_timer
 from core.protocol import PROTOCOL_VERSION, ErrorCode, Intent, Operations
+from limbs.bootstrap_limb import BootstrapLimb
 from limbs.echo_limb import EchoLimb
 
 from . import REPO_ROOT
 
 REGISTRY_PATH = REPO_ROOT / "limbs" / "registry.json"
 LIMB_SCRIPT = REPO_ROOT / "limbs" / "echo_limb.py"
+BOOTSTRAP_SCRIPT = REPO_ROOT / "limbs" / "bootstrap_limb.py"
 
 
 class LimbTestCase(unittest.TestCase):
@@ -154,6 +156,18 @@ class TestRegisterUndVersion(LimbTestCase):
                     self.operations.known(operation),
                     f"{name}: Operation '{operation}' fehlt in protocol/operations.json",
                 )
+
+    def test_bootstrap_register_bildet_den_limb_exakt_ab(self):
+        entry = self.registry["limbs"]["bootstrap"]
+        limb = BootstrapLimb()
+        self.assertEqual(sorted(entry["operations"]), sorted(limb.handlers()))
+        self.assertEqual(entry["version"], limb.version)
+        self.assertEqual(entry["status"], "active")
+        self.assertEqual(entry["entrypoint"], "limbs/bootstrap_limb.py")
+        self.assertTrue(BOOTSTRAP_SCRIPT.is_file())
+        module = importlib.import_module("limbs.bootstrap_limb")
+        self.assertIs(module.LimbBase, limb_base.LimbBase)
+        self.assertTrue(issubclass(module.BootstrapLimb, limb_base.LimbBase))
 
 
 if __name__ == "__main__":

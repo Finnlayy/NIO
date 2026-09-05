@@ -72,7 +72,7 @@ line-ending = "lf"
 # ----------------------------------------------------------------------------
 # Pragmatisch, aber nicht zahm: Alle Koerper werden geprueft, implizite Optionals
 # und redundante Casts sind Fehler. Vollstaendig strikte Signaturen folgen mit
-# Phase 2 (Bootstrap-Limb), wenn die Limb-Grenzen typisiert sind.
+# Phase 3 (Ouroboros), wenn die Selbstmodifikation die Limb-Grenzen haertet.
 [tool.mypy]
 python_version = "3.11"
 files = ["core", "orchestrator", "limbs"]

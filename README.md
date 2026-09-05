@@ -91,13 +91,13 @@ core/           Protokoll 1.2, Konfiguration, Policy/Sandbox, Job-Lebenszyklus,
                 Kernel, JSON-Schema-Prüfer (Stdlib)
 orchestrator/   Runner, Scheduler (Zeitplan), Autodidaktik-Planner, Event-Bus,
                 Agent-Slots, Transport, CLI
-limbs/          Limb-Laufzeit (Timer-Aufsicht) + Echo-Limb als Konformanz-Harness
+limbs/          Limb-Laufzeit (Timer-Aufsicht) + Echo-Limb + Bootstrap-Limb (fs.*)
 protocol/       normative Spezifikation 1.2, JSON Schemas, Operations-Register, Beispiele
 prompts/        Rollen-Spezifikationen für Core und Limbs
 scripts/        Nachweise (End-to-End-Beweis für CI und `make e2e`)
 workspace/      Sandbox für Limb-Artefakte
 runtime/        Queues, Jobs, Zeitpläne, Archiv, Backups, Locks (nicht versioniert)
-tests/          184 Unittests mit echten Subprozessen und echten Timern
+tests/          210 Unittests mit echten Subprozessen und echten Timern
 docs/NEU.md     Bauplan, Phasen, Operationsregeln
 pyproject.toml  Metadaten, ruff- und mypy-Konfiguration · Makefile: `make check`
 ```

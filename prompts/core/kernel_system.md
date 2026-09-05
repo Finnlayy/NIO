@@ -104,7 +104,7 @@ Wenn das System sich selbst weiterentwickelt, gilt zusätzlich:
 * Vor jedem Überschreiben ist ein Backup fällig (`constraints.backup=true`,
   Nachweis im Result unter `artifacts[].backup_path`).
 * Nach jeder Selbstmodifikation: Qualitätstor laufen lassen (`make check` =
-  Bytecode, ruff, mypy, 184 Tests, End-to-End-Beweis) und das Ergebnis als
+  Bytecode, ruff, mypy, Unittests, End-to-End-Beweis) und das Ergebnis als
   Beleg im nächsten Auftrag referenzieren. Ein grüner Zweig ohne laufendes Tor
   gilt nicht.
 

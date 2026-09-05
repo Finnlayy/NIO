@@ -270,26 +270,36 @@ class TestAutodidaktik(OrchestratorTestCase):
         self.assertEqual(outcome.iterations, 1)
         self.assertEqual(outcome.job.measures_taken, 0)
 
-    def test_fehlende_faehigkeit_eskaliert_statt_endlos_zu_probieren(self):
-        """Kein aktiver Limb kann fs.write_file -> Eskalation, kein Blindversuch."""
-        base = self.kernel.build_intent(operation="sys.echo", params={"message": "x"}, limb="echo", goal="Faehigkeit fehlt").to_dict()
+    def test_falscher_limb_wird_nicht_blind_gestartet(self):
+        """echo implementiert fs.write_file nicht -- Policy lehnt ab, Planner zeigt auf bootstrap."""
+        base = self.kernel.build_intent(operation="sys.echo", params={"message": "x"}, limb="echo", goal="Falscher Limb").to_dict()
         base["task"]["operation"] = "fs.write_file"
         base["task"]["params"] = {"path": "ziel.txt", "content": "inhalt"}
         forged = Intent.from_dict(base, operations=self.orch.operations)
         attempt = self.orch.dispatch(forged)
         self.assertEqual(attempt.result.status, "rejected")
         self.assertEqual(attempt.result.error_code, ErrorCode.TARGET_NOT_FOUND)
-        self.assertTrue(attempt.diagnosis.escalate)
+        self.assertFalse(attempt.spawned, "Ein Limb ohne die Operation darf nicht starten")
+        self.assertFalse(attempt.diagnosis.escalate, "Die Faehigkeit existiert -- beim Bootstrap-Limb")
+        self.assertEqual(attempt.diagnosis.limb_override, "bootstrap")
 
-    def test_geplanter_limb_wird_nicht_gestartet(self):
-        base = self.kernel.build_intent(operation="sys.echo", params={"message": "x"}, limb="echo", goal="Bootstrap").to_dict()
-        base["target"]["limb"] = "bootstrap"
-        forged = Intent.from_dict(base, operations=self.orch.operations)
-        attempt = self.orch.dispatch(forged)
-        self.assertEqual(attempt.result.status, "rejected")
-        self.assertEqual(attempt.result.error_code, ErrorCode.TARGET_NOT_FOUND)
-        self.assertIn("planned", attempt.result.error["message"])
-        self.assertFalse(attempt.spawned, "Ein geplanter Limb darf keinen Prozess starten")
+    def test_bootstrap_limb_ist_aktiv_und_wird_gestartet(self):
+        """Phase 2: Der Bootstrap-Limb ist kein geplanter Eintrag mehr."""
+        spec = self.orch.registry.get("bootstrap")
+        self.assertIsNotNone(spec)
+        self.assertTrue(spec.usable)
+        self.assertTrue(spec.entrypoint.is_file())
+        outcome = self.run_job(
+            goal="Bootstrap-Lebenszeichen ueber fs.list",
+            operation="fs.list",
+            params={},
+            limb="bootstrap",
+            constraints={"sandbox_root": "workspace", "backup": True},
+            deadline_s=15.0,
+            soft_deadline_s=10.0,
+        )
+        self.assertEqual(outcome.attempts[0].result.status, "success")
+        self.assertTrue(outcome.attempts[0].spawned)
 
 
 class TestFehlpfade(OrchestratorTestCase):

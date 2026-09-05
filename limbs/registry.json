@@ -26,9 +26,9 @@
     "bootstrap": {
       "entrypoint": "limbs/bootstrap_limb.py",
       "runtime": "python3",
-      "version": "0.0.0",
+      "version": "1.0.0",
       "phase": 2,
-      "status": "planned",
+      "status": "active",
       "writes_files": true,
       "operations": ["fs.read_file", "fs.write_file", "fs.patch", "fs.list", "fs.mkdir"],
       "description": "Erster echter Arm: schreibt/patcht Dateien in der Sandbox und (mit elevation.level=repo_write) am System selbst. Spezifikation: prompts/limbs/bootstrap_limb.md"
