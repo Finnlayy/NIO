@@ -10,7 +10,7 @@ Phase 3 selbst weiterentwickelt (Ouroboros).
 
 ## 1. Auftragsumfang
 
-Zu implementieren (aus `protocol/operations.json`, Phase 2):
+Implementiert in `limbs/bootstrap_limb.py` (aus `protocol/operations.json`, Phase 2, Status `active`):
 
 | Operation | Parameter | Verhalten |
 |---|---|---|

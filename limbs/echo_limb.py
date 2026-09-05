@@ -1,7 +1,7 @@
 """Echo-Limb (Phase 1) -- Protokoll-Testdouble und Konformanz-Harness.
 
 Beweist, dass die Pipeline Intent -> Orchestrator -> Limb -> Result funktioniert,
-bevor in Phase 2 der Bootstrap-Limb echte Dateioperationen uebernimmt. Er
+Der Bootstrap-Limb (Phase 2) uebernimmt echte Dateioperationen; dieser Limb
 implementiert ausschliesslich ``sys.*``-Operationen und schreibt niemals Dateien.
 
 ``sys.simulate`` erzwingt gezielt die Fehlpfade (fail / timeout / partial /

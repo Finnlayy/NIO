@@ -65,7 +65,7 @@ prompts/          Rollen-Spezifikationen (Text, keine Logik)
    ▲
 orchestrator/     runner · scheduler · planner · events · locks · transport · cli
    ▲                     │  führt aus, überwacht, plant nach
-limbs/            base · echo_limb · (Phase 2: bootstrap_limb)
+limbs/            base · echo_limb · bootstrap_limb
    ▲                     │  liest Intent, liefert Result
 core/             protocol · config · policy · job · kernel · schemacheck
                          │  Datenmodell, Rechte, Bewertung
@@ -151,7 +151,7 @@ mehrdeutig.
 Aufgabenplanung, nicht Zeitsteuerung): `schedules` → `study_plans` oder
 `curricula`, `tasks` → `exercises`, `skills` → `capabilities`. Sollte PR #1
  merge-ready werden, ist die Umbenennung dort billiger als hier — dieser Zweig
-ist normativ über `protocol/*.schema.json` und 186 Tests abgesichert.
+ist normativ über `protocol/*.schema.json` und 210 Tests abgesichert.
 
 ---
 
