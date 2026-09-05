@@ -22,6 +22,7 @@
     "start": "node dist/server.js",
     "test": "pytest evals/tests",
     "trace:generate": "ts-node --project tsconfig.evals.json evals/tests/run_trace.ts",
+    "learning:trace:generate": "ts-node --project tsconfig.evals.json evals/tests/run_learning_trace.ts",
     "tunnel": "ngrok http 4000",
     "typecheck": "tsc --noEmit",
     "ui:build": "npm --prefix frontend run build",

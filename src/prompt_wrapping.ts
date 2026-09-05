@@ -1,4 +1,5 @@
 import { classifyTask } from './domain_classifier';
+import { composeResearchBrief } from './learning/research';
 import {
   ClassificationResult,
   ComplexDomain,
@@ -151,13 +152,45 @@ export function enforceUrgencyContext(context: PromptContext): string {
 
   const politeness = context.politenessTier ?? 'neutral';
   const urgencyBlock = composeUrgencyBlock(classification, politeness);
+  const learningBlock = composeLearningBlock(context);
 
   return [
     '--- URGENCY CONTEXT ---',
     urgencyBlock,
     '--- END URGENCY CONTEXT ---',
+    ...(learningBlock ? ['', '--- LEARNING CONTEXT ---', learningBlock, '--- END LEARNING CONTEXT ---'] : []),
     '',
     'TASK:',
     context.taskDescription,
   ].join('\n');
+}
+
+/**
+ * Compose the continuous-learning context that should influence execution:
+ * known repeated-error risk guards and best available Knowledge Base research.
+ */
+export function composeLearningBlock(context: PromptContext): string {
+  const parts: string[] = [];
+  const learning = context.learningContext;
+
+  if (learning?.riskGuard?.hasKnownPattern) {
+    const risk = learning.riskGuard;
+    parts.push(
+      'RISK GUARD:',
+      `Repeated-error risk is ${risk.risk.toFixed(2)}.`,
+      risk.recommendation,
+      ...(risk.matchedAntiPatterns.length > 0
+        ? ['Avoid known anti-patterns:', ...risk.matchedAntiPatterns.slice(0, 6).map((a) => `- ${a}`)]
+        : []),
+    );
+  }
+
+  if (learning?.research && learning.research.length > 0) {
+    parts.push(composeResearchBrief(learning.research, 3));
+  } else if (learning?.knowledgeBrief) {
+    parts.push(learning.knowledgeBrief);
+  }
+
+  if (parts.length === 0) return '';
+  return parts.join('\n');
 }

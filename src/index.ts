@@ -4,6 +4,7 @@ export * from './prompt_wrapping';
 export * from './system_template_loader';
 export * from './telemetry';
 export * from './middleware';
+export * from './learning';
 
 import { NeuralCoreAdapter, WrappedPrompt, NeuralCoreResponse } from './types';
 
