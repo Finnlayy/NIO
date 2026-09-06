@@ -1503,10 +1503,20 @@ class Orchestrator:
             handle.ticks += 1
 
             # Lebenszeichen: Slot-Frist und Job-Heartbeat erneuern, damit eine
-            # langlaufende Beobachtung nicht als Waise eskaliert wird.
-            self.agents.renew(handle.prepared.slot, ttl_s=renew_s)
+            # langlaufende Beobachtung nicht als Waise eskaliert wird.  Beide
+            # Fristen (Slot-TTL ``renew_s`` >= 30 s, Stale-Schwelle
+            # ``tick_s * 12 + 25`` >= 30 s) sind ein Vielfaches der Tick-Dauer;
+            # ein Plattenzugriff pro Tick ist reine Write-Amplifikation
+            # (Bolt: gemessen ~0,6 ms/Tick fuer renew + heartbeat, ca. 36 % der
+            # Tick-Kosten). Renewal alle ``renew_s / 5`` Sekunden haelt die
+            # Frist immer mindestens ~4/5 * ``renew_s`` in der Zukunft (plus
+            # PID-Liveness-Check als zweite Sicherung) -- bei tick_s = 0,5 s
+            # faellt der Write auf 1 pro 12 Ticks (~92 % weniger).
+            lifecycle_every = max(1, int((renew_s / 5.0) / tick_s))
             clock = state.elapsed_s() if state is not None else handle.intent.timer.elapsed()
-            self.jobs.heartbeat(job_id, note=f"tick={summary['ticks']} t_unlimited={clock}s")
+            if summary["ticks"] % lifecycle_every == 0:
+                self.agents.renew(handle.prepared.slot, ttl_s=renew_s)
+                self.jobs.heartbeat(job_id, note=f"tick={summary['ticks']} t_unlimited={clock}s")
 
             fired_this_tick = 0
             started_this_tick = 0
