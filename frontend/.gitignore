@@ -3,3 +3,6 @@ node_modules/
 .env.local
 *.log
 *.tsbuildinfo
+
+# Zero-dependency UI test harness output (scripts/ui-test.mjs)
+.test-build/

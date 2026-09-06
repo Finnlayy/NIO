@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowDownUp,
@@ -19,30 +19,25 @@ import {
   dispatchRemove,
   useGridStore,
 } from "../store";
+import { renderWidget } from "./index";
 
-export function WidgetFrame({
-  widget,
-  index,
-  onDragStart,
-  onDragEnter,
-  onDragEnd,
-  dragging,
-  children,
-}: {
+export interface WidgetFrameProps {
   widget: WidgetInstance;
   index: number;
-  onDragStart: (index: number) => void;
+  onDragStart: (index: number, id: string) => void;
   onDragEnter: (index: number) => void;
   onDragEnd: () => void;
   dragging: boolean;
-  children: React.ReactNode;
-}) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const toggleMinimize = useGridStore((s) => s.toggleMinimize);
-  const togglePin = useGridStore((s) => s.togglePin);
-  const cycleSpan = useGridStore((s) => s.cycleSpan);
-  const cycleHeight = useGridStore((s) => s.cycleHeight);
+}
 
+/**
+ * Thin, deliberately NOT memoized shell: the `layout` motion.section must
+ * render whenever the grid reflows so framer-motion can re-measure its
+ * layout projection (memoizing this element would break the spring
+ * reorder animation of shifted widgets). The expensive part — header
+ * controls + data-viz body — lives in the memoized WidgetFrameContent.
+ */
+export function WidgetFrame({ widget, index, onDragStart, onDragEnter, onDragEnd, dragging }: WidgetFrameProps) {
   return (
     <motion.section
       layout
@@ -51,7 +46,7 @@ export function WidgetFrame({
       exit={{ opacity: 0, scale: 0.94 }}
       transition={{ type: "spring", stiffness: 260, damping: 28 }}
       draggable={!widget.pinned}
-      onDragStart={() => onDragStart(index)}
+      onDragStart={() => onDragStart(index, widget.id)}
       onDragEnter={() => onDragEnter(index)}
       onDragEnd={onDragEnd}
       onDragOver={(e) => e.preventDefault()}
@@ -61,6 +56,26 @@ export function WidgetFrame({
       style={{ gridColumn: `span ${widget.span} / span ${widget.span}` }}
       aria-label={widget.title}
     >
+      <WidgetFrameContent widget={widget} />
+    </motion.section>
+  );
+}
+
+/**
+ * Memoized content boundary (header controls + body). Shallow props: a
+ * single `widget` record — the frame re-renders only when THAT widget's
+ * record changes (data tick, span/height, pin/minimize), never for
+ * unrelated grid churn (other ticks, drag sessions, sibling reorders).
+ */
+export const WidgetFrameContent = memo(function WidgetFrameContent({ widget }: { widget: WidgetInstance }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const toggleMinimize = useGridStore((s) => s.toggleMinimize);
+  const togglePin = useGridStore((s) => s.togglePin);
+  const cycleSpan = useGridStore((s) => s.cycleSpan);
+  const cycleHeight = useGridStore((s) => s.cycleHeight);
+
+  return (
+    <>
       <header className="flex items-center gap-2 px-3.5 h-11 border-b border-white/[0.06] shrink-0">
         {!widget.pinned ? (
           <span
@@ -140,13 +155,13 @@ export function WidgetFrame({
             transition={{ duration: 0.22, ease: "easeInOut" }}
             className="overflow-hidden"
           >
-            <div className="p-3.5">{children}</div>
+            <div className="p-3.5">{renderWidget(widget)}</div>
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.section>
+    </>
   );
-}
+});
 
 function IconBtn({
   children,

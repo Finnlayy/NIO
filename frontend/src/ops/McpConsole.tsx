@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Radio, Terminal, X } from "lucide-react";
 import { useGridStore } from "./store";
+import type { McpEvent } from "./types";
+import { LogScroller } from "./consoleScroll";
 
 function toneClass(method: string) {
   if (method.includes("hydrate")) return "text-cyan-300";
@@ -11,15 +13,15 @@ function toneClass(method: string) {
   return "text-slate-300";
 }
 
+/**
+ * Shell: subscribes to `consoleOpen` only. While closed, MCP events cause
+ * ZERO re-renders — no log subscription, no scroll effect, no row diffing.
+ * The motion.div stays a direct AnimatePresence child so the slide exit
+ * animation is preserved.
+ */
 export function McpConsole() {
   const open = useGridStore((s) => s.consoleOpen);
   const setOpen = useGridStore((s) => s.setConsoleOpen);
-  const log = useGridStore((s) => s.mcpLog);
-  const endRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [log, open]);
 
   return (
     <AnimatePresence>
@@ -38,7 +40,7 @@ export function McpConsole() {
             </span>
             <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
               <Radio className="w-3 h-3 text-emerald-400 pulse-dot" />
-              {log.length} events
+              <ConsoleEventCount />
             </span>
             <button
               onClick={() => setOpen(false)}
@@ -49,21 +51,59 @@ export function McpConsole() {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px] space-y-1">
-            {log.map((event) => (
-              <div key={event.id} className="flex gap-3 items-start hover:bg-white/[0.03] rounded px-1.5 py-0.5">
-                <span className="text-slate-600 shrink-0">{event.timestamp}</span>
-                <span className="text-violet-300/80 shrink-0">{event.source}</span>
-                <span className={`shrink-0 ${toneClass(event.method)}`}>{event.method}</span>
-                <span className="text-slate-500 break-all">
-                  {JSON.stringify(event.params)}
-                </span>
-              </div>
-            ))}
-            <div ref={endRef} />
-          </div>
+          <McpConsoleLog />
         </motion.div>
       )}
     </AnimatePresence>
   );
 }
+
+/**
+ * Leaf subscribing to `mcpLog.length` (primitive). At the 60-event cap the
+ * length stops changing, so even this leaf goes quiet. Mounted only while
+ * the console is open.
+ */
+export function ConsoleEventCount() {
+  const count = useGridStore((s) => s.mcpLog.length);
+  return <>{count} events</>;
+}
+
+/**
+ * Log list. Subscribes to `mcpLog` only while the console is open; rows are
+ * memoized, so appending one event re-renders exactly one row (plus the
+ * list shell) instead of the whole 60-row tail, and `JSON.stringify` runs
+ * once per new event instead of once per row per event.
+ */
+export function McpConsoleLog() {
+  const log = useGridStore((s) => s.mcpLog);
+  const endRef = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<LogScroller | null>(null);
+  if (scrollerRef.current === null) scrollerRef.current = new LogScroller();
+
+  useEffect(() => {
+    if (endRef.current) scrollerRef.current!.request(endRef.current);
+  }, [log]);
+
+  return (
+    <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px] space-y-1">
+      {log.map((event) => (
+        <LogRow key={event.id} event={event} />
+      ))}
+      <div ref={endRef} />
+    </div>
+  );
+}
+
+/** One immutable log line. Memoized: the store never mutates events, so unchanged rows skip. */
+export const LogRow = memo(function LogRow({ event }: { event: McpEvent }) {
+  return (
+    <div className="flex gap-3 items-start hover:bg-white/[0.03] rounded px-1.5 py-0.5">
+      <span className="text-slate-600 shrink-0">{event.timestamp}</span>
+      <span className="text-violet-300/80 shrink-0">{event.source}</span>
+      <span className={`shrink-0 ${toneClass(event.method)}`}>{event.method}</span>
+      <span className="text-slate-500 break-all">
+        {JSON.stringify(event.params)}
+      </span>
+    </div>
+  );
+});

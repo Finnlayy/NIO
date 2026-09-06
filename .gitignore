@@ -24,3 +24,6 @@ __pycache__/
 # Sicherungskopien der Limbs
 *.bak
 *.neu-tmp
+
+# pip editable-install artifacts
+*.egg-info/
