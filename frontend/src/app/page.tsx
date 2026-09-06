@@ -1,5 +1,5 @@
-import NetworkDashboard from "@/components/NetworkDashboard";
+import OpsGridPage from "./ops/page";
 
 export default function Home() {
-  return <NetworkDashboard />;
+  return <OpsGridPage />;
 }
