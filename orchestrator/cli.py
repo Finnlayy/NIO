@@ -650,6 +650,50 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return EXIT_OK if ok else EXIT_PROTOCOL
 
 
+def cmd_archive(args: argparse.Namespace) -> int:
+    """Archiv-/Ledger-Hygiene: Statistik anzeigen oder veraltete Eintraege kompaktieren."""
+    config = _config_from_args(args)
+    transport = FileTransport(config)
+
+    if getattr(args, "archive_cmd", None) == "stats":
+        stats = transport.archive_stats()
+        if args.json:
+            _dump(stats)
+        else:
+            _say("Archiv-Statistik:")
+            if stats["days"]:
+                for day in sorted(stats["days"]):
+                    info = stats["days"][day]
+                    _say(f"  {day}: {info['entries']} Eintraege, {info['bytes']} Bytes")
+            else:
+                _say("  (leer)")
+            if stats["compacted"]:
+                for day, info in stats["compacted"].items():
+                    _say(f"  kompaktiert {day}: {info['records']} Records, {info['bytes']} Bytes")
+            _say(f"  gesamt: {stats['total_entries']} Eintraege, {stats['total_bytes']} Bytes")
+        return EXIT_OK
+
+    summary = transport.compact_archive(
+        older_than_days=getattr(args, "older_than_days", None),
+        keep_recent=getattr(args, "keep_recent", 0),
+    )
+    violations = transport.verify_archive()
+    if args.json:
+        _dump({"ok": not violations, "summary": summary, "integrity_violations": violations})
+    else:
+        if violations:
+            _say(f"[FEHLER] Integritaetsverletzungen: {len(violations)}")
+            for issue in violations[:10]:
+                _say(f"  {issue}")
+            return EXIT_PROTOCOL
+        _say(f"[ok] Ledger kompaktiert: {summary['pruned_dirs']} Eintraege, "
+             f"{summary['bytes_freed']} Bytes freigegeben, {summary['snapshot_bytes']} Bytes im Snapshot")
+        for day in sorted(summary["days"]):
+            info = summary["days"][day]
+            _say(f"  {day}: {info['compacted']} Eintraege -> {info['snapshot_records']} Snapshot-Records")
+    return EXIT_OK
+
+
 class WatchSink:
     """Menschenlesbare Live-Ansicht der Zeit-Ereignisse (``watch``).
 
@@ -1327,6 +1371,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_sched_clear = sched_sub.add_parser("clear", help="Zeitplan eines Jobs entfernen")
     p_sched_clear.add_argument("job_id")
     p_sched_clear.set_defaults(func=cmd_schedule_clear)
+
+    p_archive = sub.add_parser("archive", help="Archiv-/Ledger-Hygiene: Statistik und Kompaktierung")
+    archive_sub = p_archive.add_subparsers(dest="archive_cmd", required=True, parser_class=_NeuArgumentParser)
+    p_arch_stats = archive_sub.add_parser("stats", help="Archiv-Groesse und Eintraege anzeigen")
+    p_arch_stats.set_defaults(func=cmd_archive)
+    p_arch_compact = archive_sub.add_parser("compact", help="Veraltete Eintraege in Snapshot-Dateien kompaktieren und pruenen")
+    p_arch_compact.add_argument("--older-than-days", type=int, default=30,
+                                help="nur Eintraege aelter als N Tage kompaktieren (Default 30)")
+    p_arch_compact.add_argument("--keep-recent", type=int, default=7,
+                                help="die neuesten N Eintraege pro Tag als Verzeichnis belassen (Default 7)")
+    p_arch_compact.set_defaults(func=cmd_archive)
 
     p_loop = sub.add_parser("loop", help="Inbox abarbeiten")
     p_loop.add_argument("--once", action="store_true", default=True, help="Ein Durchlauf (Default)")
