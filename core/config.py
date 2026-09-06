@@ -68,6 +68,10 @@ DEFAULT_HUMAN_ONLY_GLOBS: tuple[str, ...] = (
 DEFAULT_MAX_OUTPUT_BYTES = 1_048_576
 HARD_MAX_OUTPUT_BYTES = 67_108_864
 
+#: Mindest-Schwellenwert für die strukturierte `defineEval`-Pipeline (ersetzt starre 85er-Schwelle durch konfigurierbare Pipeline-Parameter).
+EVAL_MIN_THRESHOLD = 85.0
+EVAL_DEFAULT_SAFETY_TOLERANCE = 0.1
+
 #: Timer-Defaults (Protokoll 1.2)
 DEFAULT_RUNTIME_DIR = "runtime"
 DEFAULT_WORKSPACE_DIR = "workspace"
@@ -215,6 +219,8 @@ class NeuConfig:
     human_only_globs: tuple[str, ...] = DEFAULT_HUMAN_ONLY_GLOBS
     limits: Limits = field(default_factory=lambda: Limits.from_dict(None, "dev"))
     timer: TimerDefaults = field(default_factory=TimerDefaults)
+    eval_min_threshold: float = EVAL_MIN_THRESHOLD
+    eval_safety_tolerance: float = EVAL_DEFAULT_SAFETY_TOLERANCE
     source_file: Path | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
@@ -319,6 +325,8 @@ class NeuConfig:
             "denied_globs": list(self.denied_globs),
             "human_only_globs": list(self.human_only_globs),
             "max_output_bytes": self.max_output_bytes,
+            "eval_min_threshold": self.eval_min_threshold,
+            "eval_safety_tolerance": self.eval_safety_tolerance,
             "source_file": str(self.source_file) if self.source_file else None,
         }
 

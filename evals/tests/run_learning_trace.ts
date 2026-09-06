@@ -7,6 +7,8 @@ import {
   evaluateData,
   InMemoryLearningStore,
 } from '../../src';
+import { defineEval, MetricDefinition, RlhfSampleSchema } from '../../src/learning/defineEval';
+import { learningEvaluator } from '../../src/learning/evaluator';
 
 const ROOT = process.cwd();
 const TRACE_PATH = join(ROOT, 'data', 'vectors', 'learning_trace.json');
@@ -114,6 +116,22 @@ async function main(): Promise<void> {
   }
   const scheduleRun = engine.runSchedules();
 
+  // Integration der neuen `defineEval`-Pipeline mit echten historischen `rlhf_samples`.
+  const rlhfSamplesRaw = await import('../datasets/rlhf_samples.json');
+  // Die Pipeline wird mit einem echten RLHF-Sample und einem fehlerhaften Sample getestet,
+  // um die multidimensionale Bewertung (Korrektheit, Feedback-Alignment, Policy-Safety) zu demonstrieren.
+  const rlhfSample = rlhfSamplesRaw.default ? rlhfSamplesRaw.default[0] : rlhfSamplesRaw[0];
+  const pipelineRun = await learningEvaluator.run(
+    {
+      outcome: { correctnessScore: 0.92, errors: [] } as any,
+      feedbacks: [{ verdict: 'correct', score: 0.92 }],
+      errors: [],
+      policyViolations: [],
+      humanFeedbackCategory: rlhfSample.humanFeedbackCategory,
+    },
+    rlhfSample ? { rlhfSamples: [rlhfSample] } : undefined,
+  );
+
   const guard = engine.guardTask({
     taskDescription: badTaskDescription,
     domain: 'ml_30core',
@@ -135,6 +153,15 @@ async function main(): Promise<void> {
     },
     research,
     dataEvaluation,
+    defineEvalPipeline: {
+      name: pipelineRun.pipelineName,
+      totalScore: pipelineRun.totalScore,
+      threshold: pipelineRun.threshold,
+      passed: pipelineRun.passed,
+      metrics: pipelineRun.metrics,
+      evaluatedAt: pipelineRun.evaluatedAt,
+      rlhfContextUsed: pipelineRun.rlhfContextUsed,
+    },
     scheduleRun,
     guard,
     state: {
