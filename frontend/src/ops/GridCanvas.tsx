@@ -1,17 +1,41 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { AnimatePresence, LayoutGroup } from "framer-motion";
 import { LayoutGrid } from "lucide-react";
 import { useGridStore } from "./store";
+import { DragSession } from "./dragSession";
 import { WidgetFrame } from "./widgets/WidgetFrame";
-import { renderWidget } from "./widgets";
 
 export function GridCanvas() {
   const widgets = useGridStore((s) => s.widgets);
   const reorder = useGridStore((s) => s.reorder);
-  const dragIndex = useRef<number | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  /* Drag bookkeeping lives in a pure session (stable identity — the drag
+     callbacks below therefore never change reference). */
+  const sessionRef = useRef<DragSession | null>(null);
+  if (sessionRef.current === null) sessionRef.current = new DragSession();
+  const dragSession = sessionRef.current;
+
+  const handleDragStart = useCallback(
+    (index: number, id: string) => {
+      dragSession.begin(index);
+      setDraggingId(id);
+    },
+    [dragSession],
+  );
+  const handleDragEnter = useCallback(
+    (index: number) => {
+      const move = dragSession.enter(index);
+      if (move) reorder(move.from, move.to);
+    },
+    [dragSession, reorder],
+  );
+  const handleDragEnd = useCallback(() => {
+    dragSession.end();
+    setDraggingId(null);
+  }, [dragSession]);
 
   return (
     <LayoutGroup>
@@ -32,23 +56,10 @@ export function GridCanvas() {
                 widget={widget}
                 index={index}
                 dragging={draggingId === widget.id}
-                onDragStart={(i) => {
-                  dragIndex.current = i;
-                  setDraggingId(widget.id);
-                }}
-                onDragEnter={(i) => {
-                  if (dragIndex.current !== null && dragIndex.current !== i) {
-                    reorder(dragIndex.current, i);
-                    dragIndex.current = i;
-                  }
-                }}
-                onDragEnd={() => {
-                  dragIndex.current = null;
-                  setDraggingId(null);
-                }}
-              >
-                {renderWidget(widget)}
-              </WidgetFrame>
+                onDragStart={handleDragStart}
+                onDragEnter={handleDragEnter}
+                onDragEnd={handleDragEnd}
+              />
             ))}
           </AnimatePresence>
         </div>

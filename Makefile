@@ -41,6 +41,9 @@ compile:  ## Bytecode-Pruefung (Syntax)
 e2e:  ## End-to-End-Beweis 1.2: Zeit tracken statt begrenzen (ueber die CLI)
 	$(PYTHON) scripts/ci_e2e_unlimited.py
 
+ui-test:  ## Frontend-UI-Tests (Zero-Dep-Harness: tsc + node --test, kein DOM)
+	node frontend/scripts/ui-test.mjs
+
 check: compile lint types test e2e  ## Das volle Tor (wie in CI)
 	@echo "check: alles gruen"
 

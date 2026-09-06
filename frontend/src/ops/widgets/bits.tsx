@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type { ReactNode } from "react";
 import type { DataSource } from "../hooks/useMarketData";
 
@@ -51,6 +52,12 @@ export function Sparkline({
   height?: number;
   fill?: boolean;
 }) {
+  /* Component-scoped gradient id (useId): the SVG id namespace is
+     document-wide, so keying the id off the *color* made every same-color
+     sparkline on the page share one gradient — a style-scope leak between
+     widget instances (and a paint break if the first instance unmounts).
+     useId is unique per instance and stable across re-renders/hydration. */
+  const gradientId = `spark-${useId()}`;
   const w = 320;
   const h = 100;
   const step = w / Math.max(1, values.length - 1);
@@ -60,12 +67,12 @@ export function Sparkline({
       {fill && (
         <>
           <defs>
-            <linearGradient id={`spark-${color.replace("#", "")}`} x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={color} stopOpacity="0.28" />
               <stop offset="100%" stopColor={color} stopOpacity="0" />
             </linearGradient>
           </defs>
-          <polygon points={`0,${h} ${pts} ${w},${h}`} fill={`url(#spark-${color.replace("#", "")})`} />
+          <polygon points={`0,${h} ${pts} ${w},${h}`} fill={`url(#${gradientId})`} />
         </>
       )}
       <polyline points={pts} fill="none" stroke={color} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
