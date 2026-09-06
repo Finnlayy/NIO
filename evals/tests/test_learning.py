@@ -135,3 +135,17 @@ class TestLearningTrace:
         schedule_run = trace["scheduleRun"]
         assert schedule_run["schedulesRunCount"] >= 1
         assert schedule_run["createdTaskIds"]
+
+    def test_define_eval_pipeline_is_present_in_trace(self, trace: dict[str, Any]):
+        # Die strukturierte Evaluierungs-Pipeline (`defineEval`) ersetzt statische Scores.
+        assert "defineEvalPipeline" in trace
+        pipeline = trace["defineEvalPipeline"]
+        assert pipeline["name"] == "NIO-Learning-Quality-Pipeline"
+        assert pipeline["threshold"] == 85
+        assert isinstance(pipeline["totalScore"], int)
+        assert 0 <= pipeline["totalScore"] <= 100
+        assert "metrics" in pipeline
+        assert "correctness" in pipeline["metrics"]
+        assert "feedback_alignment" in pipeline["metrics"]
+        assert "policy_safety" in pipeline["metrics"]
+        assert pipeline["rlhfContextUsed"] >= 1

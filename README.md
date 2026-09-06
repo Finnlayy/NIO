@@ -218,6 +218,22 @@ const research = engine.research({ /* neuer Task */ });
 engine.runSchedules();
 ```
 
+## E. Goodhart's Law (Starre 85er-Schwelle) — In Überarbeitung
+
+Der Ersatz statischer Scores (z. B. starre 85 %-Schwelle) durch strukturierte Evaluierungs-Pipelines wurde umgesetzt (`defineEval` über echte historische `rlhf_samples`-Datensätze, siehe [Plan](PLAN_GOODHART.md)).
+
+Neu:
+- `src/learning/defineEval.ts` — Pipeline mit multidimensionalen Scorern (`correctness`, `feedback_alignment`, `policy_safety`).
+- `evals/datasets/rlhf_samples.json` — echte historische RLHF-Samples als Baseline.
+- `core/config.py` / `neu.config.json` — `eval_min_threshold` (85.0) und `eval_safety_tolerance` (0.1) ausgelagert.
+- `src/learning/evaluator.ts` — statische Heuristik durch `learningEvaluator` (Pipeline) und `runLearningPipeline` ersetzt.
+
+Verwendung:
+```typescript
+import { learningEvaluator } from './src/learning/evaluator';
+const result = await learningEvaluator.run({ outcome, feedbacks, errors: [] }, { rlhfSamples: rlhfData });
+```
+
 ## Literaturhinweis
 
 Die im Telemetrie-Interface hinterlegten Genauigkeitsbenchmarks beziehen sich auf die Studie *Mind Your Tone: Investigating How Prompt Politeness Affects LLM Accuracy* (Dobariya & Kumar, 2025). Darin erreichten sehr direkte Prompts 84.8% Genauigkeit gegenüber 80.8% bei sehr höflichen Prompts — ein Gewinn von +4.0 Prozentpunkten [1](https://fortune.com/article/being-mean-to-chatgpt-boosts-accuracy-scientist-warn-of-consequences/) [2](https://arxiv.org/html/2512.12812v1).

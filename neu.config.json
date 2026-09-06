@@ -19,6 +19,8 @@
   "allow_test_ops": false,
   "allow_repo_write": true,
   "max_output_bytes": 1048576,
+  "eval_min_threshold": 85.0,
+  "eval_safety_tolerance": 0.1,
   "allowed_repo_globs": [
     "core/*",
     "orchestrator/*",
