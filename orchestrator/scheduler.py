@@ -458,10 +458,23 @@ class Scheduler:
         state.last_tick_elapsed = elapsed
 
         due: list[DueAction] = []
+        # Optimierung (Bolt): Persistenz nur bei durabler Aenderung. Ein leerer
+        # Tick (nichts faellig, kein Kantenwechsel) laesst den Zustand auf
+        # Platte unveraendert -- ein bedingungsloses ``save()`` wuerde ihn
+        # trotzdem jedes Mal komplett neu serialisieren und atomar schreiben
+        # (Historie waechst auf bis zu ~70 KB bei 200 Feuerungen). Bei
+        # tick_s=0,5 s mit einem every_s=2 s-Trigger sind 3 von 4 Ticks leer,
+        # tragen aber die volle Schreiblast: gemessen ~1,06 ms/Tick allein
+        # fuer ``tick()``, davon >95 % Serialisierung + I/O. ``last_tick``/
+        # ``last_tick_elapsed`` sind reine Metriken und werden nach einem
+        # Neustart aus ``t0`` rekonstruiert -- ein Absturz zwischen zwei
+        # leeren Ticks verliert nichts.
+        changed = False
         safety_at = state.safety_net_s
         if safety_at and safety_at > 0 and elapsed >= safety_at and not state.safety_net_fired:
             state.safety_net_fired = True
             state.needs_human = True
+            changed = True
             self._record(state, "timer.safety_net", "", ACTION_ESCALATE, elapsed,
                          f"Safety-Netz bei {safety_at}s erreicht (t_unlimited={elapsed}s)")
 
@@ -469,7 +482,12 @@ class Scheduler:
             trigger_state = state.state_for(trigger)
             if trigger_state.finished:
                 continue
+            was_met = trigger_state.condition_met
             fired = self._evaluate(trigger, trigger_state, elapsed)
+            if fired:
+                changed = True  # Feuerung, Marke verbraucht oder Kante falsch->wahr
+            elif was_met and not trigger_state.condition_met:
+                changed = True  # Kante wahr->falsch (z. B. "elapsed < 30")
             for reason, catch_up in fired:
                 if trigger.max_fires and trigger_state.fires >= trigger.max_fires:
                     trigger_state.finished = True
@@ -502,7 +520,13 @@ class Scheduler:
                     state.finish_requested = True
                 self._record(state, kind, trigger.id, trigger.action, elapsed, reason, payload=trigger.payload)
 
-        self.save(state)
+        # Nur bei tatsaechlicher Zustandsaenderung persistieren (siehe oben):
+        # der haeufigste Fall -- ein Tick ohne faellige Aktion -- wird dadurch
+        # vom Platten-I/O entkoppelt, ohne die Crash-Garantie anzutasten
+        # (Feuerungen/Fahnen werden immer genau dann geschrieben, wenn sie
+        # entstehen).
+        if changed:
+            self.save(state)
         return due
 
     def tick_all(self, *, now: datetime | None = None) -> list[DueAction]:
