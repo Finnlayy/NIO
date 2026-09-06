@@ -36,11 +36,115 @@ body {
   background-clip: text;
 }
 
-.grid-pattern {
-  background-image:
-    linear-gradient(rgba(139, 92, 246, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(139, 92, 246, 0.03) 1px, transparent 1px);
-  background-size: 50px 50px;
+/* ------------------------------------------------------------------ */
+/* Modular grid tiles — consistent card primitive for every module     */
+/* ------------------------------------------------------------------ */
+.tile {
+  position: relative;
+  overflow: hidden;
+  height: 100%;
+  border-radius: 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: linear-gradient(145deg, rgba(17, 21, 34, 0.85) 0%, rgba(12, 15, 25, 0.92) 100%);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
+  padding: 1rem;
+  transition: border-color 160ms ease, background-color 160ms ease, opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.tile-accent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  opacity: 0.55;
+}
+
+.tile-clickable {
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tile-clickable:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  transform: translateY(-1px);
+}
+
+.tile-selected {
+  border-color: rgba(34, 211, 238, 0.45);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.18), 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+
+.tile-dimmed {
+  opacity: 0.35;
+}
+
+/* ------------------------------------------------------------------ */
+/* Composable ops grid canvas                                          */
+/* ------------------------------------------------------------------ */
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.85rem;
+  grid-auto-flow: dense;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .ops-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .ops-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.ops-widget {
+  background: linear-gradient(150deg, rgba(18, 22, 32, 0.92) 0%, rgba(11, 14, 22, 0.96) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 0.85rem;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+@media (max-width: 720px) {
+  .ops-widget {
+    grid-column: span 2 / span 2 !important;
+  }
+}
+
+.ops-widget:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.ops-widget-tall {
+  min-height: 320px;
+}
+
+.ops-widget-compact {
+  min-height: 220px;
+}
+
+.ops-widget-pinned {
+  border-color: rgba(251, 191, 36, 0.3);
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.08), 0 12px 30px rgba(0, 0, 0, 0.25);
+}
+
+@keyframes ticker {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
 }
 
 .pulse-dot {
