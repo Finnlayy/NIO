@@ -27,6 +27,13 @@ class OmegaConfig(BaseSettings):
     KRAKEN_ENABLE_FIX: bool = True
     KRAKEN_STAKING_AUTO_COMPOUND: bool = True
 
+    # LM Studio (Local AI Supply — fallback for token exhaustion / rate limits)
+    LM_STUDIO_URL: str = "http://localhost:1234/v1/chat/completions"
+    LM_STUDIO_MODEL: str = "local-model"
+    LM_STUDIO_API_KEY: str = "not-needed"
+    LM_STUDIO_ENABLED: bool = True
+    LM_STUDIO_TIMEOUT: float = 30.0
+
     # Intelligence Feeds
     BYBIT_API_KEY: str = ""
     BYBIT_API_SECRET: str = ""
