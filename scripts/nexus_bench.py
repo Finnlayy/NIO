@@ -630,12 +630,119 @@ def bench_triad3_writer(results: dict[str, Any]) -> None:
     }
 
 
+
+# ---------------------------------------------------------------------------
+# Triad Nr.3, Cycle 2 -- Validierung auf dem Zustell-Pfad (Policy, Protokollprimitve)
+# ---------------------------------------------------------------------------
+
+
+def bench_triad3_validation(results: dict[str, Any]) -> None:
+    """Policy-Pre-Flight und die Protokoll-Primitiven, alt gegen neu im selben Prozess.
+
+    Der alte Weg wird nicht zitiert, sondern *rekonstruiert*: die betroffenen
+    Modul-Funktionen werden waehrend der Messung auf ihr frueheres Verhalten
+    zurueckgesetzt (Menge pro Aufruf neu gebaut, Linearscan fuer Enums,
+    Whitespace-Gluettung immer, Sandbox-Wurzel pro Antwort zweimal aufgeloest).
+    """
+    import core.policy as policy_module
+    import core.protocol as protocol_module
+    from core.policy import Policy as _Policy
+    from core.protocol import Trigger as _Trigger
+
+    tmp = Path(tempfile.mkdtemp(prefix="nio-bench-valid-"))
+    config = NeuConfig.load(
+        _REPO,
+        mode="dev",
+        limits={"max_iterations": 4, "max_agents": 2, "max_limbs": 2, "max_concurrent_jobs": 2, "max_scheduled_jobs": 2},
+        runtime_dir=tmp / "runtime",
+        workspace_dir=tmp / "workspace",
+    )
+    config.ensure_dirs()
+    operations = Operations.load(config.protocol_dir / "operations.json")
+    kernel = Kernel(config, operations)
+    policy = _Policy(config, operations)
+    cold = _Policy(config, operations)
+    intent = kernel.build_intent(operation="sys.echo", params={"message": "m"}, limb="echo", goal="g")
+
+    raw_trigger = {"id": "takt", "action": "log", "every_s": 5.0, "when": "elapsed >= 30"}
+    raw_trigger_many = {"id": "takt", "action": "check", "every_s": 5.0, "when": "elapsed  >=   30", "payload": {"operation": "sys.echo"}}
+    validation: dict[str, Any] = {}
+
+    # --- Primitiv: Trigger.from_dict mit und ohne pro-Aufruf-Mengenbau -------
+    def legacy_primitives() -> Any:
+        """Setzt die drei geaenderten Stellen auf ihr frueheres Verhalten."""
+        real_allowed = protocol_module._allowed_set
+        real_condition = protocol_module._validate_condition
+        real_label = policy_module.Policy.sandbox_root_label
+
+        def allowed_set_rebuild(allowed: Any) -> frozenset[str]:
+            return frozenset(allowed)
+
+        def condition_always_normalized(text: str, path: str) -> tuple[str, float]:
+            return real_condition(" ".join(text.split()), path)
+
+        def label_naive(self: Any, checked: Any) -> str:
+            # alter Weg: Wurzel-Label pro Antwort, und das mit doppeltem resolve()
+            root_name = (checked.constraints.sandbox_root or "workspace").strip()
+            base = config.repo_root if root_name in {"", ".", "./"} else (config.repo_root / root_name).resolve()
+            self._sandbox_roots.clear()  # der Zustand vor dem Memo
+            return config.relative(base)
+
+        protocol_module._allowed_set = allowed_set_rebuild  # type: ignore[assignment]
+        protocol_module._validate_condition = condition_always_normalized  # type: ignore[assignment]
+        policy_module.Policy.sandbox_root_label = label_naive  # type: ignore[assignment]
+        return (real_allowed, real_condition, real_label)
+
+    restored = legacy_primitives()
+    trigger_before = measure(lambda: _Trigger.from_dict(raw_trigger), n=200_000, warm=2_000)
+    trigger_many_before = measure(lambda: _Trigger.from_dict(raw_trigger_many), n=120_000, warm=1_200)
+    policy_before = measure(lambda: (cold._sandbox_roots.clear(), cold.check(intent))[1], n=6_000, warm=600)
+    protocol_module._allowed_set, protocol_module._validate_condition = restored[0], restored[1]
+    policy_module.Policy.sandbox_root_label = restored[2]
+    trigger_after = measure(lambda: _Trigger.from_dict(raw_trigger), n=200_000, warm=2_000)
+    trigger_many_after = measure(lambda: _Trigger.from_dict(raw_trigger_many), n=120_000, warm=1_200)
+    policy_after = measure(lambda: policy.check(intent), n=20_000, warm=2_000)
+
+    validation["trigger_from_dict_before_us"] = trigger_before
+    validation["trigger_from_dict_after_us"] = trigger_after
+    validation["trigger_from_dict_speedup_x"] = round(trigger_before / trigger_after, 2)
+    validation["trigger_odd_whitespace_before_us"] = trigger_many_before
+    validation["trigger_odd_whitespace_after_us"] = trigger_many_after
+    validation["trigger_odd_whitespace_speedup_x"] = round(trigger_many_before / trigger_many_after, 2)
+    validation["policy_check_before_us"] = policy_before
+    validation["policy_check_after_us"] = policy_after
+    validation["policy_check_speedup_x"] = round(validation["policy_check_before_us"] / policy_after, 2)
+    validation["policy_check_with_cold_cache_us"] = validation["policy_check_before_us"]
+
+    # --- Kontrollpfade: unveraenderter Code muss unveraendert bleiben --------
+    validation["intent_from_dict_us"] = measure(lambda: type(intent).from_dict(intent.to_dict(), operations=operations), 20_000, 2_000)
+    validation["build_intent_us"] = measure(
+        lambda: kernel.build_intent(operation="sys.echo", params={"message": "m"}, limb="echo", goal="g"), 8_000, 800
+    )
+    validation["build_intent_with_8_triggers_us"] = measure(
+        lambda: kernel.build_intent(
+            operation="sys.echo",
+            params={"message": "m"},
+            limb="echo",
+            goal="g",
+            unlimited=True,
+            tick_s=0.05,
+            schedule=[{"id": f"t{i}", "action": "log", "when": f"elapsed >= {i + 1}"} for i in range(8)],
+        ),
+        6_000,
+        600,
+    )
+    validation["defensive_dict_copy_us"] = measure(lambda: dict(raw_trigger), 200_000, 2_000)
+    results["triad3_validation"] = validation
+
+
 def main() -> int:
     results: dict[str, Any] = {"reference_baseline": REFERENCE_BASELINE}
     bench_focus_a(results)
     bench_focus_b(results)
     bench_focus_c(results)
     bench_triad3_writer(results)
+    bench_triad3_validation(results)
     print(json.dumps(results, ensure_ascii=False, indent=2))
     return 0
 

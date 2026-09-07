@@ -76,6 +76,7 @@ _LIMB_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 _LIMB_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$")
 _OPERATION_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
 _REL_PATH_RE = re.compile(r"^(?!/)[^\x00]*$")
+_VALID_VERSION_RE = re.compile(r"^\d+\.\d+$")
 
 VALID_SOURCE_ROLES = ("core", "orchestrator", "limb", "human")
 VALID_ELEVATION_LEVELS = ("none", "workspace", "repo_write")
@@ -305,9 +306,32 @@ def _as_str_list(value: Any, path: str, *, max_items: int = 64, max_len: int = 2
     return tuple(_as_str(item, f"{path}[{i}]", max_len=max_len) for i, item in enumerate(value))
 
 
+def _allowed_set(allowed: Sequence[str] | frozenset[str]) -> frozenset[str]:
+    """Die erlaubten Werte als Menge -- einmal pro Konstante, nicht pro Aufruf.
+
+    ``ALLOWED_KEYS``/``VALID_*`` sind Klassen- bzw. Modul-Tupel; der Test
+    ``text not in allowed`` lief damit linear ueb bis zu 16 Eintraege, und
+    ``set(allowed)`` wurde in ``_reject_unknown`` bei *jedem* Aufruf neu gebaut
+    (gemessen der teuerste Einzelposten der Validierungsprimitiven). Der Cache ist
+    nach oben begrenzt und faellt fuer unhashbare Eingaben (Liste) auf den Neubau
+    zurueck -- er darf nie die Wahrheit sein, nur die Abkuerzung.
+    """
+    if isinstance(allowed, frozenset):
+        return allowed
+    try:
+        found = _ALLOWED_SETS.get(allowed)
+    except TypeError:
+        return frozenset(allowed)
+    if found is None:
+        found = frozenset(allowed)
+        if len(_ALLOWED_SETS) < 512:
+            _ALLOWED_SETS[allowed] = found
+    return found
+
+
 def _as_enum(value: Any, path: str, allowed: Sequence[str]) -> str:
     text = _as_str(value, path, max_len=64)
-    if text not in allowed:
+    if text not in _allowed_set(allowed):
         raise ProtocolError(ErrorCode.SCHEMA_INVALID, f"'{text}' nicht in {list(allowed)}", path)
     return text
 
@@ -320,17 +344,17 @@ def _as_rel_path(value: Any, path: str) -> str:
 
 
 def _reject_unknown(data: Mapping[str, Any], allowed: Sequence[str], path: str) -> None:
-    unknown = sorted(set(data) - set(allowed))
+    unknown = set(data) - _allowed_set(allowed)
     if unknown:
         raise ProtocolError(
             ErrorCode.SCHEMA_INVALID,
-            f"unbekannte Schluessel {unknown} (Protokoll {PROTOCOL_VERSION} ist strikt)",
+            f"unbekannte Schluessel {sorted(unknown)} (Protokoll {PROTOCOL_VERSION} ist strikt)",
             path,
         )
 
 
 def _check_version(value: Any, path: str) -> None:
-    text = _as_str(value, path, max_len=16, pattern=re.compile(r"^\d+\.\d+$"))
+    text = _as_str(value, path, max_len=16, pattern=_VALID_VERSION_RE)
     major, minor = (int(part) for part in text.split("."))
     if major != PROTOCOL_MAJOR:
         raise ProtocolError(ErrorCode.SCHEMA_INVALID, f"Inkompatible Protokoll-Major-Version {major} (erwartet {PROTOCOL_MAJOR})", path)
@@ -988,12 +1012,21 @@ class Schedule:
         return cls(triggers=triggers, tick_s=tick)
 
 
+_ALLOWED_SETS: dict[Sequence[str], frozenset[str]] = {}
+
 _CONDITION_RE = re.compile(r"^elapsed\s*(<=|>=|==|!=|<|>)\s*(\d+(?:\.\d+)?)$")
 
 
 def _validate_condition(text: str, path: str) -> tuple[str, float]:
-    """Parst ``"elapsed >= 30"`` -> (operator, Schwellwert in Sekunden)."""
-    match = _CONDITION_RE.match(" ".join(text.split()))
+    """Parst ``"elapsed >= 30"`` -> (operator, Schwellwert in Sekunden).
+
+    Der Musterausdruck laesst Leerraum an beiden Kanten frei, deshalb trifft die
+    kanonische Form auch ohne Gluettung; das " ".join(split()) bleibt als Fallback
+    fuer exotische Leerraumformen (und fuer Zeilenumbrüche in der Bedingung).
+    """
+    match = _CONDITION_RE.match(text)
+    if match is None:
+        match = _CONDITION_RE.match(" ".join(text.split()))
     if not match:
         raise ProtocolError(
             ErrorCode.TRIGGER_INVALID,

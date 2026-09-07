@@ -312,6 +312,20 @@ class NeuConfig:
         except ValueError:
             return str(path)
 
+    def relative_resolved(self, absolute: Path | str) -> str:
+        """Wie ``relative``, aber fuer Pfade, die das ``resolve()`` schon hinter sich haben.
+
+        Der doppelte Realpath-Durchlauf ist der Grund: ``relative(sandbox_root(intent))``
+        lief die Kette zwei Mal -- pro Pruefung, und die Sandbox-Wurzel steht in
+        jeder Policy-Antwort. Wer einen Aufloesungs-Pfad in der Hand haelt (Policy,
+        Transport), geht hier lang. Ausserhalb des Repos gilt derselbe Ruckfall wie
+        bei ``relative``: die Stringform des Ubergebenen, kein Raise.
+        """
+        try:
+            return str(Path(absolute).relative_to(self.repo_root)).replace(os.sep, "/")
+        except ValueError:
+            return str(absolute)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "repo_root": str(self.repo_root),

@@ -21,6 +21,7 @@ import tempfile
 import threading
 import unittest
 from contextlib import redirect_stdout
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -32,6 +33,7 @@ from core.atomic import atomic_write_bytes  # noqa: E402
 from core.config import NeuConfig  # noqa: E402
 from core.job import JobStore  # noqa: E402
 from core.kernel import Kernel  # noqa: E402
+from core.policy import Policy  # noqa: E402
 from core.protocol import Operations, parse_timestamp  # noqa: E402
 from orchestrator.events import CollectingSink, build_event_bus  # noqa: E402
 from orchestrator.scheduler import HISTORY_LIMIT, Scheduler  # noqa: E402
@@ -298,6 +300,167 @@ class SchedulerPersistenzTests(unittest.TestCase):
         due = self.scheduler.tick(state, now=origin + timedelta(seconds=0.2))
         self.assertEqual(len(due), 1)
         self.assertEqual(json.loads(self.scheduler.save(state).read_text(encoding="utf-8")), state.to_dict())
+
+
+class PolicyMemoTests(unittest.TestCase):
+    """Cycle 2: die memoisierte Sandbox-Wurzel darf keine Entscheidung aendern.
+
+    Gegenprobe ist dieselbe Policy-Instanz *mit geleertem Cache* -- das ist der
+    alte Rechenweg (Wurzel und Label pro Aufruf aufgelöst), also ein
+    Differentiaaltest gegen das Vorher, nicht gegen eine Absicht.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory(prefix="nio-policy3-")
+        tmp = Path(self._tmp.name)
+        self.config = NeuConfig.load(
+            REPO_ROOT,
+            mode="dev",
+            limits={
+                "max_iterations": 4,
+                "max_agents": 2,
+                "max_limbs": 2,
+                "max_concurrent_jobs": 2,
+                "max_scheduled_jobs": 2,
+            },
+            runtime_dir=tmp / "runtime",
+            workspace_dir=tmp / "workspace",
+        )
+        self.config.ensure_dirs()
+        (tmp / "workspace" / "notes").mkdir(parents=True, exist_ok=True)
+        self.operations = Operations.load(self.config.protocol_dir / "operations.json")
+        self.kernel = Kernel(self.config, self.operations)
+        self.warm = Policy(self.config, self.operations)
+        self.cold = Policy(self.config, self.operations)
+        self.addCleanup(self._tmp.cleanup)
+
+    def _intents(self):
+        """Erlaubte Intents, dann mit feindlichen Wurzeln/Globen variiert."""
+        base = self.kernel.build_intent(
+            operation="core.memory_write", params={"path": "notes/x.md"}, limb="echo", goal="g"
+        )
+        for root_name in ("workspace", "", ".", "./", "workspace/notes", "core", "nope", "workspace/../workspace"):
+            for path in ("notes/x.md", "core/kernel.py", "notes/y.md", "neu.config.json"):
+                constraints = replace(base.constraints, sandbox_root=root_name)
+                task = replace(base.task, params={"path": path})
+                yield replace(base, constraints=constraints, task=task)
+                elevation = replace(base.elevation, level="repo_write", approved_by="human", reason="x" * 25)
+                yield replace(base, constraints=constraints, task=task, elevation=elevation)
+
+    def _decide(self, policy: Policy, intent, *, clear: bool) -> tuple:
+        if clear:
+            policy._sandbox_roots.clear()
+        try:
+            decision = policy.check(intent)
+        except Exception as exc:  # beide Pfade müssen hier gleichartig reagieren
+            return ("raise", type(exc).__name__, str(exc))
+        return (
+            decision.allowed,
+            decision.code,
+            decision.sandbox_root,
+            tuple(decision.resolved_targets),
+            decision.reason,
+        )
+
+    def test_ent_scheidungen_identisch(self) -> None:
+        compared = 0
+        for intent in self._intents():
+            warm = self._decide(self.warm, intent, clear=False)
+            cold = self._decide(self.cold, intent, clear=True)
+            compared += 1
+            self.assertEqual(warm, cold, f"Memo aendert die Entscheidung fuer {intent.constraints.sandbox_root!r}")
+        self.assertGreaterEqual(compared, 30)
+
+    def test_label_ist_der_naive_wert(self) -> None:
+        for root_name in ("workspace", "workspace/notes", "core"):
+            intent = self.kernel.build_intent(
+                operation="core.memory_write",
+                params={"path": "notes/x.md"},
+                limb="echo",
+                goal="g",
+                constraints={"sandbox_root": root_name},
+            )
+            naive = self.config.relative((Path(self.config.repo_root) / root_name).resolve())
+            self.assertEqual(self.warm.sandbox_root_label(intent), naive)
+            self.assertEqual(self.warm.sandbox_root(intent), (Path(self.config.repo_root) / root_name).resolve())
+
+    def test_cache_wachst_nicht_unbegrenzt(self) -> None:
+        (Path(self.config.workspace_dir) / "d0").mkdir(parents=True, exist_ok=True)
+        base = self.kernel.build_intent(
+            operation="core.memory_write", params={"path": "notes/x.md"}, limb="echo", goal="g"
+        )
+        for i in range(50):
+            name = "workspace" if i == 0 else f"workspace/d{i % 4}"
+            intent = replace(base, constraints=replace(base.constraints, sandbox_root=name))
+            self.warm.sandbox_root(intent)
+        self.assertLessEqual(len(self.warm._sandbox_roots), Policy._SANDBOX_CACHE_LIMIT)
+
+    def test_relative_resolved_fallback_gleich(self) -> None:
+        inside = Path(self.config.workspace_dir).resolve()
+        self.assertEqual(self.config.relative_resolved(inside), self.config.relative(inside))
+        outside = Path("/etc/hosts")
+        self.assertEqual(self.config.relative_resolved(outside), str(outside))
+        self.assertEqual(self.config.relative_resolved(outside), self.config.relative(outside))
+
+
+class ProtocolPrimitiveTests(unittest.TestCase):
+    """Die Validierer muessen dieselben Fehler werfen wie vorher -- nur billiger."""
+
+    def _msg(self, fn):
+        try:
+            fn()
+        except Exception as exc:
+            return type(exc).__name__, str(exc)
+        return ("ok", "")
+
+    def test_reject_unknown_meldung_stabil(self) -> None:
+        from core.protocol import ProtocolError, _reject_unknown
+
+        with self.assertRaises(ProtocolError) as ctx:
+            _reject_unknown({"id": "x", "beta": 1, "alpha": 2}, ("id", "action"), "$.t")
+        self.assertIn("unbekannte Schluessel ['alpha', 'beta']", str(ctx.exception))
+        self.assertEqual(self._msg(lambda: _reject_unknown({"id": "x"}, ("id",), "$"))[0], "ok")
+
+    def test_enum_ohne_index_scan(self) -> None:
+        from core.protocol import VALID_TRIGGER_ACTIONS, _as_enum
+
+        self.assertEqual(_as_enum("log", "$.action", VALID_TRIGGER_ACTIONS), "log")
+        from core.protocol import ProtocolError as _PE
+
+        with self.assertRaises(_PE) as ctx:
+            _as_enum("schlendern", "$.action", VALID_TRIGGER_ACTIONS)
+        self.assertIn("nicht in", str(ctx.exception))
+        self.assertIn("'schlendern'", str(ctx.exception))
+
+    def test_erlaubte_menge_ist_gecacht_und_korrekt(self) -> None:
+        from core.protocol import _allowed_set
+
+        first = _allowed_set(("a", "b", "c"))
+        self.assertIs(first, _allowed_set(("a", "b", "c")), "Konstante wird wiederverwendet")
+        self.assertEqual(_allowed_set(["a", "b"]), frozenset({"a", "b"}), "unhashbare Eingabe faellt zurueck")
+        self.assertEqual(_allowed_set(frozenset({"x"})), frozenset({"x"}))
+
+    def test_bedingung_mit_exotischem_leerraum(self) -> None:
+        from core.protocol import _validate_condition
+
+        for text in ("elapsed >= 30", "elapsed>=30", "  elapsed   >=   30  ", "elapsed\t>=\t30", "elapsed > 0.25"):
+            with self.subTest(bedingung=text):
+                op, value = _validate_condition(text, "$.when")
+                reference = _validate_condition(" ".join(text.split()), "$.when")
+                self.assertEqual((op, value), reference)
+        from core.protocol import ProtocolError
+
+        with self.assertRaises(ProtocolError):
+            _validate_condition("elapsed ~ 5", "$.when")
+
+    def test_trigger_without_copy_of_input(self) -> None:
+        from core.protocol import Trigger
+
+        raw = {"id": "takt", "action": "log", "every_s": 5.0}
+        trigger = Trigger.from_dict(raw)
+        self.assertEqual(trigger.id, "takt")
+        raw["id"] = "geaendert"
+        self.assertEqual(trigger.id, "takt", "der Trigger haelt seine eigenen Werte")
 
 
 if __name__ == "__main__":

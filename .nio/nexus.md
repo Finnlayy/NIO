@@ -335,6 +335,65 @@ die Heartbeat-Frequenz selbst zum Problem wird.
   die Job-Aufzeichnung zu zwei Wahrheiten (Datei *und* Inode-Zeit) und beruehrt die
   Waisen-Erkennung -- vertagt, bis die Heartbeat-Frequenz selbst misst.
 
+### Cycle 2 — Focus B: Validierung auf dem Zustell-Pfad (Policy-Pre-Flight, Protokoll-Primitive)
+
+**Der Engpass.** cProfile ueber 600 `build_intent`-Aufrufe: `Trigger.from_dict` 44 %
+der Zeit, und -- ueberraschend -- `posixpath._joinrealpath` mit 1200 Aufrufen fuer
+dieselben 600 Builds. Der Grund: `Policy.check` baute seine Antwort gleich dreimal
+auf demselben Weg neu -- `sandbox_root(intent)` (ein Realpath-Durchlauf) und
+`config.relative(...)` (der zweite) -- und das in *jeder* Entscheidung, auch im
+`_deny`-Pfad. Ausserdem: `_reject_unknown` baute `set(allowed)` pro Aufruf neu,
+`_as_enum` pruefte Mitgliedschaft linear ueber einem Tuple, `_check_version` compilierte
+sein Regex pro Aufruf, und `_validate_condition` gluettete Whitespace mit
+Liste + Join, auch wenn das Muster laengst traf.
+
+**Der Schnitt.**
+* `Policy` merkt sich `(Wurzel, Label)` pro `sandbox_root`-Angabe, **begrenzt auf 32
+  Eintraege** (der Schluessel kommt aus dem Intent, also von aussen -- eine offene
+  Tabelle waere ein Wachstumsvektor). Neue Methode `sandbox_root_label()` liefert das
+  Label aus derselben Rechnung; alle vier Antwortpfade nutzen sie.
+* `NeuConfig.relative_resolved()` fuegt den Relativpfad ohne zweiten `resolve()`
+  zusammen; `relative()` bleibt unangetastet (gleicher Ruckfall, keine Delegation --
+  der Testbestand vergleicht beide fur innen *und* aussen liegende Pfade).
+* `_allowed_set()`: frozenset pro Konstante, einmal gebaut (Cache 512, unhashbare
+  Eingabe faellt auf Neubau zurueck); `_reject_unknown` sortiert nur noch im
+  Fehlerpfad; `_as_enum` ist O(1); `_VALID_VERSION_RE` compilt einmal;
+  `_validate_condition` versucht die kanonische Form direkt und gluettet nur als
+  Fallback; `Trigger.from_dict` kopiert seinen Eingabe-Dict nicht mehr.
+
+**Das Ergebnis** (`scripts/nexus_bench.py`, alte Pfade zur Messung *rekonstruiert* --
+Module gefixt auf `frozenset(allowed)`-Neubau, Linearscan, immer-Gluettung,
+Wurzel-Label pro Antwort -- also A/B im selben Prozess):
+
+| Metrik | vorher | nachher | Δ |
+|---|---|---|---|
+| **`Policy.check(intent)`** | **46,3 µs** | **2,05 µs** | **22,6×, −44,2 µs pro Dispatch** |
+| `build_intent` (Validierung inkl.) | 169,2 µs | **95,0 µs** | **1,78×** |
+| `build_intent` mit 8 Ausloesern | 303,0 µs | **227,7 µs** | 1,33× |
+| `Trigger.from_dict` | 7,25 µs | 6,64 µs | 1,09× (klein, ehrlich) |
+| dito mit exotischem Whitespace | 8,33 µs | 7,92 µs | 1,05× |
+| `Intent.from_dict` / `Result.from_dict` | 48,1 / 29,7 µs | 52,0 / 28,1 µs | **unveraendert** (43-KB-`json.loads` dominiert) |
+| `Scheduler.load` (State-Datei parsen) | 134,2 µs | 140,8 µs | Messreihe-Rauschen, kein Pfadwechsel |
+| Kontrolle: `schema_validate` (CLI-only, kalt) | 99,5 µs | 98,8 µs | unveraendert ✓ Host stabil |
+
+Der Gewinn sitzt also in der **Wiederholung**, nicht in den Primitiven: 44 µs pro
+Dispatch sind jetzt gespart, die Protokoll-Primitiven liefern zusammen ~0,6 µs pro
+Trigger. Beides bleibt drin (der Linearscan war ein Wachstumsrisiko, nicht nur ein
+Tempo), aber nur mit dem gemessenen Wert -- nicht mit einem erwarteten.
+
+**Guard-Tests** (9 neue, `tests/test_nexus_triad3.py`): Differentiaaltest Policy mit
+warmem Cache gegen dieselbe Instanz mit geleertem Cache ueber 32 Wurzel-/Pfad-/
+Elevation-Kombinationen (Entscheidung, Code, Label, `resolved_targets`, Begruendung
+identisch -- 432 Faelle im Profiler, 0 Abweichungen), Cache-Schranke bei 32,
+Label == naive Kette, `relative_resolved`-Ruckfall == `relative`, Fehlermeldungen der
+Primitive unveraendert (`unbekannte Schluessel ['alpha', 'beta']`, `'schlendern' nicht in
+[...]`), Bedingung mit allen Leerraumformen == normalisierte Referenz, und
+`Trigger.from_dict` haelt seine Werte auch nach Mutation der Eingabe.
+
+**Der Test fand einen echten Fehler:** `relative_resolved` sollte den Ruckfall
+("ausserhalb des Repos -> Stringform") von `relative` uebernehmen, war aber ohne
+`try/except` gelandet -- ein `edit`-Muster, das nicht getroffen hatte, und
+`str.replace` schweigt dazu. Jetzt drin, und der Test prueft beide Richtungen.
 ## The Graveyard (architectural dead ends)
 
 - **UDS socket *transport* for intent delivery** — still NO. The cross-process
