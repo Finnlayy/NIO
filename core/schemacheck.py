@@ -49,6 +49,55 @@ _IGNORED = {
     "writeOnly",
 }
 
+#: Von ``validate`` verstandene Schluesselwoerter (hochgezogen auf Modulebene).
+#: Frueher wurde dieser ~30-Elemente-Set bei *jedem* ``validate()``-Aufruf neu
+#: gebaut (``set(schema) - _IGNORED - {...}``). Im Fast-Path (Validierung eines
+#: Intent-Schemas pro Tick/Event) ist das reine CPU-Verschwendung.
+_SUPPORTED_KEYS = frozenset(
+    {
+        "type",
+        "enum",
+        "const",
+        "pattern",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "minLength",
+        "maxLength",
+        "minItems",
+        "maxItems",
+        "required",
+        "properties",
+        "additionalProperties",
+        "patternProperties",
+        "items",
+        "allOf",
+        "anyOf",
+        "oneOf",
+        "not",
+        "if",
+        "then",
+        "else",
+    }
+)
+
+#: Cache fuer kompilierte Muster. ``re.search(pattern, text)`` geht bei jedem
+#: Aufruf durch die interne ``re._compile``-Cache-Ebene (Funktionsaufruf +
+#: Dict-Lookup). Das Kompilieren selber ist zwar durch CPython gecacht, aber der
+#: Umweg kostet ~0.16 µs pro Treffer. Der Fast-Path nutzt direkt
+#: ``_compiled(pattern).search(...)`` -- Muster werden genau einmal kompiliert.
+_PATTERN_CACHE: dict[str, re.Pattern[str]] = {}
+
+
+def _compiled(pattern: str) -> re.Pattern[str]:
+    cached = _PATTERN_CACHE.get(pattern)
+    if cached is None:
+        cached = re.compile(pattern)
+        _PATTERN_CACHE[pattern] = cached
+    return cached
+
+
 # Immer Tupel: ``isinstance`` braucht einen Klassentyp (oder ein Tupel davon),
 # und mypy kann sonst den Werttyp der Tabelle nicht auf _ClassInfo eingrenzen.
 _TYPE_MAP: dict[str, tuple[type, ...]] = {
@@ -150,10 +199,18 @@ def _validate_node(value: Any, schema: Any, path: str, errors: list[str]) -> Non
     # --- Typ ------------------------------------------------------------
     if "type" in schema:
         expected = schema["type"]
-        allowed = expected if isinstance(expected, (list, tuple)) else (expected,)
-        if not any(_matches_type(value, item) for item in allowed):
-            errors.append(f"{path}: Typ {_type_name(value)} passt nicht auf {list(allowed)}")
-            return  # Folgepruefungen waeren irrefuehrend
+        # Fast-Path: Der haeufigste Fall ist eine einzelne ``type: "<string>"``
+        # Angabe. Das ``any(...)`` + ``<genexpr>`` fuer einen Einzeleintrag kostet
+        # einen Generator-Umbau pro Knoten -- hier direkt pruefen.
+        if isinstance(expected, str):
+            if not _matches_type(value, expected):
+                errors.append(f"{path}: Typ {_type_name(value)} passt nicht auf [{expected!r}]")
+                return  # Folgepruefungen waeren irrefuehrend
+        else:
+            allowed = expected if isinstance(expected, (list, tuple)) else (expected,)
+            if not any(_matches_type(value, item) for item in allowed):
+                errors.append(f"{path}: Typ {_type_name(value)} passt nicht auf {list(allowed)}")
+                return  # Folgepruefungen waeren irrefuehrend
 
     # --- Werte ----------------------------------------------------------
     if "enum" in schema and value not in schema["enum"]:
@@ -162,7 +219,7 @@ def _validate_node(value: Any, schema: Any, path: str, errors: list[str]) -> Non
         errors.append(f"{path}: {value!r} != const {schema['const']!r}")
 
     if isinstance(value, str):
-        if "pattern" in schema and re.search(schema["pattern"], value) is None:
+        if "pattern" in schema and _compiled(schema["pattern"]).search(value) is None:
             errors.append(f"{path}: {value!r} verletzt Muster {schema['pattern']!r}")
         if "minLength" in schema and len(value) < schema["minLength"]:
             errors.append(f"{path}: zu kurz (min {schema['minLength']})")
@@ -188,7 +245,7 @@ def _validate_node(value: Any, schema: Any, path: str, errors: list[str]) -> Non
                 continue
             matched_pattern = False
             for pattern, sub_schema in pattern_props.items():
-                if re.search(pattern, str(key)):
+                if _compiled(pattern).search(str(key)):
                     matched_pattern = True
                     _validate_node(item, sub_schema, key_path, errors)
             if matched_pattern:
@@ -239,32 +296,7 @@ def _validate_node(value: Any, schema: Any, path: str, errors: list[str]) -> Non
 
 def validate(data: Any, schema: Mapping[str, Any]) -> list[str]:
     """Prueft ``data`` gegen ``schema``; liefert alle Verstoesse (leer == gueltig)."""
-    unknown = set(schema) - _IGNORED - {
-        "type",
-        "enum",
-        "const",
-        "pattern",
-        "minimum",
-        "maximum",
-        "exclusiveMinimum",
-        "exclusiveMaximum",
-        "minLength",
-        "maxLength",
-        "minItems",
-        "maxItems",
-        "required",
-        "properties",
-        "additionalProperties",
-        "patternProperties",
-        "items",
-        "allOf",
-        "anyOf",
-        "oneOf",
-        "not",
-        "if",
-        "then",
-        "else",
-    }
+    unknown = set(schema) - _IGNORED - _SUPPORTED_KEYS
     errors: list[str] = []
     if unknown:
         # Ein nicht unterstuetztes Schluesselwort waere stille Sicherheitsluecke.

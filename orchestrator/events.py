@@ -15,9 +15,9 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any, Protocol, TextIO
 
 
@@ -28,6 +28,28 @@ class EventSink(Protocol):
 
     def write(self, record: Mapping[str, Any]) -> None:  # pragma: no cover - Protokoll
         ...
+
+
+_FAST_TIME_STATE: dict[str, Any] = {"sec": -1, "base": ""}
+
+
+def _iso_ms_z_fast() -> str:
+    """ISO-8601 MS-Zeitstempel in der Form ``...T..:..:..mmmZ`` -- ohne ``datetime``.
+
+    Der Event-Bus erzeugt fuer *jedes* Event einen Zeitstempel. ``datetime.now(UTC)``
+    plus ``.replace('+00:00', 'Z')`` kostet ~1 µs pro Aufruf, obwohl es nur eine
+    formatierte Sekunde + Millisekunde ist. Diese Variante cacht den Sekunden-Basisteil
+    und berechnet nur die Millisekunden neu -- identisches Ausgabeformat, keine
+    Semantik-Aenderung.
+    """
+    now = time.time()
+    sec = int(now)
+    ms = int((now - sec) * 1000)
+    state = _FAST_TIME_STATE
+    if sec != state["sec"]:
+        state["sec"] = sec
+        state["base"] = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(sec))
+    return f"{state['base']}.{ms:03d}Z"
 
 
 #: Bekannte Event-Arten (Namensschema: ``bereich.ereignis``). Der Bus validiert
@@ -169,25 +191,45 @@ class EventBus:
         limb: str = "",
         clock_s: float | None = None,
     ) -> Event:
+        # Fast-Path: Der Datensatz wird genau einmal gebaut. ``datetime.now`` +
+        # ``.replace('+00:00','Z')`` und die doppelte ``payload``-Kopie (einmal in
+        # ``Event``, einmal in ``to_dict()``) waren die beiden teuersten Teile des
+        # Hot Paths (siehe ``.nio/nexus.md``, Triad 1 / Cycle 1).
         self._seq += 1
-        event = Event(
-            kind=kind,
-            payload=dict(payload or {}),
-            seq=self._seq,
-            timestamp=datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
-            job_id=job_id or trace_id,
-            trace_id=trace_id,
-            intent_id=intent_id,
-            limb=limb,
-            clock_s=None if clock_s is None else round(float(clock_s), 3),
-        )
-        record = event.to_dict()
+        seq = self._seq
+        payload_copy = dict(payload) if payload else {}
+        clock = None if clock_s is None else round(float(clock_s), 3)
+        timestamp = _iso_ms_z_fast()
+        record = {
+            "seq": seq,
+            "timestamp": timestamp,
+            "kind": kind,
+            "job_id": job_id or trace_id,
+            "trace_id": trace_id,
+            "intent_id": intent_id,
+            "limb": limb,
+            "clock_s": clock,
+            "payload": payload_copy,
+        }
         for sink in self._sinks:
             try:
                 sink.write(record)
             except Exception as exc:
                 sys.stderr.write(f"[events] Sink '{getattr(sink, 'name', '?')} scheiterte: {exc}\n")
-        return event
+        # Rueckgabe bleibt der ``Event`` (oeffentliche API); Sinks erhalten bereits
+        # den fertig gebauten ``record``, es wird keine zweite ``to_dict()``-Kopie
+        # fuer die Zustellung benoetigt.
+        return Event(
+            kind=kind,
+            payload=payload_copy,
+            seq=seq,
+            timestamp=timestamp,
+            job_id=job_id or trace_id,
+            trace_id=trace_id,
+            intent_id=intent_id,
+            limb=limb,
+            clock_s=clock,
+        )
 
 
 def build_event_bus(*, quiet: bool = False, collector: CollectingSink | None = None, stream: TextIO | None = None) -> EventBus:
