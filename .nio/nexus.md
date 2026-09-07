@@ -608,6 +608,16 @@ soll. In die Queue, mit der Begruendung, dass der Ruecklesepfad fehlende
 `result.json` bereits heute verzeihen muss (sonst ist es ein Datenschutz- wie ein
 Kompatibilitaetsthema).
 
+- **Re-clone an der Turn-Grenze: die Dateien bleiben, der Branch-Zeiger faellt auf den
+  Basis-Commit zurueck (und `/home/user/.venv-nio` verschwindet).** Nach dem Merge von
+  #10 zeigte `arena/01a07962-nio` wieder auf `f90fedb`, waehrend der Arbeitsbaum die
+  fertige Arbeit enthielt (12 geaenderte Dateien, 3 neue nur als Untracked). Muster:
+  zuerst `git diff --stat origin/main` -- leer heisst "der Arbeitsbaum ist exakt der
+  gemergte Stand"; dann `git reset <letzter-bekannter-commit>` (der steckt nach dem
+  Fetch in der Objektdatenbank, weil er Ahne des Merge-Commits ist) richtet Branch und
+  Index, ohne eine Datei anzufassen. Niemals blind `git add -A && commit`: das haette
+  die gemergte Arbeit als Duplikat zurueckgebracht. (Nr.4, Cycle 1)
+
 ## The Graveyard (architectural dead ends)
 
 - **UDS socket *transport* for intent delivery** — still NO. The cross-process
@@ -791,6 +801,13 @@ new plane removes the disk from the hot path when a live consumer exists.
 
 ### PR
 **#10** — `⚡ Nexus: IPC & Core Performance Triad [2026-09-07T02:05:00Z]`
-→ https://github.com/Finnlayy/NIO/pull/10 (`main` <- `arena/01a07962-nio`,
-12 files, +2545/-189, `MERGEABLE`). commit `bb47077`.
-Der fertige PR-Text liegt als `.nio/pr_triad2_body.md` im Branch.
+→ https://github.com/Finnlayy/NIO/pull/10 (`main` <- `arena/01a07962-nio`).
+**MERGED 2026-09-07T14:01:33Z**, Merge-Commit `ffe7aad`, 18 files, +4626/-271.
+Der PR fuehrt **Triade Nr.2 (Cycles 1-3), Nr.3 (Cycles 1-3) und Nr.4/1** zusammen:
+der Session-Branch ist auf `arena/01a07962-nio` festgeschrieben, also liefen alle
+Triaden durch denselben PR. Wer Nr.2 isoliert lesen will, reviewt bis `5391ee6`;
+Nr.3 beginnt mit `56d30d1`, Nr.4/1 ist `90a2770`. Nr.4/2 und /3 folgen in einem
+eigenen PR (der geschlossene nimmt keine Commits mehr auf).
+Der PR-Text liegt als `.nio/pr_triad2_body.md` im Branch.
+Der rote Check `Neural Orchestrator CI & Benchmark Evaluation` ist kein
+Regressionssignal -- er scheitert auf `main` genauso (siehe System Quirks).
