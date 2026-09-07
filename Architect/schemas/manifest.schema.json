@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omega.nio/schemas/manifest.schema.json",
+  "title": "OMEGA Manifest",
+  "description": "Schema for safe self-modification manifest updates in Jules's OMEGA Architect.",
+  "type": "object",
+  "required": ["manifest_version", "author", "timestamp", "changes", "checksum", "approval_level"],
+  "properties": {
+    "manifest_version": {
+      "type": "string",
+      "enum": ["1.0"],
+      "description": "Manifest schema version."
+    },
+    "author": {
+      "type": "string",
+      "description": "Author of the modification (system or human identifier)."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO8601 timestamp of manifest creation."
+    },
+    "changes": {
+      "type": "array",
+      "description": "List of file changes with checksums.",
+      "items": {
+        "type": "object",
+        "required": ["file_path", "change_type", "checksum_before", "checksum_after"],
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Absolute or relative path to modified/new file."
+          },
+          "change_type": {
+            "type": "string",
+            "enum": ["modify", "create", "delete", "patch"],
+            "description": "Type of change applied to the file."
+          },
+          "line_numbers": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "description": "Line numbers affected (optional, for audits)."
+          },
+          "checksum_before": {
+            "type": "string",
+            "description": "SHA-256 hash of file content before change."
+          },
+          "checksum_after": {
+            "type": "string",
+            "description": "SHA-256 hash of file content after change."
+          }
+        }
+      }
+    },
+    "safety_flags": {
+      "type": "object",
+      "description": "Safety flags indicating risk level of changes.",
+      "required": ["core_change", "dependency_change", "model_update"],
+      "properties": {
+        "core_change": {
+          "type": "boolean",
+          "description": "True if changes affect core/ modules."
+        },
+        "dependency_change": {
+          "type": "boolean",
+          "description": "True if dependencies (requirements, packages) are changed."
+        },
+        "model_update": {
+          "type": "boolean",
+          "description": "True if ML model weights or architecture are updated."
+        }
+      }
+    },
+    "approval_level": {
+      "type": "string",
+      "enum": ["system", "human"],
+      "description": "Required approval level: system-only for non-core; human-required for core."
+    }
+  }
+}
