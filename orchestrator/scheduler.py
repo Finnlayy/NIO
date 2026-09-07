@@ -42,12 +42,14 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from core.atomic import atomic_write_bytes
 from core.config import NeuConfig
 from core.protocol import (
     ErrorCode,
@@ -57,6 +59,7 @@ from core.protocol import (
     Trigger,
     format_timestamp,
     parse_timestamp,
+    timestamp_epoch_s,
     utc_now,
 )
 
@@ -83,7 +86,9 @@ ACTION_LOG = "log"
 #: Wie viele Feuerungen pro Job maximal im Zustand mitgeschrieben werden.
 HISTORY_LIMIT = 200
 
-_COMPARISONS = ("<=", ">=", "==", "!=", "<", ">")
+#: Operator-Syntax als Menge: ``op not in _COMPARISONS`` laeuft pro Tick und wird
+#: hier nur noch als Mengentest benoetigt (ein Tupel waere eine Linearsuche).
+_COMPARISONS = frozenset(("<=", ">=", "==", "!=", "<", ">"))
 
 #: Dieselbe Grammatik wie ``core.protocol._CONDITION_RE`` (Schema + Parser).
 _CONDITION_TOKEN_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*(<=|>=|==|!=|<|>)\s*(\d+(?:\.\d+)?)")
@@ -92,13 +97,43 @@ _CONDITION_TOKEN_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*(<=|>=|==|!=|<|>)\
 # =============================================================================
 # Bedingungen ("elapsed >= 30")
 # =============================================================================
+#: Vorkompilierte Bedingungen: roher ``when``-Text -> ``(Operator, Schwellwert)``.
+#:
+#: Derselbe Text wird **pro Tick und pro Ausloeser** ausgewertet (bei 8 Triggern
+#: und ``tick_s=0,05`` sind das 160 Parses pro Sekunde und Job), obwohl das
+#: Ergebnis mit dem Stellen des Auftrags feststeht. Der Parser selbst ist der
+#: teure Teil: ``str.strip`` + ``re.fullmatch`` + ``float()`` + Operator-
+#: Mitgliedschaftstest kosten ~0,76 µs -- der eigentliche Vergleich ~0,08 µs.
+#: Der Cache ist **gebunden** (Leeren bei Vollstand), damit ein Logger oder eine
+#: endlose Folge handschriftlicher Bedingungen keinen Speicherballast erzeugt.
+#: Fehler werden bewusst *nicht* gecacht: die Meldung muss den rohen Text nennen
+#: koennen, und ein ungueltiger Zustand soll weiterhin jeden Tick laut verwerfen.
+_CONDITION_CACHE_MAX = 512
+_CONDITION_CACHE: dict[str, tuple[str, float]] = {}
+
+
 def parse_condition(when: str) -> tuple[str, float]:
     """Zerlegt ``"elapsed <op> <sekunden>"`` in Operator und Schwellwert.
 
     Der Operator muss aus dem Protokoll stammen (``<=``, ``>=``, ``==``, ``!=``,
     ``<``, ``>``). Groesser-/Kleiner-Vergleiche sind exakt, ``==``/``!=`` werden
     mit der Trigger-Toleranz ausgewertet (Zeitscheiben sind nie exakt).
+
+    Gleiche Eingabe ergibt immer dasselbe Resultat -- deshalb darf der Wert
+    gecacht werden (schnellster Pfad = ein einziger Dict-Treffer).
     """
+    cached = _CONDITION_CACHE.get(when)
+    if cached is not None:
+        return cached
+    compiled = _compile_condition(when)
+    if len(_CONDITION_CACHE) >= _CONDITION_CACHE_MAX:
+        _CONDITION_CACHE.clear()
+    _CONDITION_CACHE[when] = compiled
+    return compiled
+
+
+def _compile_condition(when: str) -> tuple[str, float]:
+    """Einmalige Analyse einer Bedingung (der Teil, den ``parse_condition`` cacht)."""
     text = (when or "").strip()
     if not text:
         raise ProtocolError(ErrorCode.TRIGGER_INVALID, "when darf nicht leer sein", "$.schedule.triggers[].when")
@@ -255,13 +290,28 @@ class ScheduleState:
     history: list[dict[str, Any]] = field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
+    # Fragment-Puffer fuer die Persistenz: pro Historieneintrag genau ein
+    # ``json.dumps`` statt eines pro Speichervorgang. ``compare=False``, damit die
+    # Ableitung nie Zustandsverleich oder ``repr`` verunziert.
+    hist_frags: list[str] = field(default_factory=list, compare=False, repr=False)
+    hist_appends: int = field(default=0, compare=False, repr=False)
+    hist_built: int = field(default=-1, compare=False, repr=False)
+    hist_tail: int = field(default=0, compare=False, repr=False)
+    hist_head: int = field(default=0, compare=False, repr=False)
 
     # -- Uhr -----------------------------------------------------------------
     def elapsed_s(self, *, now: datetime | None = None) -> float:
-        """``t_unlimited``: Sekunden seit ``t0``."""
-        moment = now or utc_now()
-        origin = parse_timestamp(self.t0, "$.schedule.t0")
-        return round(max(0.0, (moment - origin).total_seconds()), 3)
+        """``t_unlimited``: Sekunden seit ``t0``.
+
+        Schnellpfad ohne vorgegebenes ``now``: ``t0`` ist nach dem Schaerfen
+        unveraenderlich, also wird der Anker nicht pro Tick neu geparst, sondern
+        aus dem memoisierten Epoche-Wert gelesen (``timestamp_epoch_s``). Der
+        Pfad mit explizitem ``now`` (Tests, ``tick(now=...)``) bleibt unveraendert.
+        """
+        if now is not None:
+            origin = parse_timestamp(self.t0, "$.schedule.t0")
+            return round(max(0.0, (now - origin).total_seconds()), 3)
+        return round(max(0.0, time.time() - timestamp_epoch_s(self.t0, "$.schedule.t0")), 3)
 
     def state_for(self, trigger: Trigger) -> TriggerState:
         found = self.states.get(trigger.id)
@@ -276,6 +326,59 @@ class ScheduleState:
 
     def active_triggers(self) -> tuple[Trigger, ...]:
         return tuple(t for t in self.triggers if not self.state_for(t).finished)
+
+    # -- Persistenz-Text -----------------------------------------------------
+    def record_history_fragment(self, entry: Mapping[str, Any]) -> None:
+        """Holt das JSON-Fragment eines frischen Historieneintrags nach.
+
+        Muss synchron zu ``history`` gepflegt werden (gleiche Kuerzung), sonst gilt
+        der Puffer beim naechsten ``persist_text`` als veraltet und wird komplett neu
+        gebaut -- Sicherheitsnetz, kein Fehlerpfad.
+        """
+        self.hist_frags.append(json.dumps(entry, ensure_ascii=False, separators=(",", ":")))
+        if len(self.hist_frags) > HISTORY_LIMIT:
+            del self.hist_frags[: len(self.hist_frags) - HISTORY_LIMIT]
+        self.hist_appends += 1
+        self.hist_built = self.hist_appends
+        self.hist_tail = id(self.history[-1]) if self.history else 0
+        self.hist_head = id(self.history[0]) if self.history else 0
+
+    def persist_text(self) -> str:
+        """Der Dateiinhalt: dasselbe Dokument wie ``to_dict()``, nur billiger.
+
+        Die Historie ist der einzige grosse Teil des Zustands (bis zu
+        ``HISTORY_LIMIT`` Eintraege) und sie waechst nur am Ende -- also wird jeder
+        Eintrag genau einmal encodiert (in ``_record``) und hier nur noch
+        aneinanderguegt. Bei voller Historie ersetzt das ein ``json.dumps`` ueber
+        33 KB (gemessen 306 µs) durch einen Join (~15 µs inklusive Rumpf).
+
+        Der Puffer gilt als frisch, wenn Anhaehlzahl, Laenge und die Objekte an Kopf
+        und Ende noch dieselben sind -- das ist dervertrag, den ``_record`` haelt
+        (Eintraege werden nach dem Anhaengen nicht mehr angefasst). Ein Eingriff in
+        die *Mitte* der Liste gilt deshalb als unveraendert; er existiert nirgends.
+
+        Die Schluesselreihenfolge in der Datei aendert sich dabei (``history`` steht
+        zuletzt); gelesen wird ausschliesslich ueber ``json.loads``, das keine
+        Reihenfolge kennt. Geprueft wird trotzdem die Identitaet:
+        ``json.loads(persist_text()) == to_dict()``.
+        """
+        body = self.to_dict()
+        history = body.pop("history")
+        frags = self.hist_frags
+        tail_mark = id(history[-1]) if history else 0
+        head_mark = id(history[0]) if history else 0
+        if (
+            self.hist_built != self.hist_appends
+            or len(frags) != len(history)
+            or (tail_mark, head_mark) != (self.hist_tail, self.hist_head)
+        ):
+            frags = [json.dumps(entry, ensure_ascii=False, separators=(",", ":")) for entry in history]
+            self.hist_frags = frags
+            self.hist_built = self.hist_appends
+            self.hist_tail = tail_mark
+            self.hist_head = head_mark
+        rumpf = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
+        return rumpf[:-1] + ',"history":[' + ",".join(frags) + "]}"
 
     # -- Serialisierung ------------------------------------------------------
     def to_dict(self) -> dict[str, Any]:
@@ -425,17 +528,16 @@ class Scheduler:
     def save(self, state: ScheduleState) -> Path:
         state.updated_at = format_timestamp(utc_now())
         path = self.path_for(state.job_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        # Optimierung (Bolt): kompakte Separators statt indent=2. Die Datei ist
-        # reiner Maschinenzustand -- gelesen wird sie ausschliesslich ueber
-        # ``json.loads`` (load()/from_dict), die menschliche Sicht ist die CLI
-        # (``schedule show``). indent=2 kostet bei einer vollen Historie
-        # (200 Eintraege, ~67 KB) gemessen 1,48 ms Serialisierung gegen 0,37 ms
-        # kompakt und blaeht die Datei um ~34 % auf (67 KB -> 50 KB) -- bei
-        # jedem Feuerungs-Tick und jedem Re-Attach.
-        tmp.write_text(json.dumps(state.to_dict(), ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
-        tmp.replace(path)
+        # Optimierung (Bolt, Nr.2; Fragment-Cache, Nr.3): kompakte Separators statt
+        # indent=2 und -- neu -- die Historie wird nicht pro Feuerung komplett neu
+        # encodiert. Die Datei bleibt reiner Maschinenzustand, gelesen ueber
+        # ``json.loads`` (load()/from_dict); die menschliche Sicht ist ``schedule show``.
+        try:
+            atomic_write_bytes(path, (state.persist_text() + "\n").encode("utf-8"), dir_mode=False)
+        except FileNotFoundError:
+            # Verzeichnis wurde nach dem attach() entfernt (aufraumen, Neustart):
+            # einmal anlegen und wiederholen -- statt pro Speicherzugriff zu pruefen.
+            atomic_write_bytes(path, (state.persist_text() + "\n").encode("utf-8"), dir_mode=True)
         return path
 
     def detach(self, job_id: str) -> bool:
@@ -698,6 +800,7 @@ class Scheduler:
             entry["payload"] = {key: value for key, value in payload.items() if key != "params"}
         state.history.append(entry)
         state.history = state.history[-HISTORY_LIMIT:]
+        state.record_history_fragment(entry)  # Persistenz encodiert jeden Eintrag genau einmal
         self._emit(
             kind,
             {

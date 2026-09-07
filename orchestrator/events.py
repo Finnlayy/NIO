@@ -14,6 +14,7 @@ ergaenzt (Ouroboros-Test) -- deshalb ist hier eine klar markierte Andockstelle:
 from __future__ import annotations
 
 import json
+import math
 import sys
 import time
 from collections.abc import Iterable, Mapping
@@ -22,12 +23,113 @@ from typing import Any, Protocol, TextIO
 
 
 class EventSink(Protocol):
-    """Ein Sink nimmt fertig serialisierte Event-Datensaetze entgegen."""
+    """Ein Sink nimmt fertig serialisierte Event-Datensaetze entgegen.
+
+   Pflicht ist ``write(record)``. Sink, die den *Text* des Events brauchen,
+    koennen ausserdem ``write_prepared(record, line)`` implementieren und
+    ``wants_prepared_line = True`` setzen: dann serialisiert der Bus den
+    Datensatz **genau einmal** und teilt dieselbe Zeile mit allen Sinks
+    (Zero-Duplikat-Fanout, siehe ``.nio/nexus.md``, Triad 2 / Cycle 1).
+
+    Der ``record`` ist im Besitz des Buses und wird allen Sinks identisch
+    uebergeben -- ein Sink darf ihn **nicht** veraendern (Kopie anlegen, wenn er
+    weitergereicht oder aufbewahrt wird). Das war schon vor dem Fast-Path so.
+    """
 
     name: str
 
     def write(self, record: Mapping[str, Any]) -> None:  # pragma: no cover - Protokoll
         ...
+
+
+#: Obergrenze fuer den Literal-Cache. Bewusst **gebunden**: Zustand, der mit
+#: jedem Event waechst, waere ein Leck (siehe Philosophienote "State Should Be
+#: Bounded"). Bei Ueberlaufen wird geleert statt unbegrenzt zuwachsen.
+_LITERAL_CACHE_MAX = 4096
+_LITERAL_CACHE: dict[str, str] = {}
+
+
+def _json_str(text: str) -> str:
+    """``json.dumps(text)`` mit Cache -- fuer die sich wiederholenden Envelope-Felder.
+
+    Ein einzelner ``json.dumps``-Aufruf kostet in CPython ~0,29 µs, unabhaengig
+    davon wie kurz der String ist (die halbe Million Aufrufe in ``scripts/``
+    zeigen: der Fixpreis pro Aufruf ist der Grund, nicht die Datenmenge). Die
+    Envelope-Felder (``kind``, ``job_id``, ``trace_id``, ``intent_id``, ``limb``)
+    wiederholen sich *pro Tick* nahezu unveraendert, einmal pro Sekunde bei
+    ``timer.tick``. Der Cache liefert also praktisch immer einen Treffer und
+    garantiert identische Escapes, weil das Literal selbst mit ``json.dumps``
+    erzeugt wurde.
+    """
+    cached = _LITERAL_CACHE.get(text)
+    if cached is None:
+        cached = json.dumps(text, ensure_ascii=False)
+        if len(_LITERAL_CACHE) >= _LITERAL_CACHE_MAX:
+            _LITERAL_CACHE.clear()
+        _LITERAL_CACHE[text] = cached
+    return cached
+
+
+def _json_number(value: float | None) -> str:
+    """Zahl als JSON-Literal -- identisch zu ``json.dumps`` (auch fuer NaN/Inf).
+
+    ``repr(float)`` liefert CPython-konform dasselbe wie der JSON-Encoder fuer
+    endliche Werte (kuerzeste Rundfahrt-Darstellung) und ist ein Tick billiger.
+    Nicht endliche Werte delegieren, weil JSON dafuer ``NaN``/``Infinity``
+    schreibt und ``repr`` klein schreibt.
+    """
+    if value is None:
+        return "null"
+    if isinstance(value, float):
+        return repr(value) if math.isfinite(value) else json.dumps(value)
+    return str(value)
+
+
+def render_record(record: Mapping[str, Any]) -> str:
+    """Serialisiert einen Event-Datensatz kompakt (kanonische Form fuer alle Sinks)."""
+    return json.dumps(dict(record), ensure_ascii=False, separators=(",", ":"))
+
+
+def _render_line(
+    seq: int,
+    timestamp: str,
+    kind: str,
+    job_id: str,
+    trace_id: str,
+    intent_id: str,
+    limb: str,
+    clock: float | None,
+    payload: Mapping[str, Any] | None,
+) -> str:
+    """Baut die JSON-Zeile eines Events ohne das Record-Dict zu serialisieren.
+
+    Schluessel und Reihenfolge sind exakt die von ``Event.to_dict()`` -- nur die
+    feste Huuelle wird concateniert und ``json.dumps`` laeuft einmal ueber das
+    (kleine) Payload statt ueber den ganzen Datensatz. Das spart auf dem
+    Hot Path ~2 µs pro Event (Messung im Journal).
+    """
+    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) if payload else "{}"
+    return (
+        '{"seq":'
+        + str(seq)
+        + ',"timestamp":"'
+        + timestamp  # vom Formatter erzeugt: nur Ziffern, '-', ':', 'T', 'Z'
+        + '","kind":'
+        + _json_str(kind)
+        + ',"job_id":'
+        + _json_str(job_id)
+        + ',"trace_id":'
+        + _json_str(trace_id)
+        + ',"intent_id":'
+        + _json_str(intent_id)
+        + ',"limb":'
+        + _json_str(limb)
+        + ',"clock_s":'
+        + _json_number(clock)
+        + ',"payload":'
+        + body
+        + "}"
+    )
 
 
 _FAST_TIME_STATE: dict[str, Any] = {"sec": -1, "base": ""}
@@ -94,7 +196,7 @@ VALID_EVENT_KINDS: tuple[str, ...] = (
 )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Event:
     """Ein Ereignis auf dem Bus.
 
@@ -102,6 +204,10 @@ class Event:
     wird bei jedem Event mitgeschrieben, damit zeitgesteuerte Ausloeser und die
     spaetere Log-Analyse (Phase 3) exakt dieselbe Uhr referenzieren. ``None``
     bedeutet: kein Job-Kontext (z. B. reine Konfigurationsausgabe).
+
+    ``slots=True`` ist kein Tempomacher (gemessen neutral, 3.06 -> 3.08 µs pro
+    ``emit``), sondern Speicher: ein Sammler behaelt jedes Event eines Laufs, und
+    200 000 Events kosten so 39.7 MB statt 48.9 MB (-18.8 %).
     """
 
     kind: str
@@ -141,11 +247,24 @@ class ConsoleSink:
         self.stream = stream or sys.stderr
         self.quiet = quiet
 
+    @property
+    def wants_prepared_line(self) -> bool:
+        """Im Quiet-Modus verwirft der Sink die Zeile -- der Bus serialisiert dann gar nicht."""
+        return not self.quiet
+
     def write(self, record: Mapping[str, Any]) -> None:
         if self.quiet:
             return
+        self._emit_line(render_record(record))
+
+    def write_prepared(self, record: Mapping[str, Any], line: str) -> None:
+        """Fast-Path: der Bus hat die Zeile schon serialisiert -- nicht nochmal tun."""
+        self._emit_line(line)
+
+    def _emit_line(self, line: str) -> None:
         try:
-            self.stream.write(json.dumps(dict(record), ensure_ascii=False) + "\n")
+            self.stream.write(line)
+            self.stream.write("\n")
             self.stream.flush()
         except (ValueError, OSError):  # Ein Log-Sink darf die Pipeline nie toeten
             pass
@@ -167,7 +286,15 @@ class CollectingSink:
 
 
 class EventBus:
-    """Nummeriert, zeitstempelt und verteilt Ereignisse an alle Sinks."""
+    """Nummeriert, zeitstempelt und verteilt Ereignisse an alle Sinks.
+
+    Fanout-Semantik (Triad 2 / Cycle 1): der Bus baut den Datensatz **einmal**
+    und serialisiert ihn **einmal**. Sinks mit ``wants_prepared_line`` erhalten
+    die fertige JSON-Zeile ueber ``write_prepared(record, line)`` -- bei drei
+    Text-Sinks fiel vorher die Serialisierung dreimal an, jetzt genau einmal.
+    Ist kein Text-Sink abonniert (nur Sammler/Ring), wird gar nicht
+    serialisiert: der Bus laeuft dann rein im Dict-Pfad.
+    """
 
     def __init__(self, sinks: Iterable[EventSink] | None = None) -> None:
         self._sinks: list[EventSink] = list(sinks or [])
@@ -200,20 +327,29 @@ class EventBus:
         payload_copy = dict(payload) if payload else {}
         clock = None if clock_s is None else round(float(clock_s), 3)
         timestamp = _iso_ms_z_fast()
+        job = job_id or trace_id
         record = {
             "seq": seq,
             "timestamp": timestamp,
             "kind": kind,
-            "job_id": job_id or trace_id,
+            "job_id": job,
             "trace_id": trace_id,
             "intent_id": intent_id,
             "limb": limb,
             "clock_s": clock,
             "payload": payload_copy,
         }
+        line: str | None = None  # wird spaetestens beim ersten Text-Sink gebaut
         for sink in self._sinks:
             try:
-                sink.write(record)
+                if getattr(sink, "wants_prepared_line", False):
+                    if line is None:
+                        line = _render_line(
+                            seq, timestamp, kind, job, trace_id, intent_id, limb, clock, payload_copy
+                        )
+                    sink.write_prepared(record, line)  # type: ignore[attr-defined]
+                else:
+                    sink.write(record)
             except Exception as exc:
                 sys.stderr.write(f"[events] Sink '{getattr(sink, 'name', '?')} scheiterte: {exc}\n")
         # Rueckgabe bleibt der ``Event`` (oeffentliche API); Sinks erhalten bereits
@@ -224,7 +360,7 @@ class EventBus:
             payload=payload_copy,
             seq=seq,
             timestamp=timestamp,
-            job_id=job_id or trace_id,
+            job_id=job,
             trace_id=trace_id,
             intent_id=intent_id,
             limb=limb,

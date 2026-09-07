@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -75,6 +76,7 @@ _LIMB_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 _LIMB_VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$")
 _OPERATION_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
 _REL_PATH_RE = re.compile(r"^(?!/)[^\x00]*$")
+_VALID_VERSION_RE = re.compile(r"^\d+\.\d+$")
 
 VALID_SOURCE_ROLES = ("core", "orchestrator", "limb", "human")
 VALID_ELEVATION_LEVELS = ("none", "workspace", "repo_write")
@@ -190,6 +192,38 @@ def parse_timestamp(value: Any, path: str) -> datetime:
     return parsed.astimezone(UTC)
 
 
+#: Memoisierung des Epoche-Werts bereits gelesener Zeitstempel.
+#:
+#: ``t0`` und ``armed_at`` eines Auftrags sind **unveraenderlich**, sobald der
+#: Timer geschaerft ist -- aber jeder Event (``,emit`` leitet ``clock_s`` aus
+#: ``intent.timer.elapsed()`` ab) und jeder Scheduler-Tick hat denselben String
+#: erneut durch ``str.replace`` + ``fromisoformat`` + ``astimezone`` gejagt
+#: (~0,5 µs). Bei ``tick_s=0,05`` und 8 Ausloesern sind das ~100 µs reine
+#: Re-Analyse pro Sekunde und Job -- CPU, die nichts berechnet, weil das
+#: Ergebnis laengst feststeht. Darf nie ins Unendliche wachsen, deshalb
+#: Gebundene-Cache mit Leeren bei Vollstand (Quirks im Journal: .nio/nexus.md).
+_EPOCH_CACHE_MAX = 512
+_EPOCH_CACHE: dict[str, float] = {}
+
+
+def timestamp_epoch_s(value: Any, path: str) -> float:
+    """Epoche-Sekunden eines ISO-8601-Stempels, memoisiert (identisch zu ``parse_timestamp``).
+
+    Ungueltige Stempel loesen wie bei ``parse_timestamp`` einen ``ProtocolError``
+    aus und werden nicht gecacht -- die Fehlermeldung muss den rohen Wert nennen koennen.
+    """
+    if isinstance(value, str):
+        cached = _EPOCH_CACHE.get(value)
+        if cached is not None:
+            return cached
+        epoch = parse_timestamp(value, path).timestamp()
+        if len(_EPOCH_CACHE) >= _EPOCH_CACHE_MAX:
+            _EPOCH_CACHE.clear()
+        _EPOCH_CACHE[value] = epoch
+        return epoch
+    return parse_timestamp(value, path).timestamp()
+
+
 def _optional_timestamp(value: Any, path: str) -> str | None:
     if value in (None, ""):
         return None
@@ -272,9 +306,32 @@ def _as_str_list(value: Any, path: str, *, max_items: int = 64, max_len: int = 2
     return tuple(_as_str(item, f"{path}[{i}]", max_len=max_len) for i, item in enumerate(value))
 
 
+def _allowed_set(allowed: Sequence[str] | frozenset[str]) -> frozenset[str]:
+    """Die erlaubten Werte als Menge -- einmal pro Konstante, nicht pro Aufruf.
+
+    ``ALLOWED_KEYS``/``VALID_*`` sind Klassen- bzw. Modul-Tupel; der Test
+    ``text not in allowed`` lief damit linear ueb bis zu 16 Eintraege, und
+    ``set(allowed)`` wurde in ``_reject_unknown`` bei *jedem* Aufruf neu gebaut
+    (gemessen der teuerste Einzelposten der Validierungsprimitiven). Der Cache ist
+    nach oben begrenzt und faellt fuer unhashbare Eingaben (Liste) auf den Neubau
+    zurueck -- er darf nie die Wahrheit sein, nur die Abkuerzung.
+    """
+    if isinstance(allowed, frozenset):
+        return allowed
+    try:
+        found = _ALLOWED_SETS.get(allowed)
+    except TypeError:
+        return frozenset(allowed)
+    if found is None:
+        found = frozenset(allowed)
+        if len(_ALLOWED_SETS) < 512:
+            _ALLOWED_SETS[allowed] = found
+    return found
+
+
 def _as_enum(value: Any, path: str, allowed: Sequence[str]) -> str:
     text = _as_str(value, path, max_len=64)
-    if text not in allowed:
+    if text not in _allowed_set(allowed):
         raise ProtocolError(ErrorCode.SCHEMA_INVALID, f"'{text}' nicht in {list(allowed)}", path)
     return text
 
@@ -287,17 +344,17 @@ def _as_rel_path(value: Any, path: str) -> str:
 
 
 def _reject_unknown(data: Mapping[str, Any], allowed: Sequence[str], path: str) -> None:
-    unknown = sorted(set(data) - set(allowed))
+    unknown = set(data) - _allowed_set(allowed)
     if unknown:
         raise ProtocolError(
             ErrorCode.SCHEMA_INVALID,
-            f"unbekannte Schluessel {unknown} (Protokoll {PROTOCOL_VERSION} ist strikt)",
+            f"unbekannte Schluessel {sorted(unknown)} (Protokoll {PROTOCOL_VERSION} ist strikt)",
             path,
         )
 
 
 def _check_version(value: Any, path: str) -> None:
-    text = _as_str(value, path, max_len=16, pattern=re.compile(r"^\d+\.\d+$"))
+    text = _as_str(value, path, max_len=16, pattern=_VALID_VERSION_RE)
     major, minor = (int(part) for part in text.split("."))
     if major != PROTOCOL_MAJOR:
         raise ProtocolError(ErrorCode.SCHEMA_INVALID, f"Inkompatible Protokoll-Major-Version {major} (erwartet {PROTOCOL_MAJOR})", path)
@@ -686,13 +743,18 @@ class Timer:
         """Vergangene Sekunden seit ``reference`` (Default: ``t0``).
 
         Das ist der Wert, gegen den Trigger vergleichen (``t_unlimited``).
+
+        Schnellpfad: ohne vorgegebenes ``now`` wird der Anker ueber den memoisierten
+        Epoche-Wert gelesen (``timestamp_epoch_s``) statt pro Aufruf neu geparst --
+        der Aufrufer-Pfad mit explizitem ``now`` bleibt Wort fuer Wort erhalten.
         """
         anchor = reference or self.t0 or self.armed_at
         if not anchor:
             return 0.0
-        moment = now or utc_now()
-        start = parse_timestamp(anchor, "$.timer.t0")
-        return round(max(0.0, (moment - start).total_seconds()), 3)
+        if now is not None:
+            start = parse_timestamp(anchor, "$.timer.t0")
+            return round(max(0.0, (now - start).total_seconds()), 3)
+        return round(max(0.0, time.time() - timestamp_epoch_s(anchor, "$.timer.t0")), 3)
 
     def remaining_s(self, *, now: datetime | None = None) -> float | None:
         """Restbudget; ``None`` im Unlimited-Modus (es gibt keins)."""
@@ -950,12 +1012,21 @@ class Schedule:
         return cls(triggers=triggers, tick_s=tick)
 
 
+_ALLOWED_SETS: dict[Sequence[str], frozenset[str]] = {}
+
 _CONDITION_RE = re.compile(r"^elapsed\s*(<=|>=|==|!=|<|>)\s*(\d+(?:\.\d+)?)$")
 
 
 def _validate_condition(text: str, path: str) -> tuple[str, float]:
-    """Parst ``"elapsed >= 30"`` -> (operator, Schwellwert in Sekunden)."""
-    match = _CONDITION_RE.match(" ".join(text.split()))
+    """Parst ``"elapsed >= 30"`` -> (operator, Schwellwert in Sekunden).
+
+    Der Musterausdruck laesst Leerraum an beiden Kanten frei, deshalb trifft die
+    kanonische Form auch ohne Gluettung; das " ".join(split()) bleibt als Fallback
+    fuer exotische Leerraumformen (und fuer Zeilenumbrüche in der Bedingung).
+    """
+    match = _CONDITION_RE.match(text)
+    if match is None:
+        match = _CONDITION_RE.match(" ".join(text.split()))
     if not match:
         raise ProtocolError(
             ErrorCode.TRIGGER_INVALID,

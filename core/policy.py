@@ -66,9 +66,15 @@ class PolicyDecision:
 class Policy:
     """Sandbox-, Elevations- und Operations-Gating."""
 
+    #: Wie viele verschiedene ``sandbox_root``-Angaben pro Policy instanz gemerkt
+    #: werden. Der Schluessel kommt aus dem Intent (also von aussen!) -- ohne Kante
+    #: waere das ein unbegrenzt wachsender Cache.
+    _SANDBOX_CACHE_LIMIT = 32
+
     def __init__(self, config: NeuConfig | None = None, operations: Operations | None = None) -> None:
         self.config = config or NeuConfig.load()
         self.operations = operations or Operations.load(self.config.protocol_dir / "operations.json")
+        self._sandbox_roots: dict[str, tuple[Path, str]] = {}
 
     # ------------------------------------------------------------------ Pfade
     def sandbox_root(self, intent: Intent) -> Path:
@@ -82,11 +88,29 @@ class Policy:
         root_name = (intent.constraints.sandbox_root or "workspace").strip()
         if root_name in {"", ".", "./"}:
             return self.config.repo_root
+        found = self._sandbox_roots.get(root_name)
+        if found is not None:
+            return found[0]
         candidate = self._join_safe(root_name, "$.constraints.sandbox_root")
         root = (self.config.repo_root / candidate).resolve()
         if not self._is_inside(root, self.config.repo_root):
             raise ProtocolError(ErrorCode.SANDBOX_ESCAPE, "sandbox_root verlaesst das Repository", "$.constraints.sandbox_root")
+        if len(self._sandbox_roots) < self._SANDBOX_CACHE_LIMIT:
+            self._sandbox_roots[root_name] = (root, self.config.relative_resolved(root))
         return root
+
+    def sandbox_root_label(self, intent: Intent) -> str:
+        """Lesbarer Name der Sandbox-Wurzel fuer Entscheidungstexte.
+
+        Dieselbe Wurzel, dieselbe Kette -- nur einmal pro Wurzel berechnet statt
+        pro Antwort (``relative(sandbox_root(...))`` war ein Realpath-Durchlauf
+        zusaetzlich zu dem der Aufloesung selbst).
+        """
+        root_name = (intent.constraints.sandbox_root or "workspace").strip()
+        cached = self._sandbox_roots.get(root_name)
+        if cached is not None:
+            return cached[1]
+        return self.config.relative_resolved(self.sandbox_root(intent))
 
     def resolve_path(self, raw_path: str, intent: Intent, *, where: str = "$.task.params.path", must_exist: bool = False) -> Path:
         """Uebersetzt einen Intent-Pfad in einen sicheren, absoluten Pfad.
@@ -110,12 +134,12 @@ class Policy:
         if not self._is_inside(target, self.config.repo_root):
             raise ProtocolError(ErrorCode.SANDBOX_ESCAPE, f"Ziel {raw_path!r} liegt ausserhalb des Repositories", where)
 
-        rel = self.config.relative(target)
+        rel = self.config.relative_resolved(target)
 
         if elevation.level != "repo_write" and not self._is_inside(target, base):
             raise ProtocolError(
                 ErrorCode.SANDBOX_ESCAPE,
-                f"Ziel {raw_path!r} verlaesst die Sandbox '{self.config.relative(base)}'. "
+                f"Ziel {raw_path!r} verlaesst die Sandbox '{self.sandbox_root_label(intent)}'. "
                 " Fuer Aenderungen am System selbst ist elevation.level='repo_write' noetig.",
                 where,
             )
@@ -320,7 +344,7 @@ class Policy:
         if warnings:
             return PolicyDecision(
                 allowed=True,
-                sandbox_root=self.config.relative(self.sandbox_root(intent)),
+                sandbox_root=self.sandbox_root_label(intent),
                 warnings=tuple(warnings),
             )
         return None
@@ -336,7 +360,7 @@ class Policy:
             allowed=False,
             code=ErrorCode.TRIGGER_INVALID,
             reason=f"{reason} (Ursache: {code})",
-            sandbox_root=self.config.relative(self.sandbox_root(intent)),
+            sandbox_root=self.sandbox_root_label(intent),
         )
 
     def _check_common(self, intent: Intent, *, warnings: list[str] | None = None) -> PolicyDecision:
@@ -405,7 +429,7 @@ class Policy:
                 target = self.resolve_path(str(value), intent, where=f"$.task.params.{param_name}")
             except ProtocolError as exc:
                 return self._deny(exc.code, exc.message, intent)
-            resolved.append(self.config.relative(target))
+            resolved.append(self.config.relative_resolved(target))
 
         if spec.implemented_by and intent.target_limb not in spec.implemented_by:
             return self._deny(
@@ -417,14 +441,14 @@ class Policy:
 
         return PolicyDecision(
             allowed=True,
-            sandbox_root=self.config.relative(self.sandbox_root(intent)),
+            sandbox_root=self.sandbox_root_label(intent),
             resolved_targets=tuple(resolved),
             warnings=tuple(warnings),
         )
 
     # ------------------------------------------------------------- Internes
     def _deny(self, code: str, reason: str, intent: Intent) -> PolicyDecision:
-        return PolicyDecision(allowed=False, code=code, reason=reason, sandbox_root=self.config.relative(self.sandbox_root(intent)))
+        return PolicyDecision(allowed=False, code=code, reason=reason, sandbox_root=self.sandbox_root_label(intent))
 
     def _join_safe(self, raw_path: str, where: str) -> PurePosixPath:
         text = str(raw_path).strip()
