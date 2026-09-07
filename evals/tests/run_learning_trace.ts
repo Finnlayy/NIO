@@ -118,17 +118,17 @@ async function main(): Promise<void> {
 
   // Integration der neuen `defineEval`-Pipeline mit echten historischen `rlhf_samples`.
   const rlhfSamplesRaw = await import('../datasets/rlhf_samples.json');
-  // Die Pipeline wird mit einem echten RLHF-Sample und einem fehlerhaften Sample getestet,
-  // um die multidimensionale Bewertung (Korrektheit, Feedback-Alignment, Policy-Safety) zu demonstrieren.
-  const rlhfSample = rlhfSamplesRaw.default ? rlhfSamplesRaw.default[0] : rlhfSamplesRaw[0];
+  // Handle default export logic if any
+  const samplesArray = (rlhfSamplesRaw as any).default ? (rlhfSamplesRaw as any).default : rlhfSamplesRaw;
+  const rlhfSample = Array.isArray(samplesArray) && samplesArray.length > 0 ? samplesArray[0] : undefined;
+
   const pipelineRun = await learningEvaluator.run(
     {
-      outcome: { correctnessScore: 0.92, errors: [] } as any,
+      outcome: { correctnessScore: 0.92, errorMessage: undefined } as any,
       feedbacks: [{ verdict: 'correct', score: 0.92 }],
       errors: [],
-      policyViolations: [],
-      humanFeedbackCategory: rlhfSample.humanFeedbackCategory,
-    },
+      humanFeedbackCategory: rlhfSample ? rlhfSample.humanFeedbackCategory : 'approved',
+    } as any,
     rlhfSample ? { rlhfSamples: [rlhfSample] } : undefined,
   );
 
