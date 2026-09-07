@@ -513,11 +513,10 @@ Gate: compile + ruff + mypy + **272 tests** + e2e gruen.
 - `tests/test_nexus_triad3.py` — **NEU** 31 Guard-Tests.
 
 ### Naechster Zyklus (Queue, nicht neu verhandeln)
-1. **Ein Dokument pro Durchgang statt drei** im Archiv (`intent.json`,
-   `result.iterationN.json`, `result.json` = 3 fsyncierte Dateien, 2,25 ms pro
-   `archive()`). Erwartet ~−1,1 ms; nur mit Lesepfad fuer beide Formen, weil die
-   Archivform Vertrag ist.
-2. **Snapshot pro Lauf statt pro Tag** in `compacted/` (660 ms -> erwartet ~300 ms):
+1. **Ein Dokument pro Durchgang statt drei** -- **erledigt in Nr.4/1** (als
+   Verlinkung, nicht als Layout-Bruch: 2285,9 -> 1649,9 µs pro `archive()`).
+2. **Snapshot pro Lauf statt pro Tag** in `compacted/` (172,7 ms im aktuellen
+   Bench-Fixture, 660 ms im 400/200-Profil -> erwartet ~300 ms):
    weniger Dateien, weniger Syncs; braucht neue Kandidatenlogik in
    `lookup_archived`/`verify_archive` und eine Uebergangslesung alter Tagesdateien.
 3. **`emit`-Fussboden**: 1,4 µs `Event`-Konstruktion pro Aufruf, die jeder
@@ -532,6 +531,82 @@ Gate: compile + ruff + mypy + **272 tests** + e2e gruen.
   (Run 34070103309) wie auf jedem Nexus-Zweig vorher, und zwar in ~25 s -- vor jedem
   Python-Schritt. Massstab bleibt `make check`. Nicht fuer dieses Repo verantworten
   wollen, aber auch nicht als Regression lesen. (Nr.3, Cycle 3)
+
+## 🔁 TRIAD Nº4 (2026-09-07, direkt nach Nº3)
+
+Ausgangslage nach Nr.3: die Selbstpflege des Ledgers ist gebaendigt (Kompaktierung
+1,24x, Verify-before-prune 17,6x), aber der *Schreibweg* ins Archiv war die ganze
+Zeit die teure Zeile im Protokoll: **2,25 ms pro Archivedurchgang**. Der cProfile-
+Abschuss ueber 30 Durchgaenge: `posix.fsync` 57 ms von 75 ms_cumtime in
+`atomic_write_bytes` -- **76 % des Schreibens sind Sync**, 120 fsyncs bei 120
+Schreibvorgängen, also genau einer pro Datei.
+
+### Cycle 1 — Focus A: das Archiv-Duplikat als Verlinkung, nicht als zweiter Schreibvorgang
+
+**Der Engpass.** `archive()` schreibt pro Durchgang vier Dateien: `intent.json`,
+`result.iterationN.json`, `result.json`, `verdict.json`. Davon sind zwei
+**inhaltlich dasselbe Dokument**: `result.iterationN.json` und `result.json`
+entstehen aus demselben `result.to_dict()`, Byte fuer Byte. Der alte Weg hat sie
+zweimal kodiert, zweimal geschrieben und **zweimal gesyncht**. Zusatzkosten durch
+`write_json_atomic`: viermal `os.makedirs` auf einem Verzeichnis, das der Aufrufer
+gerade erst angelegt hat (je 4,8 µs, messbar, überflüssig).
+
+**Der Schnitt.** Statt des vierten Vollzugriffs: der soeben fsyncierte Inhalt wird
+per **Hardlink** auf einen Temp-Namen gesetzt und per `os.replace` auf `result.json`
+gehoben (zwei Syscalls statt eines weiteren Sync-Laufs). Ein Leser sieht
+weiterhin entweder nichts oder das ganze Dokument -- die Reihenfolge (Iterations-Dokument zuerst, dann `result.json`) bleibt erhalten, die Bytes bleiben
+erhalten, die Rechte bleiben 0600. Kann das Dateisystem keine Links (FAT, manche
+Mounts), faellt `duplicate_json_atomic` auf einen normalen Schreibvorgang zurueck:
+gleiche Bytes, ein fsync mehr, keine Observable-Aenderung.
+
+Zwei Dinge, die die Verlinkung fast uebersehen haette, sind mitgebaut:
+* `dir_bytes()` zaehlt geteilte Inodes **einmal** (wie `du`). Ohne das haette die
+  Buchhaltung des Ledgers nach der Umstellung **38,1 %** mehr Bytes gemeldet als
+  wirklich belegt sind (`archive_stats.bytes`, `compact_archive.bytes_freed`).
+* `write_json_atomic(..., ensure_dir=False)` auf den drei Schreibvorgängen, deren
+  Verzeichnis der Aufrufer schon angelegt hat.
+
+**Das Ergebnis** (`scripts/nexus_bench.py`, Sektion `nio4_archive_link`; beide
+Wege schreiben pro Messung ein frisches Zielverzeichnis, also gleiche Arbeit):
+
+| Metrik | vorher | nachher | Δ |
+|---|---|---|---|
+| **`archive()`-Sequenz (4 Dateien, 300 Eintraege-Fixture)** | **2285,9 µs** | **1649,9 µs** | **1,39×, −636 µs** |
+| `fsync` pro Durchgang | 4 | **3** | −1 Sync |
+| `transport.archive()` im Lauf (inkl. Selbstpflege-Tor) | 2250 µs (Nr.3) | **1804,1 µs** | −20 % |
+| Bytes auf Platte | 3350 B | 3350 B | identisch ✓ |
+| gemeldete Archiv-Groesse vs. real belegt | +38,1 % nach der Umstellung | **abgezinst** | Buchhaltung korrekt |
+| Verify (schnell + tief), Lookup nach Kompaktierung | — | 0 Violations, alle Eintraege aufloesbar | unveraendert ✓ |
+
+Ueber die Laeufe gemittelt liegt der Gewinn bei **1,39–1,56×** (der
+Profil-Harness mass 2206 → 1424 µs); der Zahl oben ist der volle
+Bench-Lauf, nicht der beste.
+
+**Was die Verlinkung nicht darf, und warum sie es nicht tut:** ein spaeterer
+Durchgang mit `iteration=2` ersetzt **nur** `result.json` (neuer Inode per
+`replace`), das aeltere `result.iteration1.json` bleibt an seinem eigenen Inode --
+genau das prueft `test_zweite_iteration_laesst_die_erste_unangetastet`. Niemand
+schreibt diese Dateien jemals in-place; `write_json_atomic` ersetzt immer, und
+`shutil.rmtree` beim Prunen loescht nur Namen.
+
+**Guard-Tests** (8 neue in `tests/test_nexus_triad4.py`): Link zeigt auf
+denselben Inode bei gleicher Bytefolge und 0600; Iteration 2 laesst Iteration 1
+unangetastet (`st_nlink` 1 vs. 2); kein `.`-Rest im Eintragverzeichnis; Rueckfall
+ohne Hardlinks schreibt normal und verlinkt nicht; mit blockierten Links bleibt
+das Archiv dicht (verifizierbar, Lookup findet den Eintrag); ein gescheiterter
+`replace` hinterlaesst keinen Link; `dir_bytes` == naive Summe wo nichts geteilt
+ist, und == Inode-abziehende Summe wo doch.
+
+**Nicht getan, mit Begruendung:** die Syncs selbst -- ein weglassen waere der
+Vertragsbruch, und `os.fdatasync` ist bereits als 1,00× gemessen und begraben.
+Ein `fsync` auf das *Verzeichnis* nach den Links waere ein Gewinn an
+Crash-Festigkeit des Namens (aktuell sichert kein Verzeichnis-Sync den
+Verzeichniseintrag; `result.json` kann nach einem Power-Cut fehlen, obwohl sein
+Inode laengst auf Platte liegt) -- das ist ein **neuer** Sync auf einem Pfad, den
+der Vertrag nicht verlangt, also nichts fuer einen Zyklus, der Kosten senken
+soll. In die Queue, mit der Begruendung, dass der Ruecklesepfad fehlende
+`result.json` bereits heute verzeihen muss (sonst ist es ein Datenschutz- wie ein
+Kompatibilitaetsthema).
 
 ## The Graveyard (architectural dead ends)
 

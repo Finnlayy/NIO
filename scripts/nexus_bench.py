@@ -53,7 +53,7 @@ from orchestrator.scheduler import (  # noqa: E402
     _compile_condition,
     evaluate_condition,
 )
-from orchestrator.transport import FileTransport, read_jsonl, write_json_atomic  # noqa: E402
+from orchestrator.transport import FileTransport, dir_bytes, read_jsonl, write_json_atomic  # noqa: E402
 from orchestrator.uds import UDSBroadcastServer, UDSBroadcastSink  # noqa: E402
 
 #: Referenzpunkte aus dem Journal. ``*_triad0`` = Commit ``2639525`` (vor jedem
@@ -848,6 +848,127 @@ def bench_triad3_ledger(results: dict[str, Any]) -> None:
     results["triad3_ledger"] = ledger
 
 
+
+# ---------------------------------------------------------------------------
+# Triad Nr.4, Cycle 1 -- Archiv-Duplikat als Hardlink statt zweiter Schreibvorgang
+# ---------------------------------------------------------------------------
+
+
+def _fsync_count(run) -> int:
+    """Wie oft ``run()`` tatsaechlich auf die Platte syncht -- der teure Teil."""
+    real = os.fsync
+    hits = [0]
+
+    def counted(fd: int) -> None:
+        hits[0] += 1
+        real(fd)
+
+    os.fsync = counted  # type: ignore[assignment]
+    try:
+        run()
+    finally:
+        os.fsync = real  # type: ignore[assignment]
+    return hits[0]
+
+
+def bench_nio4_archive(results: dict[str, Any]) -> None:
+    """Legt denselben Durchgang zweimal ab: alter Weg (4 Schreiblaeufe) gegen neu
+    (3 Schreiblaeufe + Verlinkung), inklusive der Syscall-Zaehlung."""
+    tmp = Path(tempfile.mkdtemp(prefix="nio-bench-archive-"))
+    config = NeuConfig.load(
+        _REPO,
+        mode="dev",
+        limits={"max_iterations": 1, "max_agents": 1, "limbs": 1, "max_concurrent_jobs": 1, "max_scheduled_jobs": 1},
+        runtime_dir=tmp / "runtime",
+        workspace_dir=tmp / "workspace",
+    )
+    config.ensure_dirs()
+    kernel = Kernel(config, Operations.load(config.protocol_dir / "operations.json"))
+    transport = FileTransport(config)
+    from orchestrator.transport import duplicate_json_atomic
+
+    intent = kernel.build_intent(operation="sys.echo", params={"message": "archiv"}, limb="echo", goal="Nr.4 Cycle 1")
+    result = Result(
+        result_id=new_id("res"),
+        intent_id=intent.intent_id,
+        trace_id=intent.trace_id,
+        status="success",
+        operation="sys.echo",
+        limb_name="echo",
+        started_at=utc_now_iso(),
+        finished_at=utc_now_iso(),
+        output={"message": "archiv"},
+    )
+    verdict = {"verdict": "accept", "iteration": 1}
+
+    def legacy(d: Path) -> None:
+        """Wortgleich der alte Koerper von archive(): vier volle Schreiblaeufe."""
+        d.mkdir(parents=True, exist_ok=True)
+        write_json_atomic(d / "intent.json", intent.to_dict())
+        write_json_atomic(d / f"result.iteration{result.iteration}.json", result.to_dict())
+        write_json_atomic(d / "result.json", result.to_dict())
+        write_json_atomic(d / "verdict.json", dict(verdict))
+
+    def linked(d: Path) -> None:
+        """Wortgleich der neue Koerper von archive(): drei Schreiblaeufe + Link."""
+        d.mkdir(parents=True, exist_ok=True)
+        write_json_atomic(d / "intent.json", intent.to_dict(), ensure_dir=False)
+        iteration_doc = d / f"result.iteration{result.iteration}.json"
+        write_json_atomic(iteration_doc, result.to_dict(), ensure_dir=False)
+        duplicate_json_atomic(iteration_doc, d / "result.json")
+        write_json_atomic(d / "verdict.json", dict(verdict), ensure_dir=False)
+
+    legacy_root = tmp / "legacy"
+    link_root = tmp / "linked"
+
+    seq = {"i": 0}
+
+    def run_legacy():
+        seq["i"] += 1
+        legacy(legacy_root / f"e{seq['i']:06d}")
+
+    def run_linked():
+        seq["i"] += 1
+        linked(link_root / f"e{seq['i']:06d}")
+
+    # Syscall-Zaehlung pro Durchgang
+    counts = {"legacy": _fsync_count(run_legacy), "linked": _fsync_count(run_linked)}
+
+    bytes_same = True
+    for name in ("intent.json", "result.iteration1.json", "result.json", "verdict.json"):
+        if (legacy_root / "e000001" / name).read_bytes() != (link_root / "e000002" / name).read_bytes():
+            bytes_same = False
+
+    out: dict[str, Any] = {
+        "fsyncs_legacy": counts["legacy"],
+        "fsyncs_linked": counts["linked"],
+        "payload_bytes": (legacy_root / "e000001" / "result.json").stat().st_size,
+        "bytes_identisch": 1 if bytes_same else 0,
+        "nlink_result_json": os.stat(link_root / "e000002" / "result.json").st_nlink,
+    }
+    out["archive_legacy_us"] = measure(run_legacy, 24, 4)
+    out["archive_linked_us"] = measure(run_linked, 24, 4)
+    out["archive_speedup_x"] = round(out["archive_legacy_us"] / out["archive_linked_us"], 2)
+    out["archive_delta_us"] = round(out["archive_legacy_us"] - out["archive_linked_us"], 1)
+    out["archive_in_situ_us"] = measure(lambda: transport.archive(intent, result, verdict), 24, 4)
+
+    # Groessenbuchhaltung: geteilte Inodes duerfen nicht doppelt tragen
+    day = config.archive_dir / time.strftime("%Y-%m-%d", time.gmtime())
+    for _ in range(24):
+        other = kernel.build_intent(operation="sys.echo", params={"message": "buchhaltung"}, limb="echo", goal="Nr.4 Cycle 1")
+        transport.archive(other, result, verdict)
+    naive = sum(doc.stat().st_size for entry in day.iterdir() for doc in entry.iterdir() if doc.is_file())
+    counted_bytes = sum(dir_bytes(entry) for entry in day.iterdir())
+    out["ledger_bytes_naive"] = naive
+    out["ledger_bytes_counted"] = counted_bytes
+    out["ledger_bytes_inflation_pct"] = round((naive / counted_bytes - 1) * 100, 1)
+    out["entries"] = len(list(day.iterdir()))
+    out["verify_clean"] = len(transport.verify_archive())
+    out["verify_deep_clean"] = len(transport.verify_archive(force=True))
+    out["lookup_resolves"] = 1 if transport.lookup_archived(intent.intent_id) is not None else 0
+    results["nio4_archive_link"] = out
+
+
 def main() -> int:
     results: dict[str, Any] = {"reference_baseline": REFERENCE_BASELINE}
     bench_focus_a(results)
@@ -856,6 +977,7 @@ def main() -> int:
     bench_triad3_writer(results)
     bench_triad3_validation(results)
     bench_triad3_ledger(results)
+    bench_nio4_archive(results)
     print(json.dumps(results, ensure_ascii=False, indent=2))
     return 0
 

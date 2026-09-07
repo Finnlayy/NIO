@@ -82,3 +82,42 @@ python3 -m orchestrator.cli archive verify --json                  # digest fast
 Metrics also logged in `.nio/nexus.md` (TRIAD Nº2 + summary + corrected Graveyard).
 
 > Journal: `.nio/nexus.md` (TRIAD Nº2). This body is the file `.nio/pr_triad2_body.md`.
+---
+
+# ⚡ Nexus Triad Nº3 — auch auf diesem Branch (Cycles 1–3, `56d30d1`/`64b6b3e`/`f20c2f4`)
+
+**Warum hier statt in einem eigenen PR:** die Persona verlangt ein PR pro Triade, diese
+Arena-Session ist aber fest an `arena/01a07962-nio` gebunden — Nº3 konnte nur auf denselben
+Branch. Wer Nº2 isoliert reviewen will, reviewt bis `5391ee6`; Nº3 beginnt mit `56d30d1`.
+Volle Zahlen im Journal (`.nio/nexus.md` → `TRIAD Nº3 SUMMARY`).
+
+## Cycle 1 — Focus A: ein atomarer JSON-Schreiber statt drei
+Zustand, Job-Record und Archiv-Beleg kopierten für jede Persistierung erst durch
+`json.dumps → loads → indent=2 → dumps`, jede Datei ließ `Path.mkdir` laufen und endete mit
+einem unbedingten `os.fsync`.
+- **Tick, der persistiert: 587,9 → 256,8 µs (2,29×)** · Schedule-Zustand: 525,1 → 234,8 µs (2,24×)
+- 44-KB-Dokument atomar schreiben: 6113 → **3898 µs (1,57×)** · Job-Record auf Platte: 607 → **502 B (−17,5 %)**
+- Bytes auf Platte byte-identisch zum alten Schreiber, Dateirechte unverändert (0644/0755)
+- Verworfen mit Zahl: fsync auf Intent-Dateien einsparen — bei 73 % des Pfads **0,87×**, der Sync ist der Vertrag
+- **`os.fdatasync` statt `os.fsync` gemessen: 1,00×.** Kein Freifahrtschein, im Journal notiert
+
+## Cycle 2 — Focus B: Validierung auf dem Zustellpfad
+Zwei Vermutungen aus dem Journal starben an der Messung (Regex-Vorfilter 1,10×, Enum-Kaskade 1,13×);
+der echte Bottleneck war die Sandbox-Kette, die pro Antwort **dreimal realpathte**:
+`Policy.sandbox_root` + `is_within_allowed_root` + `relative_to` (25–30 µs).
+- **`Policy.check(intent)`: 46,3 → 2,05 µs (22,6×) — −44,2 µs pro Dispatch** · `build_intent`: 169,2 → 95,0 µs (1,78×)
+- Trigger-Inferenz: Pfad-Scan 0,997 → **0,021 µs (48×)**; 432 Warm-vs-Kalt-Fälle, **0 Abweichungen**
+- Kontrollpfad `schema_validate` 99,5 → 98,8 µs (Host konstant); `Intent.from_dict`/`Result.from_dict`/`Scheduler.load` **unveraendert** (json.loads dominiert — 1,09× lohnt keinen Zyklus)
+
+## Cycle 3 — Focus C: die Selbstpflege des Ledgers
+Kompaktierung 819 ms/400 Einträge, davon 328 ms `fsync` (600 Aufrufe) plus pro Tag ein
+zweiter Lese+Hash-Durchlauf und ein deep-Verify, das jede Datei erneut parst.
+- **Verify-before-prune pro Tag: 708 → 40,2 µs (17,6×)** · Stale-Tor: 1732 → **280 µs**, mit Schwellenabriss **75,5 µs (22,9×)**
+- Kompaktierung 400/200: 819 → **660 ms** · Lookup nach Kompaktierung 370 → 157 µs · `archive()`/`verify_archive()` unverändert (Kontrolle ✓)
+- **Integrität strenger, nicht schneller:** vor dem Prunen müssen die Snapshot-Schlüssel die *Verzeichnisnamen* der gelöschten Einträge abdecken — der alte tiefe Verify fand einen untergeschlagenen, aber in sich konsistenten Snapshot nicht. deep-Verify bleibt als `verify_archive(force=True)` vollständig.
+- Verworfen mit Zahl: `verify_archive` per (Größe, mtime)-Fingerabdruck — 12 ms/MB → 0,2 ms, aber nur auf Zuruf und mit schwächerer Aussage
+
+## Gate (beide Triaden)
+`make check` grün: Compile, ruff, mypy, **272 Tests** (Nº2: 28, Nº3: 31), e2e.
+Keine neuen nativen Bindings, keine Änderung an Vektor-DB/Einbettungsdimensionen, Dateitransport
+unverändert Standard, Schema-Kompilierung weiterhin außerhalb des Ticks, Archiv wächst nicht ungebunden.

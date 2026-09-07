@@ -19,6 +19,7 @@ import contextlib
 import json
 import os
 import shutil
+import stat
 import time
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -41,7 +42,13 @@ class QueueState:
         return {"inbox": dict(self.inbox), "outbox": self.outbox, "archived": self.archived, "backups": self.backups}
 
 
-def write_json_atomic(path: Path | str, data: Mapping[str, Any] | Iterable[Any], *, indent: int | None = 2) -> Path:
+def write_json_atomic(
+    path: Path | str,
+    data: Mapping[str, Any] | Iterable[Any],
+    *,
+    indent: int | None = 2,
+    ensure_dir: bool = True,
+) -> Path:
     """Schreibt JSON crash-sicher: erst Temp-Datei, dann atomares Umbenennen.
 
     Bytes und Rechte sind bewusst identisch zum alten Weg (``ensure_ascii=False``,
@@ -50,7 +57,70 @@ def write_json_atomic(path: Path | str, data: Mapping[str, Any] | Iterable[Any],
     ``TextIOWrapper`` im heissen Pfad (siehe ``core/atomic.py``).
     """
     blob = (json.dumps(data, ensure_ascii=False, indent=indent) + "\n").encode("utf-8")
-    return atomic_write_bytes(path, blob, fsync=True, mode=0o600)
+    return atomic_write_bytes(path, blob, fsync=True, dir_mode=ensure_dir, mode=0o600)
+
+
+def duplicate_json_atomic(source: Path | str, target: Path | str) -> bool:
+    """Stellt ``target`` mit dem Inhalt von ``source`` bereit -- ohne zweiten Schreibvorgang.
+
+    Der Archivpfad schreibt ``result.json`` und ``result.iterationN.json`` aus
+    demselben Dict: identische Bytes, zwei Vollzugriffe, zwei fsyncs. Ein hart
+    verknuepfter Name auf dieselben (laengst fsyncierten) Bytes kostet zwei Syscalls
+    statt eines weiteren SYNC-Laufs -- und ein Leser sieht weiterhin entweder nichts
+    oder das komplette Dokument, weil der Link erst auf einen Temp-Namen und dann per
+    ``os.replace`` auf den Zielpfad gehoeben wird.
+
+    Kann das Dateisystem keine Hardlinks (FAT, manche Netzwerk-Mounts), wird der
+    Quellinhalt ein zweites Mal geschrieben: gleiche Bytes, ein fsync mehr, sonst
+    keine Observable-Aenderung.
+
+    Rueckgabe: ``True``, wenn verlinkt wurde.
+    """
+    src, dst = Path(source), Path(target)
+    link = dst.with_name(f".{dst.name}.{os.getpid()}.lnk")
+    try:
+        with contextlib.suppress(OSError):
+            link.unlink()
+        os.link(str(src), str(link))
+        os.replace(str(link), str(dst))
+        return True
+    except OSError:
+        with contextlib.suppress(OSError):
+            link.unlink()
+        try:
+            payload = src.read_bytes()
+        except OSError as exc:  # keine Quelle -> nichts zu duplizieren, Arm wie vorher
+            raise OSError(f"Quelle fuer Duplikat nicht lesbar: {src.name} ({exc})") from exc
+        atomic_write_bytes(dst, payload, fsync=True, dir_mode=False, mode=0o600)
+        return False
+
+
+def dir_bytes(directory: Path | str) -> int:
+    """Belegte Bytes eines Verzeichnisses -- geteilte Inodes zaehlen nur einmal.
+
+    Ohne die Inode-Pruefung waere die Groessenbuchhaltung des Ledgers nach der
+    Verlinkung geschont: ``du``-Verhalten, ein ``stat`` pro Datei (mehr nicht).
+    """
+    total = 0
+    seen: set[tuple[int, int]] = set()
+    try:
+        members = list(os.scandir(str(directory)))
+    except OSError:
+        return 0
+    for item in members:
+        try:
+            info = item.stat()
+        except OSError:
+            continue
+        if not stat.S_ISREG(info.st_mode):
+            continue
+        if info.st_nlink > 1:
+            key = (info.st_dev, info.st_ino)
+            if key in seen:
+                continue
+            seen.add(key)
+        total += info.st_size
+    return total
 
 
 def read_json(path: Path | str) -> Any:
@@ -217,11 +287,15 @@ class FileTransport:
         day = time.strftime("%Y-%m-%d", time.gmtime())
         target = self.config.archive_dir / day / intent.intent_id
         target.mkdir(parents=True, exist_ok=True)
-        write_json_atomic(target / "intent.json", intent.to_dict())
-        write_json_atomic(target / f"result.iteration{result.iteration}.json", result.to_dict())
-        write_json_atomic(target / "result.json", result.to_dict())
+        write_json_atomic(target / "intent.json", intent.to_dict(), ensure_dir=False)
+        iteration_doc = target / f"result.iteration{result.iteration}.json"
+        write_json_atomic(iteration_doc, result.to_dict(), ensure_dir=False)
+        # result.json ist dasselbe Dokument -- verlinkt, nicht ein zweites Mal
+        # geschrieben. Wer die Datei einzeln anfasst (backup, mv), verliert dadurch
+        # nichts: der andere Name behaelt dieselben Bytes.
+        duplicate_json_atomic(iteration_doc, target / "result.json")
         if extra:
-            write_json_atomic(target / "verdict.json", dict(extra))
+            write_json_atomic(target / "verdict.json", dict(extra), ensure_dir=False)
         self._archive_writes += 1
         if self._archive_writes % COMPACT_CHECK_EVERY == 0:
             with contextlib.suppress(OSError):  # Selbstpflege darf einen Lauf nie stoppen
@@ -272,7 +346,7 @@ class FileTransport:
         cutoff = time.time() - COMPACT_OLDER_THAN_DAYS * 86400
         for day_dir in sorted(p for p in archive.iterdir() if p.is_dir() and p.name != "compacted"):
             entries = [p for p in day_dir.iterdir() if p.is_dir()]
-            bytes_day = sum(f.stat().st_size for e in entries for f in e.iterdir() if f.is_file())
+            bytes_day = sum(dir_bytes(e) for e in entries)
             stale = 0
             for entry in entries:
                 try:
@@ -451,7 +525,7 @@ class FileTransport:
                 if record is None:
                     continue
                 to_compact.append((entry, record))
-                freed += sum(f.stat().st_size for f in entry.iterdir() if f.is_file())
+                freed += dir_bytes(entry)
             if not to_compact:
                 continue
             compact_dir.mkdir(parents=True, exist_ok=True)
