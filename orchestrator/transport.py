@@ -19,13 +19,13 @@ import contextlib
 import json
 import os
 import shutil
-import tempfile
 import time
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from core.atomic import atomic_write_bytes
 from core.config import NeuConfig
 from core.protocol import Intent, Result, sha256_bytes, sha256_file, utc_now_iso
 
@@ -42,28 +42,15 @@ class QueueState:
 
 
 def write_json_atomic(path: Path | str, data: Mapping[str, Any] | Iterable[Any], *, indent: int | None = 2) -> Path:
-    """Schreibt JSON crash-sicher: erst Temp-Datei, dann atomares Umbenennen."""
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    handle = tempfile.NamedTemporaryFile(  # noqa: SIM115 - delete=False ist Absicht: os.replace braucht die Datei
-        "w",
-        encoding="utf-8",
-        delete=False,
-        dir=str(target.parent),
-        prefix=f".{target.name}.",
-        suffix=".tmp",
-    )
-    try:
-        with handle:
-            json.dump(data, handle, ensure_ascii=False, indent=indent)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(handle.name, target)
-    except BaseException:
-        Path(handle.name).unlink(missing_ok=True)
-        raise
-    return target
+    """Schreibt JSON crash-sicher: erst Temp-Datei, dann atomares Umbenennen.
+
+    Bytes und Rechte sind bewusst identisch zum alten Weg (``ensure_ascii=False``,
+    ein abschliessender Zeilenumbruch, 0600, ``fsync`` vor dem ``replace``) -- was
+    entfällt, ist die Verpackung: kein ``NamedTemporaryFile``-Objekt und kein
+    ``TextIOWrapper`` im heissen Pfad (siehe ``core/atomic.py``).
+    """
+    blob = (json.dumps(data, ensure_ascii=False, indent=indent) + "\n").encode("utf-8")
+    return atomic_write_bytes(path, blob, fsync=True, mode=0o600)
 
 
 def read_json(path: Path | str) -> Any:
@@ -73,27 +60,10 @@ def read_json(path: Path | str) -> Any:
 
 def write_jsonl_atomic(path: Path | str, records: Iterable[Mapping[str, Any]]) -> Path:
     """Schreibt JSON-Lines (``compacted``-Snapshots) crash-sicher und kompakt."""
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    handle = tempfile.NamedTemporaryFile(  # noqa: SIM115 - delete=False ist Absicht: os.replace braucht die Datei
-        "w",
-        encoding="utf-8",
-        delete=False,
-        dir=str(target.parent),
-        prefix=f".{target.name}.",
-        suffix=".tmp",
-    )
-    try:
-        with handle:
-            for record in records:
-                handle.write(json.dumps(dict(record), ensure_ascii=False, separators=(",", ":")) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(handle.name, target)
-    except BaseException:
-        Path(handle.name).unlink(missing_ok=True)
-        raise
-    return target
+    blob = "".join(
+        json.dumps(dict(record), ensure_ascii=False, separators=(",", ":")) + "\n" for record in records
+    ).encode("utf-8")
+    return atomic_write_bytes(path, blob, fsync=True, mode=0o600)
 
 
 def read_jsonl(path: Path | str) -> list[dict[str, Any]]:
@@ -148,29 +118,21 @@ def write_jsonl_indexed(
     neu aufgebaut -- er ist ein **abgeleitetes** Artefakt, nie die Wahrheitsquelle.
     """
     target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
     offsets: dict[str, int] = {}
+    parts: list[bytes] = []
     total = 0
     count = 0
-    handle = tempfile.NamedTemporaryFile(  # noqa: SIM115 - delete=False ist Absicht: os.replace braucht die Datei
-        "wb",
-        delete=False,
-        dir=str(target.parent),
-        prefix=f".{target.name}.",
-        suffix=".tmp",
-    )
-    with handle:
-        for record in records:
-            blob = json.dumps(dict(record), ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
-            key = record.get(index_field) if isinstance(record, Mapping) else None
-            if key is not None:
-                offsets[str(key)] = total
-            handle.write(blob)
-            total += len(blob)
-            count += 1
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(handle.name, target)
+    for record in records:
+        blob = json.dumps(dict(record), ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
+        key = record.get(index_field) if isinstance(record, Mapping) else None
+        if key is not None:
+            offsets[str(key)] = total
+        parts.append(blob)
+        total += len(blob)
+        count += 1
+    # Ein Write statt N Schreibvorgaenge durch einen gepufferten Text-Handle: die
+    # Offset-Tabelle braucht nur die Laengen, die hier schon vorliegen.
+    atomic_write_bytes(target, b"".join(parts), fsync=True, mode=0o600)
     index_target = target.with_name(target.stem + INDEX_SUFFIX)
     write_json_atomic(
         index_target,

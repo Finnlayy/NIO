@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark fuer Nexus-Triad Nr.2 (siehe ``.nio/nexus.md``).
+"""Benchmark fuer Nexus-Triad Nr.2 und Nr.3 (siehe ``.nio/nexus.md``).
 
 Misst die drei Fokusbereiche des kontinuierlichen Loops gegen den Stand nach
 Triad Nr.1. Moeglichst werden *beide* Pfade im selben Prozess gemessen (alter
@@ -28,7 +28,8 @@ import sys
 import tempfile
 import time
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from dataclasses import replace as _replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -37,14 +38,22 @@ for _entry in (str(Path(__file__).resolve().parent), str(_REPO), str(_REPO / "or
     if _entry not in sys.path:
         sys.path.insert(0, _entry)
 
+from core.atomic import atomic_write_bytes  # noqa: E402
 from core.config import NeuConfig  # noqa: E402
+from core.job import JobStore  # noqa: E402
 from core.kernel import Kernel  # noqa: E402
 from core.protocol import Operations, Result, new_id, parse_timestamp, utc_now, utc_now_iso  # noqa: E402
 from core.schemacheck import validate as v_validate  # noqa: E402
 from orchestrator.events import ConsoleSink, Event, EventBus, _iso_ms_z_fast  # noqa: E402
 from orchestrator.ring import SharedMemoryRingSink  # noqa: E402
-from orchestrator.scheduler import _CONDITION_CACHE, ScheduleState, _compile_condition, evaluate_condition  # noqa: E402
-from orchestrator.transport import FileTransport, read_jsonl  # noqa: E402
+from orchestrator.scheduler import (  # noqa: E402
+    _CONDITION_CACHE,
+    Scheduler,
+    ScheduleState,
+    _compile_condition,
+    evaluate_condition,
+)
+from orchestrator.transport import FileTransport, read_jsonl, write_json_atomic  # noqa: E402
 from orchestrator.uds import UDSBroadcastServer, UDSBroadcastSink  # noqa: E402
 
 #: Referenzpunkte aus dem Journal. ``*_triad0`` = Commit ``2639525`` (vor jedem
@@ -471,11 +480,162 @@ def bench_focus_c(results: dict[str, Any]) -> None:
     }
 
 
+
+# ---------------------------------------------------------------------------
+# Triad Nr.3, Cycle 1 -- atomarer JSON-Schreiber (Transport, Job-, Schedule-Zustand)
+# ---------------------------------------------------------------------------
+
+
+def _legacy_write_json_atomic(path: Path, data: Any, *, indent: int | None = 2) -> Path:
+    """Der Schreibweg vor Triad Nr.3: NamedTemporaryFile + ``TextIOWrapper`` + fsync.
+
+    Kopie des alten Kernels (inkl. ``os.fsync``), damit der Delta *hier* gemessen
+    wird und nicht aus einem Kommentar hochgerechnet wird.
+    """
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(  # noqa: SIM115 - delete=False ist Absicht: os.replace braucht die Datei
+        "w", encoding="utf-8", delete=False, dir=str(target.parent), prefix=f".{target.name}.", suffix=".tmp"
+    )
+    try:
+        with handle:
+            json.dump(data, handle, ensure_ascii=False, indent=indent)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(handle.name, target)
+    except BaseException:
+        Path(handle.name).unlink(missing_ok=True)
+        raise
+    return target
+
+
+def bench_triad3_writer(results: dict[str, Any]) -> None:
+    """Was kostet ein atomares JSON-Dokument -- vorher, nachher, und was davon der fsync ist."""
+    tmp = Path(tempfile.mkdtemp(prefix="nio-bench-writer-"))
+    tiny = {"a": 1, "b": [1, 2, 3], "t": "x"}
+    intent_doc = {
+        "intent_id": "intent_20260907T000000Z_000000",
+        "job_id": "job_20260907T000000Z_000000",
+        "operation": {"name": "sys.echo", "version": "1.2"},
+        "params": {"message": "Beobachte die Lage"},
+        "limits": {"max_iterations": 4, "max_runtime_s": 120},
+        "trace_id": "trace_20260907T000000Z_000000",
+        "goal": "Zeit tracken statt begrenzen",
+        "context": {"recent_ops": ["sys.echo"] * 6},
+    }
+    index_doc = {f"key_{i}": [i, i * 2, "text"] for i in range(1500)}
+    writer: dict[str, Any] = {}
+    def legacy(doc: Any, label: str) -> Path:
+        return _legacy_write_json_atomic(tmp / f"{label}.old.json", doc)
+
+    def current(doc: Any, label: str) -> Path:
+        return write_json_atomic(tmp / f"{label}.new.json", doc)
+
+    def unsynced(doc: Any, label: str) -> Path:
+        blob = (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+        return atomic_write_bytes(tmp / f"{label}.nosync.json", blob)
+
+    for label, doc in (("tiny", tiny), ("intent", intent_doc), ("index_44kb", index_doc)):
+        old = measure(lambda doc=doc, label=label: legacy(doc, label), n=300, warm=30)
+        new = measure(lambda doc=doc, label=label: current(doc, label), n=300, warm=30)
+        nosync = measure(lambda doc=doc, label=label: unsynced(doc, label), n=300, warm=30)
+        writer[f"{label}_before_us"] = old
+        writer[f"{label}_after_us"] = new
+        writer[f"{label}_fsync_floor_us"] = nosync
+        writer[f"{label}_speedup_x"] = round(old / new, 2) if new else 0.0
+        writer[f"{label}_delta_us"] = round(old - new, 1)
+    results["triad3_writer"] = writer
+
+    # --- Zustandsdateien: ScheduleState.save und JobRecord.save ---------------
+    config = NeuConfig.load(
+        _REPO,
+        mode="dev",
+        limits={"max_iterations": 1, "max_agents": 1, "max_limbs": 1, "max_concurrent_jobs": 1, "max_scheduled_jobs": 1},
+        runtime_dir=tmp / "runtime",
+        workspace_dir=tmp / "workspace",
+    )
+    config.ensure_dirs()
+    scheduler = Scheduler(config, bus=None)
+    kernel = Kernel(config, Operations.load(config.protocol_dir / "operations.json"))
+    jobs = JobStore(config)
+    intent = kernel.build_intent(
+        operation="sys.echo",
+        params={"message": "m"},
+        limb="echo",
+        goal="Zeit tracken",
+        unlimited=True,
+        tick_s=0.05,
+        schedule=[{"id": "takt", "action": "emit_event", "every_s": 0.05}],
+    )
+    record = jobs.create(intent.job.goal, timer_mode="unlimited", job_id=intent.job.job_id)
+    state = scheduler.attach(intent, t0=record.created_at, force=True)
+    assert state is not None
+    origin = parse_timestamp(state.t0, "$.t0")
+    clock = [0.0]
+
+    def fired_tick() -> None:
+        clock[0] += 0.05
+        scheduler.tick(state, now=origin + timedelta(seconds=clock[0]))
+
+    for _ in range(240):  # Historie bis an den Limit fuellen
+        fired_tick()
+
+    def legacy_save() -> None:
+        state.updated_at = utc_now_iso()
+        path = scheduler.path_for(state.job_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmpf = path.with_suffix(".tmp")
+        tmpf.write_text(json.dumps(state.to_dict(), ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
+        tmpf.replace(path)
+
+    def legacy_job_save() -> None:
+        stamped = _replace(record, updated_at=utc_now_iso())
+        path = jobs.path(stamped.job_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmpf = path.with_suffix(".json.tmp")
+        tmpf.write_text(json.dumps(stamped.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        tmpf.replace(path)
+
+    state_before = measure(legacy_save, n=400, warm=40)
+    state_after = measure(lambda: scheduler.save(state), n=400, warm=40)
+    job_before = measure(legacy_job_save, n=400, warm=40)
+    job_after = measure(lambda: jobs.save(record), n=400, warm=40)
+    tick_after = measure(fired_tick, n=600, warm=60)
+
+    # Derselbe Tick gegen den alten Speicherweg: die Klasse wird waehrend der
+    # Messung auf den Vor-Triad-Kern gesetzt, damit beide Zahlen aus *einer*
+    # Messreihe stammen (und nicht aus zwei Harnessen).
+    real_save = Scheduler.save
+    Scheduler.save = lambda self, st: legacy_save()  # type: ignore[method-assign]
+    try:
+        tick_before = measure(fired_tick, n=600, warm=60)
+    finally:
+        Scheduler.save = real_save
+    tick_after = measure(fired_tick, n=600, warm=60)
+    results["triad3_state"] = {
+        "state_save_before_us": state_before,
+        "state_save_after_us": state_after,
+        "state_save_speedup_x": round(state_before / state_after, 2),
+        "state_save_delta_us": round(state_before - state_after, 1),
+        "state_file_bytes": scheduler.path_for(state.job_id).stat().st_size,
+        "history_entries": len(state.history),
+        "job_save_before_us": job_before,
+        "job_save_after_us": job_after,
+        "job_save_speedup_x": round(job_before / job_after, 2),
+        "fired_tick_us_before": tick_before,
+        "fired_tick_us_after": tick_after,
+        "fired_tick_speedup_x": round(tick_before / tick_after, 2),
+        "fired_tick_delta_us": round(tick_before - tick_after, 1),
+    }
+
+
 def main() -> int:
     results: dict[str, Any] = {"reference_baseline": REFERENCE_BASELINE}
     bench_focus_a(results)
     bench_focus_b(results)
     bench_focus_c(results)
+    bench_triad3_writer(results)
     print(json.dumps(results, ensure_ascii=False, indent=2))
     return 0
 

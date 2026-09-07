@@ -252,6 +252,89 @@ operators/thresholds in `tests/test_nexus_triad2.py`).
 
 ---
 
+---
+
+## 🔁 TRIAD Nº3 (2026-09-07, direkt nach Nº2)
+
+Ausgangslage nach Nr.2: ein **leerer** Tick kostet 4,07 µs, ein **feiernder** Tick
+583 µs. Der cProfile-Abschuss über 800 Feuerungs-Ticks zeigte, wofür die 143-fache
+Differenz da ist: `json/encoder.iterencode` 52 % der Zeit, `posix.replace` 13 %,
+`io.open`/`write` 10 % -- also fast ausschliesslich *Persistenz*, nicht Event-Bus.
+Die Queue-Entscheidung fiel deshalb gegen "schemacheck schliessen" (bleibt kalt,
+95 µs, CLI-only) und für den Schreibpfad.
+
+### Cycle 1 — Focus A: der atomare JSON-Schreiber (Transport, Schedule-Zustand, Job-Record)
+
+**Der Engpass.** Alle drei Stellen taten dasselbe auf dem heissen Pfad: ein
+komplettes Dokument durch `tempfile.NamedTemporaryFile` + `TextIOWrapper` schieben
+und -- beim Zeitplan -- bis zu 200 Historieneinträge *pro Feuerung* neu encodieren.
+Gemessen (44 KB-Zustand): `json.dumps` 306 µs, `write_text` 295 µs, `os.replace`
+102 µs, `path.parent.mkdir` 5,7 µs, Path-Chuernel ~38 µs. Die Historie ist der
+einzige grosse Teil des Dokuments, und sie wächst nur am Ende.
+
+**Der Schnitt.**
+* `core/atomic.py` (neu): `atomic_write_bytes(target, data, *, fsync, dir_mode, mode)` --
+  Temp-Name aus `pid` + Zähler statt `mkstemp`-Raten, `os.open`/`os.write`/`os.close`
+  statt Text-Handle, ein `os.makedirs` nur dort, wo es sein muss, und **Aufräumen der
+  Temp-Datei auch bei fehlgeschlagenem `replace`** (der alte Weg räumte nur bis zum
+  `replace` auf -- der neue Test fängt beides).
+* `write_json_atomic` / `write_jsonl_atomic` / `write_jsonl_indexed` nutzen ihn;
+  Bytes, Modus (0600) und `os.fsync` vor dem `replace` sind unverändert -- gemessen
+  byte-identisch zu alt. Der JSONL-Snapshot schreibt jetzt in *einem* `write` statt
+  pro Zeile einem.
+* `ScheduleState.persist_text()`: jeder Historieneintrag wird beim Anhängen
+  (`_record`) genau einmal encodiert und beim Speichern nur noch aneinanderguegt.
+  Gilt der Puffer nicht (Anzahl, Laenge, Objekt-Identitaet an Kopf und Ende passen
+  nicht), wird komplett neu gebaut -- Sicherheitsnetz, kein Fehlerpfad.
+* `Scheduler.save()` prueft das Verzeichnis nicht mehr pro Aufruf, sondern legt es im
+  `FileNotFoundError`-Fall einmal an und wiederholt.
+* `JobStore.save()` kompakt statt `indent=2` (Maschinenzustand, Sicht ist `job show`).
+
+**Das Ergebnis** (alles `scripts/nexus_bench.py`, A/B im selben Prozess und -- beim
+feurnden Tick -- durch Umparken von `Scheduler.save` in *einer* Messreihe):
+
+| Metrik | vorher | nachher | Δ |
+|---|---|---|---|
+| **einer Tick, der persistiert** | **587,9 µs** | **256,8 µs** | **2,29×, −331 µs** |
+| Schedule-Zustand speichern (200 Historieneinträge) | 525,1 µs | **234,8 µs** | **2,24×, −290 µs** |
+| Intent-Datei schreiben (2 KB, inkl. fsync) | 747,3 µs | 698,4 µs | 1,07× |
+| kleines Dokument (95 B) | 494,0 µs | 449,9 µs | 1,10× |
+| 44-KB-Dokument (Index/Archiv-Snapshot) | 6 113,1 µs | **3 897,9 µs** | **1,57×, −2,2 ms** |
+| Job-Record auf Platte | 607 B | **502 B** | **−17,5 %** |
+| Job-Record schreiben (µs) | 187–256 | 203–213 | **wash** (Rauschen) |
+| Kontroll-Tick ohne Zustandsänderung | 4,07 µs | 4,07 µs | unverändert |
+
+**Was nicht besser wurde und warum es so bleibt:** ohne `os.fsync` wäre ein
+Intent-Schreiben 191 µs statt 698 µs -- der Plattenzwang sind 73 % des Pfades. Der
+Vertrag (crash-feste Zustellung) verbietet das Weglassen, und `os.fdatasync` ist auf
+diesem Box-Setup nachweislich *nicht* billiger (374,6 vs. 377,0 µs), also auch kein
+Trick. Der Rest des Weges liegt damit auf seinem Vertrag-Floor.
+
+**Guard-Tests:** `tests/test_nexus_triad3.py` (17 Stück) -- byte-Identität zum alten
+Schreibweg bei 95 B/2 KB/44 KB, Modus 0600/0644, kein Temp-Waise bei `write`- *und*
+`replace`-Fehler, `fsync`-Zählung (Transport ja, Zustand nein), 12 parallele Schreiber
+ohne Kollision, `json.loads(persist_text()) == to_dict()` nach Feuerungen, nach
+Kuerzung auf `HISTORY_LIMIT`, nach Eingriff von aussen, nach load()/save()-Rundlauf und
+nach entfernten `schedules/`-Verzeichnis, plus `job show --json` gegen das neue Format.
+
+**Nebenbefund (notiert, nicht optimiert):** `JobStore.heartbeat` = `get()` (Datei
+lesen + parsen) + `save()` -- 262 µs alle `renew_s/5` Sekunden, nur um `updated_at`
+zu heben. Ein mtime-basierter Touch-Pfad waere billiger, aber die Aufzeichnung
+(`t_unlimited_s` ist ein *abgeleiteter* Live-Wert in der Datei!) macht jeden
+Byte-Rundlauf instabil; deshalb klammern die Tests ihn aus. Wiedervorlage nur, wenn
+die Heartbeat-Frequenz selbst zum Problem wird.
+- **`os.fdatasync` statt `os.fsync`.** Auf dieser Box gemessen *gleich teuer*
+  (374,6 vs 377,0 µs pro Write+Sync) -- der Metadata-Teil ist hier nicht der teure.
+  Ausserdem verbietet der Transportvertrag das Weglassen des Syncs, also bleibt die
+  eine, sichtbare Zeile. Kein weiterer Versuch.
+- **Fester Temp-Name mit `O_TRUNC` statt `O_CREAT|O_EXCL` + Zaehler.** Spart ~78 µs
+  (bestehende Inode wiederbenutzen statt neu anlegen), aber zwei Schreiber auf
+  dasselbe Ziel wuerden sich gegenseitig ins Temp schreiben und ein Dokument
+  mischen. Der Preis ist die Idempotenz des Verzeichnisses wert.
+- **`mtime`-Touch statt `JobStore.heartbeat`-Rewrite.** Waere billiger, macht aber
+  die Job-Aufzeichnung zu zwei Wahrheiten (Datei *und* Inode-Zeit) und beruehrt die
+  Waisen-Erkennung -- vertagt, bis die Heartbeat-Frequenz selbst misst.
+
 ## The Graveyard (architectural dead ends)
 
 - **UDS socket *transport* for intent delivery** — still NO. The cross-process
