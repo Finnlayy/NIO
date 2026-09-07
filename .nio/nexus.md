@@ -423,9 +423,10 @@ new plane removes the disk from the hot path when a live consumer exists.
 ### Next cycle (queue, do not re-litigate)
 1. **Focus B:** compile `schemacheck` schemas once (`validate()` closure tree) —
    only once a schema lands on the tick path; today it's cold (95 µs, CLI-only).
-2. **Focus A:** `WatchSink` + collector both copy the record; a single
-   read-only view (`MappingProxyType` costs 0.4 µs — measure before adopting) or
-   `__slots__` on `Event` could shave the remaining 3.1 µs `emit` floor.
+2. **Focus A:** the remaining `emit` floor is 1.4 µs of `Event(...)` construction
+   per call — an object *every* in-repo caller discards. `slots=True` was taken this
+   cycle (memory, not speed). A read-only shared record view is still open, but
+   `MappingProxyType` costs 0.4 µs, so measure before adopting.
 3. **Focus C:** day digest is per-file; a **cross-day** digest manifest
    (`compacted/index.json` with per-day digests + counts) would let
    `archive verify` skip unchanged days *without* opening them at all.
@@ -433,4 +434,7 @@ new plane removes the disk from the hot path when a live consumer exists.
    `ScheduleState` on every state change — delta-persistence is the next candidate.
 
 ### PR
-`⚡ Nexus: IPC & Core Performance Triad [2026-09-07T02:05:00Z]`
+**#10** — `⚡ Nexus: IPC & Core Performance Triad [2026-09-07T02:05:00Z]`
+→ https://github.com/Finnlayy/NIO/pull/10 (`main` <- `arena/01a07962-nio`,
+12 files, +2545/-189, `MERGEABLE`). commit `bb47077`.
+Der fertige PR-Text liegt als `.nio/pr_triad2_body.md` im Branch.

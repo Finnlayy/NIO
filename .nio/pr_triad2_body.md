@@ -80,3 +80,5 @@ python3 -m orchestrator.cli bus tail --socket runtime/bus.sock     # consumer, n
 python3 -m orchestrator.cli archive verify --json                  # digest fast path
 ```
 Metrics also logged in `.nio/nexus.md` (TRIAD Nº2 + summary + corrected Graveyard).
+
+> Journal: `.nio/nexus.md` (TRIAD Nº2). This body is the file `.nio/pr_triad2_body.md`.
