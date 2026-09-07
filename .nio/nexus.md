@@ -527,6 +527,12 @@ Gate: compile + ruff + mypy + **272 tests** + e2e gruen.
 5. `schemacheck` bleibt kalt (98,8 µs, CLI-only): erst anfassen, wenn ein Schema
    auf dem Tick-Pfad landet.
 
+- **Die GitHub-Check `Neural Orchestrator CI & Benchmark Evaluation` (`ci-evals.yml`)
+  gilt als Fehler der Umgebung, nicht des Zweigs.** Sie scheitert auf `main` genauso
+  (Run 34070103309) wie auf jedem Nexus-Zweig vorher, und zwar in ~25 s -- vor jedem
+  Python-Schritt. Massstab bleibt `make check`. Nicht fuer dieses Repo verantworten
+  wollen, aber auch nicht als Regression lesen. (Nr.3, Cycle 3)
+
 ## The Graveyard (architectural dead ends)
 
 - **UDS socket *transport* for intent delivery** — still NO. The cross-process
