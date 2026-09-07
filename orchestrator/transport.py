@@ -114,8 +114,9 @@ def write_jsonl_indexed(
     0,1 µs bei 400 Records in 900 KB).
 
     Reihenfolge ist die Crash-Garantie: erst Snapshot (atomar, fsync), dann
-    Index. Fehlt der Index nach einem Absturz, wird er beim naechsten Zugriff
-    neu aufgebaut -- er ist ein **abgeleitetes** Artefakt, nie die Wahrheitsquelle.
+    Index (atomar, ohne fsync -- er ist wegwerfbar). Fehlt der Index nach einem
+    Absturz, wird er beim naechsten Zugriff neu aufgebaut; er ist ein
+    **abgeleitetes** Artefakt, nie die Wahrheitsquelle.
     """
     target = Path(path)
     offsets: dict[str, int] = {}
@@ -132,18 +133,24 @@ def write_jsonl_indexed(
         count += 1
     # Ein Write statt N Schreibvorgaenge durch einen gepufferten Text-Handle: die
     # Offset-Tabelle braucht nur die Laengen, die hier schon vorliegen.
-    atomic_write_bytes(target, b"".join(parts), fsync=True, mode=0o600)
+    payload = b"".join(parts)
+    atomic_write_bytes(target, payload, fsync=True, mode=0o600)
     index_target = target.with_name(target.stem + INDEX_SUFFIX)
-    write_json_atomic(
-        index_target,
-        {"field": index_field, "count": count, "bytes": total, "offsets": offsets},
-        indent=None,
-    )
+    index_blob = (json.dumps({"field": index_field, "count": count, "bytes": total, "offsets": offsets}, ensure_ascii=False) + "\n").encode("utf-8")
+    # Kein fsync fuer den Index: er ist ein **abgeleitetes** Artefakt (fehlt er,
+    # wird er aus dem Snapshot neu aufgebaut), und ein Sync kostet auf diesem
+    # Medium ~0,5 ms -- bei 200 Tagen pro Kompaktierung mehr als die halbe Arbeit.
+    # Der Snapshot selbst bleibt syncpflichtig: er ist die Wahrheitsquelle.
+    atomic_write_bytes(index_target, index_blob, mode=0o600)
     return {
         "snapshot": str(target),
         "index": str(index_target),
         "records": count,
         "bytes": total,
+        # Pruefsumme ueber genau die Bytes, die auf die Platte gingen -- dieselbe
+        # Rechnung, die ``sha256_file(snapshot)`` spaeter liefern wuerde, nur ohne
+        # zusaetzlichen Lese-Durchlauf durch die frische Datei.
+        "sha256": sha256_bytes(payload),
         "offsets": offsets,
     }
 
@@ -304,22 +311,47 @@ class FileTransport:
                 stats["compacted"][snappy.stem] = info
         return stats
 
-    def stale_entry_count(self, *, older_than_days: int = COMPACT_OLDER_THAN_DAYS) -> int:
-        """Wie viele expandierte Eintraege galten als veraltet? (billig: nur mtime)."""
+    def stale_entry_count(self, *, older_than_days: int = COMPACT_OLDER_THAN_DAYS, limit: int | None = None) -> int:
+        """Wie viele expandierte Eintraege galten als veraltet? (billig: nur mtime).
+
+        Drei Sparmassnahmen, weil dieses Zaehlen das Selbstpflege-Tor oeffnet und
+        damit *vor* jeder Kompaktierung laeuft:
+
+        * ``os.scandir`` statt ``Path.iterdir`` -- ``DirEntry.is_dir()`` liest den
+          Dateityp aus dem Verzeichniseintrag, ``Path.is_dir()`` setzt pro Pfad einen
+          ``stat``-Syscall darauf (gemessen der groesste Teil der 3,9 ms).
+        * Kurzschluss pro Tag: die mtime eines Verzeichnisses aendert sich nur, wenn
+          dort Eintraege entstehen oder verschwinden. Ist der Tag selbst aelter als
+          die Schwelle, ist es *jeder* seiner Eintraege -- das Zaehlen braucht dann
+          keinen einzigen ``stat`` mehr.
+        * ``limit``: das Tor will nur "genug oder nicht genug". Wer die Schwelle
+          erreicht hat, hoert auf; der Ueberlauf bleibt als ``>=``-Aussage lesbar
+          (``maybe_compact`` berichtet die Zahl nur im Skip-Fall exakt).
+        """
         archive = self.config.archive_dir
         if not archive.is_dir():
             return 0
         cutoff = time.time() - max(0, older_than_days) * 86400
         stale = 0
-        for day_dir in archive.iterdir():
-            if not day_dir.is_dir() or day_dir.name == "compacted":
-                continue
-            for entry in day_dir.iterdir():
-                try:
-                    if entry.is_dir() and entry.stat().st_mtime <= cutoff:
-                        stale += 1
-                except OSError:
+        try:
+            days = list(os.scandir(archive))
+        except OSError:
+            return 0
+        for day_dir in days:
+            try:
+                if not day_dir.is_dir(follow_symlinks=False) or day_dir.name == "compacted":
                     continue
+                day_old = day_dir.stat().st_mtime <= cutoff
+                with os.scandir(day_dir.path) as inner:
+                    for entry in inner:
+                        if not entry.is_dir(follow_symlinks=False):
+                            continue
+                        if day_old or entry.stat().st_mtime <= cutoff:
+                            stale += 1
+                            if limit is not None and stale >= limit:
+                                return stale
+            except OSError:
+                continue
         return stale
 
     def maybe_compact(self, *, force: bool = False) -> dict[str, Any]:
@@ -341,7 +373,9 @@ class FileTransport:
         older_than = int(os.environ.get("NEU_ARCHIVE_COMPACT_DAYS", COMPACT_OLDER_THAN_DAYS))
         keep_recent = int(os.environ.get("NEU_ARCHIVE_KEEP_RECENT", COMPACT_KEEP_RECENT))
         min_stale = int(os.environ.get("NEU_ARCHIVE_MIN_STALE", COMPACT_MIN_STALE_ENTRIES))
-        stale = self.stale_entry_count(older_than_days=older_than)
+        # Das Tor braucht nur den Vergleich -- ``limit`` beendet den Rundlauf,
+        # sobald die Schwelle erreicht ist (danach wird ohnehin kompaktiert).
+        stale = self.stale_entry_count(older_than_days=older_than, limit=None if force else min_stale)
         if not force and stale < min_stale:
             return {"skipped": True, "reason": f"nur {stale} veraltete Eintraege (Schwelle {min_stale})", "stale_entries": stale}
         summary = self.compact_archive(older_than_days=older_than, keep_recent=keep_recent)
@@ -425,8 +459,25 @@ class FileTransport:
             merged: dict[str, dict[str, Any]] = {
                 str(r.get("intent_id")): r for r in read_jsonl(snappy) if r.get("intent_id")
             }
-            for _entry, record in to_compact:
-                merged[record["intent_id"]] = record
+            # Datenverlust-Pruefung *vor* dem Schreiben: wer hier fehlt, wird
+            # spaeter nicht mehr gefunden. Die fruhere Fassung liess das der
+            # Rueckwaertspruefung ueber die Datei (deep verify) -- die findet einen
+            # verschluckten Eintrag naemlich genau dann nicht, wenn der Snapshot
+            # konsistent mit sich selbst, aber unvollstaendig ist.
+            preserved = set(merged)
+            # Massstab ist der *Verzeichnisname*, nicht das, was der Record
+            # ueber sich selbst sagt: schriebe ein Fehler den Eintrag unter einem
+            # anderen Schluessel, verschwende er beim Prunen unwiderruflich.
+            wanted = {entry.name for entry, _record in to_compact}
+            for entry, record in to_compact:
+                merged[record["intent_id"] or entry.name] = record
+            missing = (preserved | wanted) - set(merged)
+            if missing:
+                summary["days"][day] = {
+                    "compacted": 0,
+                    "aborted": f"Merge verliert Eintraege: {sorted(missing)[:3]}",
+                }
+                continue
             new_lines = [merged[key] for key in sorted(merged)]
             # Snapshot + Offset-Index in einem Durchgang (der Index faellt beim
             # Schreiben ab, kostet also nur die Bytes seiner Tabelle).
@@ -443,7 +494,7 @@ class FileTransport:
                     "count": len(new_lines),
                     # Tages-Pruefsumme ueber die Snapshot-Datei: verifizieren ohne
                     # Re-Parse (siehe ``verify_archive``).
-                    "sha256_snapshot": sha256_file(snappy),
+                    "sha256_snapshot": indexed["sha256"],
                     "indexed": True,
                     "entries": {intent_id: {"sha256": rec.get("sha256", {}), "files": sorted(rec.get("files", {}))} for intent_id, rec in merged.items()},
                 },
@@ -451,7 +502,7 @@ class FileTransport:
             # Verify-before-prune: geloescht wird erst, nachdem der frische
             # Snapshot geprueft ist. Ein Riss zwischen Schreibvorgang und
             # Loeschung darf keine Daten kosten -- Integritaet vor Speicherplatz.
-            violations = self._verify_day(day, deep=True)
+            violations = self._verify_snapshot_write(snappy, digest=str(indexed["sha256"]), count=len(new_lines))
             if violations:
                 summary["days"][day] = {
                     "compacted": 0,
@@ -476,6 +527,28 @@ class FileTransport:
             summary["index_bytes"] = summary.get("index_bytes", 0) + index_bytes
             summary["bytes_freed"] += freed
         return summary
+
+    def _verify_snapshot_write(self, snapshot: Path, *, digest: str, count: int) -> list[str]:
+        """Prueft den frisch geschriebenen Snapshot, ohne ihn zu parsen.
+
+        Zwei Beweise, beide billig: die Datei enthaelt byte-genau das, was wir
+        gebaut haben (Pruefsumme der Ruecklesung == Pruefsumme der Schreibvorlage),
+        und sie hat die erwartete Zahl Zeilen. Damit faengt dieser Pfad
+        abgeschnittene oder verstuemmelte Schreibvorgaenge -- der teure Teil (jeden
+        Datensatz re-parsen und Feld fuer Feld re-hashen) bleibt dem
+        Audit-Pfad ``verify_archive(force=True)`` vorbehalten, der zusaetzlich die
+        Inhalte gegen die Manifest-Eintragspruefsummen stellt.
+        """
+        try:
+            written = snapshot.read_bytes()
+        except OSError as exc:
+            return [f"{snapshot.name}: nicht lesbar ({exc})"]
+        if sha256_bytes(written) != digest:
+            return [f"{snapshot.name}: Pruefsumme weicht von der Schreibvorlage ab"]
+        lines = written.count(b"\n")
+        if lines != count:
+            return [f"{snapshot.name}: {lines} Zeilen statt {count}"]
+        return []
 
     def _verify_day(self, day: str, *, deep: bool = False) -> list[str]:
         """Prueft einen Tages-Snapshot.

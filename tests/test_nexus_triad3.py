@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 import tempfile
 import threading
@@ -34,10 +35,10 @@ from core.config import NeuConfig  # noqa: E402
 from core.job import JobStore  # noqa: E402
 from core.kernel import Kernel  # noqa: E402
 from core.policy import Policy  # noqa: E402
-from core.protocol import Operations, parse_timestamp  # noqa: E402
+from core.protocol import Operations, parse_timestamp, sha256_bytes  # noqa: E402
 from orchestrator.events import CollectingSink, build_event_bus  # noqa: E402
 from orchestrator.scheduler import HISTORY_LIMIT, Scheduler  # noqa: E402
-from orchestrator.transport import write_json_atomic, write_jsonl_atomic  # noqa: E402
+from orchestrator.transport import FileTransport, write_json_atomic, write_jsonl_atomic  # noqa: E402
 
 
 class AtomicWriteTests(unittest.TestCase):
@@ -461,6 +462,111 @@ class ProtocolPrimitiveTests(unittest.TestCase):
         self.assertEqual(trigger.id, "takt")
         raw["id"] = "geaendert"
         self.assertEqual(trigger.id, "takt", "der Trigger haelt seine eigenen Werte")
+
+
+
+class LedgerMaintenanceTests(unittest.TestCase):
+    """Cycle 3: Selbstpflege des Ledgers -- billiger zaehlen, strenger pruefen."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory(prefix="nio-ledger3-")
+        self.config = NeuConfig.load(REPO_ROOT, mode="dev", runtime_dir=Path(self._tmp.name) / "runtime")
+        self.config.ensure_dirs()
+        self.transport = FileTransport(self.config)
+        self.addCleanup(self._tmp.cleanup)
+
+    def _fill(self, days: int = 3, per_day: int = 5, *, age_days: int = 10) -> list[str]:
+        import time as _t
+
+        ids: list[str] = []
+        stamp = _t.time() - age_days * 86_400
+        for day_index in range(days):
+            day = f"2026-08-{day_index + 1:02d}"
+            for n in range(per_day):
+                intent_id = f"int_2026080{day_index}T0000{n:02d}Z_0000{n:02d}"
+                entry = self.config.archive_dir / day / intent_id
+                entry.mkdir(parents=True, exist_ok=True)
+                write_json_atomic(entry / "intent.json", {"intent_id": intent_id, "goal": f"g{n}"}, indent=None)
+                write_json_atomic(entry / "result.json", {"status": "success", "intent_id": intent_id}, indent=None)
+                os.utime(entry, (stamp, stamp))
+                ids.append(intent_id)
+            os.utime(entry.parent, (stamp, stamp))
+        return ids
+
+    @staticmethod
+    def _reference_count(archive: Path, cutoff: float) -> int:
+        stale = 0
+        for day_dir in archive.iterdir():
+            if not day_dir.is_dir() or day_dir.name == "compacted":
+                continue
+            for entry in day_dir.iterdir():
+                if entry.is_dir() and entry.stat().st_mtime <= cutoff:
+                    stale += 1
+        return stale
+
+    def test_schwelle_zaehlt_identisch(self) -> None:
+        import time as _t
+
+        self._fill(days=3, per_day=5)
+        cutoff = _t.time() - 0
+        reference = self._reference_count(self.config.archive_dir, cutoff)
+        self.assertEqual(self.transport.stale_entry_count(older_than_days=0), reference)
+        self.assertEqual(reference, 15)
+
+    def test_limit_bricht_frueher_ab_ohne_die_antwort_zu_aendern(self) -> None:
+        self._fill(days=4, per_day=6)
+        full = self.transport.stale_entry_count(older_than_days=0)
+        self.assertEqual(full, 24)
+        for limit in (1, 7, 24):
+            with self.subTest(limit=limit):
+                self.assertEqual(self.transport.stale_entry_count(older_than_days=0, limit=limit), min(limit, full))
+        # unterhalb der Schwelle wird weiter gezaehlt -> exakter Wert fuer die Meldung
+        self.assertEqual(self.transport.stale_entry_count(older_than_days=0, limit=100), 24)
+
+    def test_frissst_der_merge_keinen_eintrag_wird_nicht_geloescht(self) -> None:
+        ids = self._fill(days=2, per_day=4)
+        real = FileTransport._read_archive_entry
+
+        def sabotaged(self, entry, day):  # schreibt den Eintrag unter fremdem Schluessel ab
+            record = real(self, entry, day)
+            return None if record is None else {**record, "intent_id": "untergeschlagen"}
+
+        with mock.patch.object(FileTransport, "_read_archive_entry", sabotaged):
+            report = self.transport.compact_archive(older_than_days=0, keep_recent=0)
+        days = report["days"]
+        self.assertTrue(days, "der Saboteur haette auffallen muessen")
+        for day, info in days.items():
+            self.assertEqual(info.get("compacted"), 0, day)
+            self.assertIn("Merge verliert Eintraege", info.get("aborted", ""), day)
+        for intent_id in ids:
+            survivors = list(self.config.archive_dir.glob(f"*/{intent_id}"))
+            self.assertTrue(survivors, f"{intent_id} wurde praemiert, obwohl der Snapshot ihn nicht kennt")
+
+    def test_ruecklesung_findet_abgeschnittenen_snapshot(self) -> None:
+        self._fill(days=1, per_day=3)
+        report = self.transport.compact_archive(older_than_days=0, keep_recent=0)
+        self.assertEqual(report["pruned_dirs"], 3, report["days"])
+        snapshot = next((self.config.archive_dir / "compacted").glob("*.jsonl"))
+        intact = snapshot.read_bytes()
+        digest = sha256_bytes(intact)
+        count = intact.count(b"\n")
+        self.assertEqual(self.transport._verify_snapshot_write(snapshot, digest=digest, count=count), [])
+        snapshot.write_bytes(intact[: len(intact) // 2])
+        violations = self.transport._verify_snapshot_write(snapshot, digest=digest, count=count)
+        self.assertEqual(len(violations), 1, violations)
+        snapshot.write_bytes(intact)
+        self.assertEqual(self.transport._verify_snapshot_write(snapshot, digest=digest, count=count + 1)[0].count("Zeilen"), 1)
+
+    def test_index_ist_wegwerfbar_und_wird_neu_baut(self) -> None:
+        ids = self._fill(days=2, per_day=3)
+        self.transport.compact_archive(older_than_days=0, keep_recent=0)
+        compact_dir = self.config.archive_dir / "compacted"
+        indexes = list(compact_dir.glob("*.index.json"))
+        self.assertTrue(indexes)
+        for index in indexes:
+            index.unlink()
+        for intent_id in ids:
+            self.assertIsNotNone(self.transport.lookup_archived(intent_id), f"{intent_id} nach Indexverlust nicht gefunden")
 
 
 if __name__ == "__main__":

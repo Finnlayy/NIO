@@ -42,7 +42,7 @@ from core.atomic import atomic_write_bytes  # noqa: E402
 from core.config import NeuConfig  # noqa: E402
 from core.job import JobStore  # noqa: E402
 from core.kernel import Kernel  # noqa: E402
-from core.protocol import Operations, Result, new_id, parse_timestamp, utc_now, utc_now_iso  # noqa: E402
+from core.protocol import Operations, Result, new_id, parse_timestamp, sha256_bytes, utc_now, utc_now_iso  # noqa: E402
 from core.schemacheck import validate as v_validate  # noqa: E402
 from orchestrator.events import ConsoleSink, Event, EventBus, _iso_ms_z_fast  # noqa: E402
 from orchestrator.ring import SharedMemoryRingSink  # noqa: E402
@@ -736,6 +736,118 @@ def bench_triad3_validation(results: dict[str, Any]) -> None:
     results["triad3_validation"] = validation
 
 
+
+# ---------------------------------------------------------------------------
+# Triad Nr.3, Cycle 3 -- Ledger-Selbstpflege (Kompaktierung, Verifikation, Tor)
+# ---------------------------------------------------------------------------
+
+
+def _legacy_stale_count(transport: FileTransport, *, older_than_days: int) -> int:
+    """Der Zaehlweg vor Triad 3: ``Path.iterdir`` + ``stat`` fuer jeden Eintrag."""
+    archive = transport.config.archive_dir
+    if not archive.is_dir():
+        return 0
+    cutoff = time.time() - max(0, older_than_days) * 86_400
+    stale = 0
+    for day_dir in archive.iterdir():
+        if not day_dir.is_dir() or day_dir.name == "compacted":
+            continue
+        for entry in day_dir.iterdir():
+            try:
+                if entry.is_dir() and entry.stat().st_mtime <= cutoff:
+                    stale += 1
+            except OSError:
+                continue
+    return stale
+
+
+def bench_triad3_ledger(results: dict[str, Any]) -> None:
+    """300 Eintraege auf 150 Tage; dann die drei Bewegungen alt gegen neu."""
+    import tempfile as _tempfile
+
+    tmp = Path(_tempfile.mkdtemp(prefix="nio-bench-ledger-"))
+    config = NeuConfig.load(
+        _REPO,
+        mode="dev",
+        limits={"max_iterations": 1, "max_agents": 1, "max_limbs": 1, "max_concurrent_jobs": 1, "max_scheduled_jobs": 1},
+        runtime_dir=tmp / "runtime",
+        workspace_dir=tmp / "workspace",
+    )
+    config.ensure_dirs()
+    kernel = Kernel(config, Operations.load(config.protocol_dir / "operations.json"))
+    transport = FileTransport(config)
+    from orchestrator.transport import write_json_atomic
+
+    entries = 300
+    days_back = 30  # ~10 Eintraege pro Tag -- reale Tagesform, nicht 150 Ein-Tages-Reste
+    ids: list[str] = []
+    now = time.time()
+    for i in range(entries):
+        intent = kernel.build_intent(operation="sys.echo", params={"message": f"durchgang {i}"}, limb="echo", goal="Ledger messen")
+        result = Result(
+            result_id=new_id("res"),
+            intent_id=intent.intent_id,
+            trace_id=intent.trace_id,
+            status="success",
+            operation="sys.echo",
+            limb_name="echo",
+            started_at=utc_now_iso(),
+            finished_at=utc_now_iso(),
+            job_id=intent.job.job_id,
+            output={"message": f"echo {i}"},
+            diagnostics_stdout="zeile\n" * 3,
+        )
+        ids.append(intent.intent_id)
+        day = time.strftime("%Y-%m-%d", time.gmtime(now - (i % days_back) * 86_400))
+        target = config.archive_dir / day / intent.intent_id
+        target.mkdir(parents=True, exist_ok=True)
+        for name, doc in (("intent.json", intent.to_dict()), ("result.iteration1.json", result.to_dict()), ("result.json", result.to_dict())):
+            write_json_atomic(target / name, doc, indent=None)
+        stamp = now - (i % days_back) * 86_400
+        os.utime(target, (stamp, stamp))
+        os.utime(target.parent, (stamp, stamp))
+
+    ledger: dict[str, Any] = {"fixture_entries": entries, "fixture_days": len([p for p in config.archive_dir.iterdir() if p.is_dir()])}
+    ledger["lookup_before_compact_us"] = measure(lambda: transport.lookup_archived(ids[entries // 2]), n=120, warm=10)
+    ledger["stale_count_before_us"] = measure(lambda: _legacy_stale_count(transport, older_than_days=0), n=40, warm=5)
+    ledger["stale_count_after_us"] = measure(lambda: transport.stale_entry_count(older_than_days=0), n=40, warm=5)
+    ledger["stale_count_gate_us"] = measure(lambda: transport.stale_entry_count(older_than_days=0, limit=64), n=40, warm=5)
+    ledger["stale_count_speedup_x"] = round(ledger["stale_count_before_us"] / ledger["stale_count_after_us"], 2)
+    ledger["stale_count_gate_speedup_x"] = round(ledger["stale_count_before_us"] / ledger["stale_count_gate_us"], 2)
+    same = _legacy_stale_count(transport, older_than_days=0) == transport.stale_entry_count(older_than_days=0)
+    ledger["stale_count_parity"] = 1 if same else 0
+
+    start = time.perf_counter()
+    # keep_recent=0: die Messung interessiert der volle Durchlauf (ein Lauf im
+    # Betrieb behaelt 8 frische Eintraege pro Tag, siehe COMPACT_KEEP_RECENT).
+    report = transport.compact_archive(older_than_days=0, keep_recent=0)
+    ledger["compact_ms"] = round((time.perf_counter() - start) * 1000, 1)
+    ledger["pruned_dirs"] = report["pruned_dirs"]
+    ledger["bytes_freed"] = report["bytes_freed"]
+
+    compact_dir = config.archive_dir / "compacted"
+    day_files = sorted(compact_dir.glob("*.jsonl"))
+    if day_files:
+        snapshot = day_files[0]
+        day = snapshot.stem
+        digest = sha256_bytes(snapshot.read_bytes())
+        count = snapshot.read_bytes().count(b"\n")
+        deep = measure(lambda: transport._verify_day(day, deep=True), n=20, warm=3)
+        fast = measure(lambda: transport._verify_snapshot_write(snapshot, digest=digest, count=count), n=20, warm=3)
+        ledger["verify_before_prune_deep_us"] = deep
+        ledger["verify_before_prune_fast_us"] = fast
+        ledger["verify_before_prune_speedup_x"] = round(deep / fast, 2)
+        from core.protocol import sha256_file
+
+        ledger["digest_from_file_us"] = measure(lambda: sha256_file(snapshot), 200, 20)
+        ledger["digest_from_payload_us"] = measure(lambda: sha256_bytes(snapshot.read_bytes()), 200, 20)
+    ledger["lookup_after_compact_us"] = measure(lambda: transport.lookup_archived(ids[entries // 2]), n=200, warm=20)
+    ledger["violations_clean"] = len(transport.verify_archive())
+    ledger["violations_deep_clean"] = len(transport.verify_archive(force=True))
+    ledger["resolved_after_compact"] = 1 if transport.lookup_archived(ids[7]) is not None else 0
+    results["triad3_ledger"] = ledger
+
+
 def main() -> int:
     results: dict[str, Any] = {"reference_baseline": REFERENCE_BASELINE}
     bench_focus_a(results)
@@ -743,6 +855,7 @@ def main() -> int:
     bench_focus_c(results)
     bench_triad3_writer(results)
     bench_triad3_validation(results)
+    bench_triad3_ledger(results)
     print(json.dumps(results, ensure_ascii=False, indent=2))
     return 0
 

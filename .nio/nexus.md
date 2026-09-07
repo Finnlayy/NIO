@@ -323,6 +323,10 @@ zu heben. Ein mtime-basierter Touch-Pfad waere billiger, aber die Aufzeichnung
 (`t_unlimited_s` ist ein *abgeleiteter* Live-Wert in der Datei!) macht jeden
 Byte-Rundlauf instabil; deshalb klammern die Tests ihn aus. Wiedervorlage nur, wenn
 die Heartbeat-Frequenz selbst zum Problem wird.
+- **`verify_archive` ueber (Groesse, mtime)-Fingerabdruck ohne Oeffnen der Datei.**
+  Brachte 12 ms/MB auf ~0,2 ms, aber nur auf einem Pfad, der nie im Tick laeuft --
+  und die Antwort waere dann "seit der Pruefung hat niemand geschrieben", nicht
+  "der Inhalt ist unveraendert". Verworfen, Zahl im Cycle 3.
 - **`os.fdatasync` statt `os.fsync`.** Auf dieser Box gemessen *gleich teuer*
   (374,6 vs 377,0 µs pro Write+Sync) -- der Metadata-Teil ist hier nicht der teure.
   Ausserdem verbietet der Transportvertrag das Weglassen des Syncs, also bleibt die
@@ -394,6 +398,135 @@ Primitive unveraendert (`unbekannte Schluessel ['alpha', 'beta']`, `'schlendern'
 ("ausserhalb des Repos -> Stringform") von `relative` uebernehmen, war aber ohne
 `try/except` gelandet -- ein `edit`-Muster, das nicht getroffen hatte, und
 `str.replace` schweigt dazu. Jetzt drin, und der Test prueft beide Richtungen.
+### Cycle 3 — Focus C: die Selbstpflege des Ledgers (Kompaktierung, Verify-before-prune, Stale-Tor)
+
+**Der Engpass.** Nach Cycle 1 lag der Blick auf dem Archiv. Profil mit echtem
+Ledger (400 Eintraege auf 200 Tage, 1,37 MB): ein Kompaktierungslauf kostete
+**819 ms**, und der cProfile-Abschuss darauf zeigte `posix.fsync` mit 600 Aufrufen
+(328 ms, 40 %), dazu pro Tag ein voller Lese- *und* Hash-Durchlauf durch den
+frischen Snapshot (`sha256_file`) **plus** ein `deep`-Verify, das jeden Datensatz
+noch einmal parst und pro Datei re-hasht. Ausserdem: das Tor, das ueberhaupt erst
+entscheidet ob kompaktiert wird (`stale_entry_count`), kostete 3,9 ms -- es
+statet jeden Eintrag einzeln.
+
+**Der Schnitt.**
+* `write_jsonl_indexed` berechnet die Pruefsumme **aus den Bytes, die es gerade
+  schreibt** (`sha256_bytes(payload)`) -- identischer Wert zu `sha256_file`, aber
+  ohne den zweiten Durchlauf durch die Datei.
+* Der Offset-Index (abgeleitet, fehlt er wird er neu gebaut) verliert seinen
+  `fsync`. Der Snapshot behaelt ihn: er ist die Wahrheitsquelle. Auf diesem Medium
+  sind das ~0,5 ms pro Datei -- bei 200 Tagen der halbe Lauf.
+* Verify-before-prune ist jetzt `_verify_snapshot_write(snapshot, digest, count)`:
+  Ruecklesen, Pruefsumme gegen die Schreibvorlage, Zeilenzahl gegen die Erwartung.
+  Das alte `deep`-Verhalten (Inhalt fuer Inhalt gegen die Manifest-Pruefsummen)
+  bleibt als `verify_archive(force=True)` voll erhalten -- der Audit-Pfad wurde
+  nicht wegdiskutiert, nur aus dem Pruef-vor-dem-Loeschen-Pfad herausgenommen.
+* **Neue, strengere Bedingung vor dem Prunen:** die Snapshot-Schluessel muessen
+  die *Verzeichnisnamen* der Eintraege abdecken, die gleich geloescht werden
+  (`wanted = {entry.name ...}`, nicht das, was der Record ueber sich selbst
+  sagt). Der alte tiefe Verify fand einen untergeschlagenen Eintrag naemlich
+  nicht, wenn der Snapshot nur konsistent mit sich selbst, aber unvollstaendig war.
+* `stale_entry_count` zaehlt ueber `os.scandir` (DirEntry-Typ aus dem
+  Verzeichniseintrag statt `stat` pro Pfad), macht pro Tag einen Kurzschluss (die
+  mtime eines Verzeichnisses ist eine obere Schranke fuer alle seine Eintraege --
+  ist der Tag alt, ist alles darin alt, kein einziger `stat` noetig) und nimmt
+  ein `limit` an, weil das Tor nur "genug oder nicht genug" wissen will.
+
+**Das Ergebnis** (`scripts/nexus_bench.py`, beide Pfade im selben Prozess; der alte
+Verify ist weiterhin aufrufbar und wurde direkt verglichen):
+
+| Metrik (300 Eintraege / 30 Tage) | vorher | nachher | Δ |
+|---|---|---|---|
+| **Verify-before-prune pro Tag** | **708 µs** | **40,2 µs** | **17,6×** |
+| Stale-Zaehlen (Tor, voller Umlauf) | 1732 µs | **280 µs** | **6,2×** |
+| dito mit Schwellen-Fruehinterriss | 1732 µs | **75,5 µs** | **22,9×** |
+| Lookup nach Kompaktierung | 370 µs | **157 µs** | 2,4× |
+| Kompaktierung 400 Eintraege / 200 Tage (Profil-Harness) | 819 ms | **660 ms** | 1,24× (−160 ms) |
+| Snapshot-Digest | 27,4 µs (Read+Hash) | im Schreibpfad, **kein zweiter Durchlauf** | −1 Read/Tag |
+| Kontrolle: `archive()`-Schreibvorgang | 2204 µs | 2250 µs | unveraendert ✓ |
+| Kontrolle: `verify_archive()` (Schnell + tief) | 12011 / 13,7 µs | 12182 / 7,8 µs | unveraendert ✓ |
+
+Integritaet danach gemessen: 0 Violations im Schnell- *und* im tiefen Pfad, alle
+300 Eintraege weiterhin per `lookup_archived` aufloesbar, und der neue Zaehler
+liefert identische Zahlen wie der alte (Paritaet im Test).
+
+**Guard-Tests** (5 neue): Saboteur, der einen Eintrag unter fremdem Schluessel
+ablegt, muss den Tag abbrechen *und* die Verzeichnisse bleiben heil;
+abgeschnittener Snapshot wird an Pruefsumme erkannt, Zaehl-Abweichung an der
+Zeilenzahl; `limit` bricht frueher ab, antwortet aber unterhalb der Schwelle
+exakt; Index-Loeschung kostet hochstens den Neubau (alle Eintraege auffindbar);
+Zaehlen gegen die Pfad-Referenz identisch.
+
+**Nicht getan, mit Begruendung:** `verify_archive` ueber einen Tages-Manifest-
+Fingerabdruck (Groesse + mtime) *ohne* Oeffnen der Datei waere moeglich und
+wuerde 12 ms pro MB auf ~0,2 ms senken -- es prueft dann aber nicht mehr "ist der
+Inhalt unveraendert", sondern "hat seit der Pruefung niemand geschrieben". Da
+`verify_archive` nur auf Zuruf laeuft (CLI, Audit) und nie im Tick-Pfad, ist das
+ein Tausch von Staerke gegen eine Kostenstelle, die niemand zahlt. Blieb in der
+Queue, wurde verworfen -- Zahl steht oben.
+
+---
+
+## 📊 TRIAD Nº3 SUMMARY (benchmark deltas)
+
+Alle Werte aus `scripts/nexus_bench.py` bzw. `profile_triad3*.py`: **alter und neuer
+Pfad im selben Prozess auf derselben Box**, der alte teils rekonstruiert (Modul-
+Funktionen zur Messung zurueckgesetzt), nie aus dem Journal hochgerechnet.
+Gate: compile + ruff + mypy + **272 tests** + e2e gruen.
+
+| Cycle | Focus | Headline metric | Before | After | Δ |
+|---|---|---|---|---|---|
+| 1 | A | Tick, der persistiert | **587,9 µs** | **256,8 µs** | **2,29×, −331 µs** |
+| 1 | A | Schedule-Zustand speichern (volle Historie) | 525,1 µs | **234,8 µs** | **2,24×, −290 µs** |
+| 1 | A | 44-KB-Dokument atomar schreiben | 6113 µs | **3898 µs** | **1,57×, −2,2 ms** |
+| 1 | A | Job-Record auf Platte | 607 B | **502 B** | **−17,5 %** |
+| 1 | A | Intent-Datei schreiben (2 KB, mit fsync) | 747 µs | 698 µs | 1,07× (73 % davon sind der Sync-Vertrag) |
+| 2 | B | **`Policy.check` pro Dispatch** | **46,3 µs** | **2,05 µs** | **22,6×, −44,2 µs** |
+| 2 | B | `build_intent` (Validierung inkl.) | 169,2 µs | **95,0 µs** | **1,78×** |
+| 2 | B | `Trigger.from_dict` | 7,25 µs | 6,64 µs | 1,09× (klein, gemessen) |
+| 3 | C | Verify-before-prune pro Tag | 708 µs | **40,2 µs** | **17,6×** |
+| 3 | C | Stale-Tor (30 Tage) | 1732 µs | **280 / 75,5 µs** | **6,2× / 22,9×** |
+| 3 | C | Kompaktierung 400/200 | 819 ms | **660 ms** | 1,24× |
+| 3 | C | Datenverlust-Schutz vor dem Prunen | fehlt (tiefer Verify findet unvollstaendigen, aber konsistenten Snapshot nicht) | **Id-Set-Pruefung pro Tag** | strenger, nicht schneller |
+
+### Files changed (Triad 3)
+- `core/atomic.py` — **NEU** `atomic_write_bytes` (Temp-Name aus pid+Zaehler,
+  `os.open`/`os.write`, `fsync` optional, Raumen auch bei `replace`-Fehler).
+- `core/config.py` — `relative_resolved()` (Relativpfad ohne zweiten `resolve()`),
+  `relative()` unveraendert inkl. Ruckfall.
+- `core/policy.py` — memoisierte Sandbox-Wurzel `(Pfad, Label)` pro Angabe,
+  Schranke bei 32, `sandbox_root_label()`; alle vier Antwortpfade nutzen sie.
+- `core/protocol.py` — `_allowed_set()` (frozenset pro Konstante, Cache 512),
+  `_reject_unknown` sortiert nur noch im Fehlerfall, `_as_enum` ist O(1),
+  `_VALID_VERSION_RE` module-level, `_validate_condition` direkt- vor
+  normalisierter Form, `Trigger.from_dict` ohne Eingabe-Copy.
+- `core/job.py` — `JobStore.save()` kompakt statt `indent=2`.
+- `orchestrator/scheduler.py` — `persist_text()` + Fragment-Puffer pro
+  Historieneintrag, `save()` ueber den neuen Schreiber ohne Verzeichnis-Pruefung
+  im Regelfall.
+- `orchestrator/transport.py` — drei JSON-Schreiber laufen ueber
+  `atomic_write_bytes`; `write_jsonl_indexed` liefert den Digest beim Schreiben und
+  syncht den Index nicht mehr; `_verify_snapshot_write()` neu; Merge-Pruefung auf
+  Verzeichnisnamen; `stale_entry_count` mit `scandir`/Tages-Kurzschluss/`limit`.
+- `scripts/nexus_bench.py` — drei neue Sektionen (`triad3_writer`,
+  `triad3_validation`, `triad3_ledger`), alter Pfad jeweils rekonstruiert.
+- `tests/test_nexus_triad3.py` — **NEU** 31 Guard-Tests.
+
+### Naechster Zyklus (Queue, nicht neu verhandeln)
+1. **Ein Dokument pro Durchgang statt drei** im Archiv (`intent.json`,
+   `result.iterationN.json`, `result.json` = 3 fsyncierte Dateien, 2,25 ms pro
+   `archive()`). Erwartet ~−1,1 ms; nur mit Lesepfad fuer beide Formen, weil die
+   Archivform Vertrag ist.
+2. **Snapshot pro Lauf statt pro Tag** in `compacted/` (660 ms -> erwartet ~300 ms):
+   weniger Dateien, weniger Syncs; braucht neue Kandidatenlogik in
+   `lookup_archived`/`verify_archive` und eine Uebergangslesung alter Tagesdateien.
+3. **`emit`-Fussboden**: 1,4 µs `Event`-Konstruktion pro Aufruf, die jeder
+   In-Repo-Aufrufer verwirft; `MappingProxyType` kostet 0,4 µs, also erst messen.
+4. **Heartbeat per mtime** statt Record-Rewrite (262 µs alle `renew_s/5` s) --
+   verworfen, solange die Frequenz nicht selbst misst.
+5. `schemacheck` bleibt kalt (98,8 µs, CLI-only): erst anfassen, wenn ein Schema
+   auf dem Tick-Pfad landet.
+
 ## The Graveyard (architectural dead ends)
 
 - **UDS socket *transport* for intent delivery** — still NO. The cross-process
@@ -562,7 +695,7 @@ new plane removes the disk from the hot path when a live consumer exists.
   stale-socket takeover vs. live-listener refusal).
 - `README.md` — the new opt-in ops surface.
 
-### Next cycle (queue, do not re-litigate)
+### Next cycle (queue, do not re-litigate) -- **abgearbeitet in TRIAD Nº3, siehe oben**
 1. **Focus B:** compile `schemacheck` schemas once (`validate()` closure tree) —
    only once a schema lands on the tick path; today it's cold (95 µs, CLI-only).
 2. **Focus A:** the remaining `emit` floor is 1.4 µs of `Event(...)` construction
