@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "outcome.schema.json",
+  "title": "OMEGA Outcome Record (Phase 4 RLHF)",
+  "description": "Result of executing one unit of work. Primary signal consumed by the continuous-learning engine. Mirrors blueprint src/learning/schemas.ts `Outcome`.",
+  "type": "object",
+  "required": [
+    "job_id",
+    "intent_id",
+    "limb",
+    "verdict",
+    "errors",
+    "metrics",
+    "elapsed_s",
+    "clock_s",
+    "timestamp"
+  ],
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "description": "Job that produced this outcome."
+    },
+    "intent_id": {
+      "type": "string",
+      "description": "Intent envelope reference (protocol 1.2)."
+    },
+    "limb": {
+      "type": "string",
+      "description": "Limb/agent that executed the job."
+    },
+    "result": {
+      "type": "object",
+      "description": "Raw execution result payload.",
+      "properties": {
+        "verdict": { "type": "string" },
+        "errors": { "type": "array", "items": { "type": "string" } },
+        "metrics": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "verdict": {
+      "enum": ["accept", "reject", "escalate", "timeout"],
+      "description": "Kernel verdict for the execution."
+    },
+    "errors": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Error codes / messages emitted during execution (E_SAFETY_NET, E_TRIGGER_INVALID, E_SCHEMA_INVALID, E_INTERNAL, ...)."
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Free-form metric bag (success_rate, error_rate, execution_time, ...)."
+    },
+    "elapsed_s": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Wall-clock execution duration in seconds."
+    },
+    "clock_s": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Job clock (t_unlimited coherence) at completion."
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "ISO8601 UTC completion timestamp."
+    },
+    "success": {
+      "enum": ["success", "partial", "failure", "unsupported"],
+      "description": "Optional outcome classification (blueprint OutcomeSuccess)."
+    },
+    "correctness_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Optional ground-truth or validated correctness in [0, 1]."
+    },
+    "skill_id": {
+      "type": "string",
+      "description": "Optional skill profile this outcome updates."
+    },
+    "plan_id": {
+      "type": "string",
+      "description": "Optional plan reference for trajectory linkage."
+    }
+  },
+  "additionalProperties": true
+}

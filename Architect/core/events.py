@@ -26,6 +26,8 @@ VALID_EVENT_KINDS = [
     "trajectory_collected",
     "alignment_updated",
     "review_due",
+    "risk_guard_failed",
+    "risk_guard_warning",
 ]
 
 class EventBus:

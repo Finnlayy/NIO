@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "feedback.schema.json",
+  "title": "OMEGA Human Feedback Record (Phase 4 RLHF)",
+  "description": "Human rating / preference over one outcome. Mirrors blueprint src/learning/schemas.ts `Feedback`.",
+  "type": "object",
+  "required": [
+    "outcome_id",
+    "rater_id",
+    "rating",
+    "timestamp"
+  ],
+  "properties": {
+    "outcome_id": {
+      "type": "string",
+      "description": "Outcome record this feedback applies to."
+    },
+    "rater_id": {
+      "type": "string",
+      "description": "Human (or automated) rater identity."
+    },
+    "rating": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "Human rating of the outcome, 1 (worst) to 5 (best)."
+    },
+    "preference": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "chosen": { "type": "string" },
+            "rejected": { "type": "string" }
+          },
+          "required": ["chosen", "rejected"],
+          "additionalProperties": false
+        },
+        { "type": "null" }
+      ],
+      "description": "Pairwise preference (A > B style), or null."
+    },
+    "comment": {
+      "type": "string",
+      "description": "Free-text comment; mined for themes by FeedbackProcessor."
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "ISO8601 UTC submission timestamp."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Optional tags for grouping (rlhf_samples parity)."
+    }
+  },
+  "additionalProperties": true
+}
