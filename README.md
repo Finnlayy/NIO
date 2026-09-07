@@ -142,6 +142,14 @@ python3 -m orchestrator watch --goal "Zeit beobachten" --op sys.simulate \
 python3 -m orchestrator schedule list     # hinterlegte Zeitpläne
 python3 -m orchestrator job show <job_id> # Historie inkl. Statusberichten
 
+# Events live mitlesen (opt-in UDS-Broadcast statt stderr-Mitschnitt)
+python3 -m orchestrator bus tail --socket runtime/bus.sock --json &
+python3 -m orchestrator watch --goal "Live" --op sys.ping --uds runtime/bus.sock
+
+python3 -m orchestrator archive stats              # Ledger-Größe, veraltete Einträge
+python3 -m orchestrator archive lookup <intent_id> # Einzelnen Durchgang holen (kompaktiert oder nicht)
+python3 -m orchestrator archive verify             # Schnappschüsse gegen SHA-256 prüfen
+
 make check                                 # Qualitätstor: compile · lint · types · test · e2e
 python3 -m unittest discover -s tests -v   # Testsuite (keine Installation nötig)
 ```

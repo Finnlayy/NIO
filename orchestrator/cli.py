@@ -53,6 +53,7 @@ hinein, die korrekt gestellt war.
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import sys
 import time
@@ -82,7 +83,7 @@ from .events import build_event_bus  # noqa: E402
 from .locks import KIND_SCHEDULED  # noqa: E402
 from .runner import Attempt, JobOutcome, Orchestrator  # noqa: E402
 from .scheduler import Scheduler, describe_schedule  # noqa: E402
-from .transport import FileTransport  # noqa: E402
+from .transport import COMPACT_MIN_STALE_ENTRIES, COMPACT_OLDER_THAN_DAYS, FileTransport  # noqa: E402
 
 EXIT_OK = 0
 EXIT_PROTOCOL = 1
@@ -669,8 +670,14 @@ def cmd_archive(args: argparse.Namespace) -> int:
                 _say("  (leer)")
             if stats["compacted"]:
                 for day, info in stats["compacted"].items():
-                    _say(f"  kompaktiert {day}: {info['records']} Records, {info['bytes']} Bytes")
-            _say(f"  gesamt: {stats['total_entries']} Eintraege, {stats['total_bytes']} Bytes")
+                    note = "Index ja" if info.get("indexed") else "Index fehlt (Scan)"
+                    digest = f" digest={info['digest']}" if info.get("digest") else ""
+                    _say(f"  kompaktiert {day}: {info['records']} Records, {info['bytes']} Bytes"
+                         f" ({note}, {info.get('index_bytes', 0)} Bytes Index{digest}, Quelle: {info.get('source')})")
+            stale = stats.get("stale_entries", 0)
+            _say(f"  gesamt: {stats['total_entries']} Eintraege, {stats['total_bytes']} Bytes"
+                 f" | veraltet (> {COMPACT_OLDER_THAN_DAYS} Tage): {stale}"
+                 f" | Auto-Kompaktierung ab {COMPACT_MIN_STALE_ENTRIES}")
         return EXIT_OK
 
     summary = transport.compact_archive(
@@ -690,7 +697,117 @@ def cmd_archive(args: argparse.Namespace) -> int:
              f"{summary['bytes_freed']} Bytes freigegeben, {summary['snapshot_bytes']} Bytes im Snapshot")
         for day in sorted(summary["days"]):
             info = summary["days"][day]
-            _say(f"  {day}: {info['compacted']} Eintraege -> {info['snapshot_records']} Snapshot-Records")
+            _say(f"  {day}: {info['compacted']} Eintraege -> {info['snapshot_records']} Snapshot-Records"
+                 f" (+ {info.get('index_entries', 0)} Index-Offsets, {info.get('index_bytes', 0)} Bytes)")
+    return EXIT_OK
+
+
+def cmd_archive_lookup(args: argparse.Namespace) -> int:
+    """Einzelnen Durchgang aus dem Ledger holen -- Snapshot *oder* Verzeichnis."""
+    config = _config_from_args(args)
+    transport = FileTransport(config)
+    found = transport.lookup_archived(args.intent_id)
+    if args.json:
+        _dump({"ok": found is not None, "intent_id": args.intent_id, "entry": found})
+    else:
+        if found is None:
+            _say(f"[archiv] kein Eintrag fuer '{args.intent_id}' (runtime/archive/)")
+            return EXIT_PROTOCOL
+        state = "kompaktiert (Snapshot)" if found["compacted"] else f"expandiert ({found.get('path')})"
+        _say(f"  {found['intent_id']}  tag={found['day']}  {state}")
+        record = found.get("record") or {}
+        files = record.get("files") if found["compacted"] else None
+        if isinstance(files, Mapping):
+            for name in sorted(files):
+                _say(f"    {name}: {json.dumps(files[name], ensure_ascii=False)[:120]}")
+        else:
+            for name in ("intent", "result", "verdict"):
+                body = found.get(name)
+                if body is not None:
+                    _say(f"    {name}: {json.dumps(body, ensure_ascii=False)[:120]}")
+    return EXIT_OK if found is not None else EXIT_PROTOCOL
+
+
+def cmd_archive_verify(args: argparse.Namespace) -> int:
+    """Integritaet der kompaktierten Schnappschuese pruefen (Digest-Schnellpfad)."""
+    config = _config_from_args(args)
+    transport = FileTransport(config)
+    violations = transport.verify_archive(force=bool(getattr(args, "deep", False)))
+    if args.json:
+        _dump({"ok": not violations, "mode": "deep" if args.deep else "digest", "violations": violations})
+    else:
+        mode = "tief (jeden Eintrag re-hashen)" if args.deep else "Digest-Schnellpfad"
+        if violations:
+            _say(f"[FEHLER] {len(violations)} Verletzung(en), Pruefung: {mode}")
+            for issue in violations[:20]:
+                _say(f"  {issue}")
+            return EXIT_PROTOCOL
+        _say(f"[ok] Archive intakt (Pruefung: {mode})")
+    return EXIT_OK
+
+
+
+def _attach_uds_sink(bus: Any, args: argparse.Namespace) -> Any:
+    """Haengt den opt-in UDS-Broadcast an den Bus (Nexus Triad 2, Focus A).
+
+    Ohne ``--uds`` aendert sich nichts am Standardpfad (Konsole/Sammler/Datei).
+    Mit ``--uds`` und nicht erreichbarem Empfaenger laeuft der Lauf trotzdem
+    durch: der Sink zaehlt Drops und degradiert statt zu raise'en.
+    """
+    path = getattr(args, "uds", None)
+    if not path:
+        return None
+    from .uds import UDSBroadcastSink
+
+    sink = UDSBroadcastSink(Path(path), batch_bytes=int(getattr(args, "uds_batch", 0) or 0))
+    bus.subscribe(sink)
+    atexit.register(sink.close)  # Batch-Freigabe beim CLI-Exit, ohne Rueckgabe-Pfad zu verbauen
+    return sink
+
+
+def cmd_bus_tail(args: argparse.Namespace) -> int:
+    """Mitlesen: Events vom UDS-Broadcast holen (Gegenseite von ``watch --uds``).
+
+    Der Bus bleibt der Producer; dieses Kommando ist ein reiner Konsument --
+    es schreibt nichts zurueck und aendert keinen Job-Zustand.
+    """
+    config = _config_from_args(args)
+    from .uds import UDSBroadcastServer
+
+    socket_path = Path(args.socket) if args.socket else config.runtime_dir / "bus.sock"
+    limit = int(args.limit or 0)
+    idle_s = max(0.05, float(args.idle if args.idle is not None else 5.0))
+    seen = 0
+    try:
+        # Der Konsument *besitzt* das Socket: er bindet es (und raeumt einen stale
+        # Inode eines abgestuerzten Laufs weg) und der Producer connectet dagegen.
+        # Damit ist die Startreihenfolge egal -- `bus tail` zuerst starten ist der
+        # vorgesehene Weg, ein laufender `watch --uds` findet den Empfaenger spaeter.
+        with UDSBroadcastServer(socket_path) as server:
+            if not args.json:
+                _say(f"[bus tail] {socket_path} (wartet bis {idle_s}s Leerlauf"
+                     f"{', limit=' + str(limit) if limit else ''})")
+            while True:
+                records = server.records(timeout_s=idle_s)
+                if not records:
+                    break
+                for record in records:
+                    if args.json:
+                        # JSON Lines (eine Zeile pro Event) -- wie der Event-Strom
+                        # auf stderr, damit `| jq -c` und `| wc -l` funktionieren.
+                        print(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+                    else:
+                        clock = record.get("clock_s")
+                        _say(f"  #{record.get('seq', '?'):>4} {record.get('timestamp', '')} "
+                             f"{record.get('kind', '?'):<22} t_unlimited={clock if clock is not None else '-'}")
+                    seen += 1
+                    if limit and seen >= limit:
+                        print(f"[bus tail] {seen} Events empfangen", file=sys.stderr)
+                        return EXIT_OK
+    except OSError as exc:
+        _say(f"[bus tail] Socket nicht nutzbar: {exc}")
+        return EXIT_PROTOCOL
+    print(f"[bus tail] {seen} Events empfangen (Leerlauf {idle_s}s)", file=sys.stderr)
     return EXIT_OK
 
 
@@ -775,6 +892,7 @@ def cmd_watch(args: argparse.Namespace) -> int:
     sink = WatchSink(show_ticks=not args.no_ticks)
     bus = build_event_bus(quiet=True, collector=collector)
     bus.subscribe(sink)
+    _attach_uds_sink(bus, args)  # opt-in Broadcast-Zweig; Standardpfad bleibt unangetastet
     orch = Orchestrator(config, bus=bus, quiet=True)
 
     if args.job:
@@ -1359,7 +1477,26 @@ def build_parser() -> argparse.ArgumentParser:
     p_watch.add_argument("--job", default=None, help="bestehender Job: nur dessen Zeitplan ticken (kein Limb-Start)")
     p_watch.add_argument("--for", dest="for_s", type=float, default=None, help="Wandzeit-Limit in Sekunden")
     p_watch.add_argument("--no-ticks", action="store_true", dest="no_ticks", help="timer.tick-Zeilen unterdruecken")
+    p_watch.add_argument("--uds", default=None, metavar="PATH",
+                         help="Event-Strom zusaetzlich per Unix-Domain-Socket broadcasten (opt-in, sub-ms; "
+                              "Datei-/Konsolepfad bleibt unveraendert)")
+    p_watch.add_argument("--uds-batch", type=int, default=0, dest="uds_batch", metavar="BYTES",
+                         help="Broadcast-Zeilen bis N Bytes bündeln (1 Syscall fuer viele Events; 0 = sofort senden)")
     p_watch.set_defaults(func=cmd_watch)
+
+    p_bus = sub.add_parser("bus", help="Event-Bus-Broadcast (Unix-Domain-Socket) mitlesen")
+    bus_sub = p_bus.add_subparsers(dest="bus_cmd", required=True, parser_class=_NeuArgumentParser)
+    p_bus_tail = bus_sub.add_parser("tail", help="Events vom Broadcast-Socket holen (read-only Konsument)")
+    p_bus_tail.add_argument("--socket", default=None, help="Pfad des Broadcast-Sockets (Default: runtime/bus.sock)")
+    p_bus_tail.add_argument("--limit", type=int, default=0, help="nach N Events aufhoeren (0 = bis Leerlauf)")
+    # Die Leerlauf-Schwelle muss die Producer-Startzeit uebersteigen: der tail
+    # bindet das Socket und wartet; ein `watch`-Prozess braucht ~1-2 s bis zum
+    # ersten Event (Interpreter + Config + Limb-Spawn). 2 s fuhrten dazu, dass der
+    # tail abbrach, *bevor* der erste Event eintraf.
+    p_bus_tail.add_argument("--idle", type=float, default=5.0,
+                            help="Leerlauf-Sekunden bis zum Abbruch (Default 5.0; groesser als die Producer-Startzeit waehlen)")
+    p_bus_tail.add_argument("--json", action="store_true", help="JSON Lines statt Menschentext auf stdout")
+    p_bus_tail.set_defaults(func=cmd_bus_tail)
 
     p_schedule = sub.add_parser("schedule", help="Zeitgesteuerte Ausloeser: Zustand, Bericht, Aufraeumen")
     sched_sub = p_schedule.add_subparsers(dest="schedule_cmd", required=True, parser_class=_NeuArgumentParser)
@@ -1382,6 +1519,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_arch_compact.add_argument("--keep-recent", type=int, default=7,
                                 help="die neuesten N Eintraege pro Tag als Verzeichnis belassen (Default 7)")
     p_arch_compact.set_defaults(func=cmd_archive)
+    p_arch_lookup = archive_sub.add_parser("lookup", help="Einzelnen Durchgang im Ledger suchen (kompaktiert oder expandiert)")
+    p_arch_lookup.add_argument("intent_id")
+    p_arch_lookup.set_defaults(func=cmd_archive_lookup)
+    p_arch_verify = archive_sub.add_parser("verify", help="Integritaet der Schnappschuese pruefen (SHA-256)")
+    p_arch_verify.add_argument("--deep", action="store_true", help="jeden Eintrag re-hashen statt nur den Tages-Digest zu pruefen")
+    p_arch_verify.set_defaults(func=cmd_archive_verify)
 
     p_loop = sub.add_parser("loop", help="Inbox abarbeiten")
     p_loop.add_argument("--once", action="store_true", default=True, help="Ein Durchlauf (Default)")

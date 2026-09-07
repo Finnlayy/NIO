@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
-"""Benchmark fuer Nexus-Triad Nr.1 (siehe ``.nio/nexus.md``).
+"""Benchmark fuer Nexus-Triad Nr.2 (siehe ``.nio/nexus.md``).
 
-Misst die drei Fokusbereiche des kontinuierlichen Loops:
+Misst die drei Fokusbereiche des kontinuierlichen Loops gegen den Stand nach
+Triad Nr.1. Moeglichst werden *beide* Pfade im selben Prozess gemessen (alter
+Code als Referenz-Klasse bzw. der bewusste Umweg ueber die Fallback-Methode),
+damit der Delta nicht aus einer Zahl im Kommentar hochgerechnet wird:
 
-* **Focus A -- Sub-ms IPC / Event-Bus:** ``EventBus.emit`` Latenz (Null-Sink) vorher
-  (Inline-Baseline mit ``datetime``-Zeitstempel + doppelter ``payload``-Kopie) gegen
-  die optimierte Fast-Path-Variante; dazu der opt-in Shared-Memory-Ring vs. Datei.
-* **Focus B -- Fast-Path Schema-Bench:** ``core.schemacheck.validate`` gegen das
-  normative ``protocol/intent.schema.json`` (Reference-Baseline im Journal).
-* **Focus C -- Ledger-Kompaktierung:** ``FileTransport.compact_archive`` -- Eintrag-
-  und Byte-Reduktion inkl. Integritaetspruefung (``verify_archive``).
+* **Focus A -- Sub-ms IPC / Event-Bus:** Serialisierung pro Sink (Triad 1) vs.
+  genau einmal pro Emit mit geteilter Zeile (Triad 2); dazu UDS-Broadcast gegen
+  Konsole/Datei und der Shared-Memory-Ring mit und ohne vorbereitete Zeile.
+* **Focus B -- Fast-Path-Validierung:** Bedingungs-Analyse pro Tick (gecachter
+  Compiler vs. rohes Parsen pro Aufruf) und Uhr-Anker (memoisierte Epoche vs.
+  ``parse_timestamp`` pro Tick).
+* **Focus C -- Ledger:** Einzelsatz-Suche ueber Offset-Index vs. kompletten
+  Snapshot einlesen; Statistik aus dem Manifest vs. Scan; Integritaetspruefung
+  ueber Tages-Digest vs. tiefes Re-Hashen (das einzige Verhalten vor Triad 2).
 
-Ausgabe ist maschinenlesbar (JSON) auf stdout, damit CI/Skripte die Werte weiterreichen
-koennen. Laufzeit ~2-5 s, keine externen Abhaengigkeiten.
+Ausgabe ist maschinenlesbar (JSON) auf stdout. Laufzeit ~15-30 s, keine
+externen Abhaengigkeiten (Python 3.11 Standardbibliothek).
 """
 
 from __future__ import annotations
@@ -34,89 +39,302 @@ for _entry in (str(Path(__file__).resolve().parent), str(_REPO), str(_REPO / "or
 
 from core.config import NeuConfig  # noqa: E402
 from core.kernel import Kernel  # noqa: E402
-from core.protocol import Operations, Result, new_id, utc_now_iso  # noqa: E402
+from core.protocol import Operations, Result, new_id, parse_timestamp, utc_now, utc_now_iso  # noqa: E402
 from core.schemacheck import validate as v_validate  # noqa: E402
-from orchestrator.events import CollectingSink, Event, EventBus  # noqa: E402
+from orchestrator.events import ConsoleSink, Event, EventBus, _iso_ms_z_fast  # noqa: E402
 from orchestrator.ring import SharedMemoryRingSink  # noqa: E402
-from orchestrator.transport import FileTransport  # noqa: E402
+from orchestrator.scheduler import _CONDITION_CACHE, ScheduleState, _compile_condition, evaluate_condition  # noqa: E402
+from orchestrator.transport import FileTransport, read_jsonl  # noqa: E402
+from orchestrator.uds import UDSBroadcastServer, UDSBroadcastSink  # noqa: E402
 
-#: Gemessene Baseline auf Commit 2639525 (vor den Optimierungen). Diese Werte
-#: wurden mit demselben Skript-Aufbau ermittelt und dienen als Referenz fuer den
-#: Delta-Vergleich im PR-Body.
+#: Referenzpunkte aus dem Journal. ``*_triad0`` = Commit ``2639525`` (vor jedem
+#: Nexus-Eingriff), ``*_triad1`` = Stand nach Triad Nr.1 und damit die Baseline,
+#: gegen die dieser Triad antritt.
 REFERENCE_BASELINE = {
-    "focus_a_emit_us": 2.81,
-    "focus_a_emit_collect_us": 3.57,
-    "focus_b_validate_us": 77.20,
+    "emit_null_us_triad0": 2.81,
+    "emit_null_us_triad1": 1.99,
+    "emit_collect_us_triad1": 3.20,
+    "ring_write_us_triad1": 4.70,
+    "validate_us_triad0": 77.20,
+    "validate_us_triad1": 60.7,
+    "condition_eval_us_triad1": 0.841,
+    "elapsed_s_us_triad1": 1.523,
+    "lookup_scan_us_triad1": 7622.8,
+    "verify_us_triad1": 21093.7,
+    "stats_us_triad1": 7597.7,
 }
 
+_REPEAT = 150_000
+#: So viele Ausloeser haelt ein Auftrag im Extremfall (``--trigger`` pro CLI-Zeile).
+_TRIGGERS_PER_JOB = 8
 
-class _NullSink:
-    name = "null"
 
-    def write(self, record: Mapping[str, Any]) -> None:
+def measure(fn: Any, n: int = _REPEAT, warm: int | None = None, between: Any = None) -> float:
+    """Mikrosekunden pro Aufruf; Median aus drei Laeufen gegen Messrauschen.
+
+    ``between`` wird vor jedem Lauf aufgerufen -- noetig fuer Pfade mit
+    gebundenen Ressourcen (Socket-Buffer, Ring-Slots), die sonst mitten in der
+    Messung voll laufen und eine andere Arbeit messen als die intendierte.
+    """
+    runs: list[float] = []
+    for _ in range(3):
+        for _ in range(warm if warm is not None else max(50, n // 20)):
+            fn()
+        if between is not None:
+            between()
+        start = time.perf_counter_ns()
+        for _ in range(n):
+            fn()
+        runs.append((time.perf_counter_ns() - start) / n / 1000.0)
+    runs.sort()
+    return round(runs[len(runs) // 2], 3)
+
+
+def drain_socket(server: Any) -> None:
+    """Leert den Socket leer (einmal pro Messlauf, nicht pro Event)."""
+    while server.recv_batch(timeout_s=0.0):
         pass
 
 
-def _baseline_emit(kind: str, payload: dict[str, Any], *, job_id: str, clock_s: float | None, seq: int) -> Event:
-    """Repliziert den alten ``EventBus.emit`` (datetime-Zeitstempel + doppelte Kopie)."""
-    event = Event(
+class LegacySink:
+    """Console-Sink-Stand nach Triad 1: serialisiert **pro Sink** selbst, mit flush."""
+
+    name = "legacy_console"
+
+    def __init__(self, stream: Any) -> None:
+        self.stream = stream
+
+    def write(self, record: Mapping[str, Any]) -> None:
+        self.stream.write(json.dumps(dict(record), ensure_ascii=False) + "\n")
+        self.stream.flush()
+
+
+class NullSink:
+    name = "null"
+
+    @staticmethod
+    def write(record: Mapping[str, Any]) -> None:
+        return None
+
+
+def _legacy_emit(bus: EventBus, kind: str, payload: dict[str, Any], *, job_id: str, clock_s: float) -> None:
+    """Replikat des ``emit``-Kerns nach Triad 1 -- inkl. des ``Event``, den der Bus
+    immer noch zurueckgibt (und das jeder Aufrufer verwirft: 1,4 µs vom 3,0-µs-
+    Emit-Fussboden, der groeste einzelne Posten dort).
+
+    Nur fuer den Vergleich gemessen: zeigt, was der Getattr-Test kostet, den der
+    Shared-Line-Pfad pro Sink zahlt.
+    """
+    bus._seq += 1
+    seq = bus._seq
+    payload_copy = dict(payload) if payload else {}
+    clock = None if clock_s is None else round(float(clock_s), 3)
+    timestamp = _iso_ms_z_fast()
+    record = {
+        "seq": seq,
+        "timestamp": timestamp,
+        "kind": kind,
+        "job_id": job_id,
+        "trace_id": "",
+        "intent_id": "",
+        "limb": "",
+        "clock_s": clock,
+        "payload": payload_copy,
+    }
+    for sink in bus.sinks:
+        sink.write(record)
+    bus_ret = Event(
         kind=kind,
-        payload=dict(payload),
+        payload=payload_copy,
         seq=seq,
-        timestamp=datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+        timestamp=timestamp,
         job_id=job_id,
-        clock_s=None if clock_s is None else round(float(clock_s), 3),
+        trace_id="",
+        intent_id="",
+        limb="",
+        clock_s=clock,
     )
-    event.to_dict()
-    return event
+    del bus_ret
 
 
 def bench_focus_a(results: dict[str, Any]) -> None:
-    payload = {"tick_s": 0.5, "clock_s": 1.0}
-    bus = EventBus([_NullSink()])
-    n = 200_000
+    """Fokus A: Serialisierung einmal pro Emit statt pro Sink, plus UDS-Zweig.
 
-    # Baseline (alte Semantik: datetime + to_dict Doppelkopie)
-    t0 = time.perf_counter_ns()
-    for i in range(n):
-        _baseline_emit("timer.tick", payload, job_id="job_x", clock_s=1.0, seq=i)
-    baseline = (time.perf_counter_ns() - t0) / n / 1000.0
+    Alle Vergleiche laufen in *einem* Prozess ohne Begleit-Thread: ein zweiter
+    Thread wuerde ueber das GIL Messrauschen in die Producer-Zahlen mischen.
+    Gebundene Ressourcen (Socket-Buffer, Ring-Slots) werden zwischen den Laeufen
+    geleert, nicht pro Event.
+    """
+    payload = {"tick": 42, "tick_s": 0.5, "fired": 0}
+    emit = lambda bus: bus.emit("timer.tick", payload, job_id="job_x", clock_s=1.0)  # noqa: E731
+    tmp = Path(tempfile.mkdtemp(prefix="nexus-bus-"))
 
-    # Optimiert (echter Fast-Path)
-    t0 = time.perf_counter_ns()
-    for _ in range(n):
-        bus.emit("timer.tick", payload, job_id="job_x", clock_s=1.0)
-    optimized = (time.perf_counter_ns() - t0) / n / 1000.0
+    # 1) Emit ohne Text-Sink -- Regressionsschutz fuer Triad 1 / Cycle 1
+    null_bus = EventBus([NullSink()])
+    emit_null = measure(lambda: emit(null_bus))
+    emit_null_before = measure(lambda: _legacy_emit(null_bus, "timer.tick", payload, job_id="job_x", clock_s=1.0))
 
-    # CollectingSink (echte Zustellung inkl. Sink-Kopie)
-    collector = CollectingSink()
-    bus2 = EventBus([collector])
-    t0 = time.perf_counter_ns()
-    for _ in range(n):
-        bus2.emit("timer.tick", payload, job_id="job_x", clock_s=1.0)
-    collect = (time.perf_counter_ns() - t0) / n / 1000.0
-    assert len(collector.records) == n
+    # 2) Ein Text-Sink auf echter Datei: Serialisierung im Sink (Triad 1) gegen
+    #    die vorserialisierte Zeile (Triad 2). Schreib- und Flush-Arbeit ist auf
+    #    beiden Seiten identisch, gemessen wird also nur die Delta der Serialisierung.
+    log_path = tmp / "events.jsonl"
+    legacy_fd = open(log_path, "w", encoding="utf-8")  # noqa: SIM115
+    legacy_bus = EventBus([LegacySink(legacy_fd)])
+    legacy_write = measure(lambda: emit(legacy_bus), n=20_000)
+    legacy_fd.close()
+    fast_fd = open(log_path, "w", encoding="utf-8")  # noqa: SIM115
+    fast_bus = EventBus([ConsoleSink(stream=fast_fd)])
+    fast_write = measure(lambda: emit(fast_bus), n=20_000)
+    fast_fd.close()
 
-    # Shared-Memory-Ring (opt-in) vs. Datei-Flush je Event
-    ring = SharedMemoryRingSink(capacity=200_000, slot_size=2048)
-    t0 = time.perf_counter_ns()
-    for _ in range(n):
-        ring.write(payload)
-    ring_us = (time.perf_counter_ns() - t0) / n / 1000.0
-    ring.unlink()
+    # 3) Fanout: drei Mitleser. Vorher fiel die Serialisierung dreimal an,
+    #    jetzt laeuft sie genau einmal und die Zeile wird geteilt.
+    three_legacy_fd = open(log_path, "w", encoding="utf-8")  # noqa: SIM115
+    three_fast_fd = open(log_path, "w", encoding="utf-8")  # noqa: SIM115
+    bus_legacy3 = EventBus([LegacySink(three_legacy_fd)] * 3)
+    bus_fast3 = EventBus([ConsoleSink(stream=three_fast_fd)] * 3)
+    fanout_before = measure(lambda: emit(bus_legacy3), n=20_000)
+    fanout_after = measure(lambda: emit(bus_fast3), n=20_000)
+    three_legacy_fd.close()
+    three_fast_fd.close()
+
+    # 4) UDS-Zweig (opt-in). Der Receive-Buffer ist begrenzt (hier ~212 KB),
+    #    also wird *zwischen* den Laeufen geleert, nie pro Event, und die
+    #    Lauflaengen bleiben unterhalb der Saturation -- sonst misst man die
+    #    EAGAIN-Abwurfbehandlung statt den Socket.
+    sock_path = tmp / "bus.sock"
+    server = UDSBroadcastServer(sock_path)
+    try:
+        sink = UDSBroadcastSink(sock_path)
+        bus_uds = EventBus([sink])
+        uds_emit = measure(
+            lambda: emit(bus_uds), n=150, warm=0, between=lambda: drain_socket(server)
+        )
+        batched = UDSBroadcastSink(sock_path, batch_bytes=8192)
+        bus_batched = EventBus([batched])
+
+        def batched_round() -> None:
+            """64 Events pro Syscall: Produzent fuellt, Konsument leert -- amortisiert."""
+            for _ in range(64):
+                bus_batched.emit("timer.tick", payload, job_id="job_x", clock_s=1.0)
+            batched.flush()
+            drain_socket(server)
+
+        uds_batched = measure(batched_round, n=6, warm=0) / 64
+
+        def round_trip() -> None:
+            sink.write_prepared({}, '{"kind":"timer.tick","seq":1}')
+            server.recv_batch(timeout_s=0.5)
+
+        uds_round_trip = measure(round_trip, n=800, warm=0, between=lambda: drain_socket(server))
+
+        # Burst-Betrieb (der Realfall eines tail-Konsumenten): 32 Events produzieren,
+        # einmal abholen. Das zeigt, was ein Mitleser *pro Event* kostet, wenn er
+        # nicht jedes Datagramm einzeln holt.
+        burst_line = '{"seq":1,"kind":"timer.tick","payload":{"tick":42}}'
+
+        def burst_round() -> None:
+            for _ in range(32):
+                sink.write_prepared({}, burst_line)
+            server.recv_batch(timeout_s=0.5)
+
+        uds_burst = measure(burst_round, n=120, warm=0, between=lambda: drain_socket(server)) / 32
+
+        # Saettigungsfall: kein Konsument, Buffer voll -> Wegwerfen statt Blockieren.
+        drain_socket(server)
+        saturated = measure(lambda: emit(bus_uds), n=2_000, warm=0)
+        stats = sink.stats()
+        sink.close()
+        batched.close()
+    finally:
+        server.close()
+
+    # 5) Shared-Memory-Ring: selbst serialisieren (Triad 1) gegen vorbereitete Zeile.
+    #    Der Ring ist gebunden, also Kapazitaet fuer die komplette Messung.
+    record = {
+        "seq": 1,
+        "timestamp": "2026-09-07T00:00:00.000Z",
+        "kind": "timer.tick",
+        "job_id": "job_x",
+        "trace_id": "",
+        "intent_id": "",
+        "limb": "echo",
+        "clock_s": 1.0,
+        "payload": payload,
+    }
+    ring_n = 20_000
+    ring_slots = ring_n * 3 + ring_n // 20 + 8
+    ring_old = SharedMemoryRingSink(capacity=ring_slots, slot_size=512)
+    ring_new = SharedMemoryRingSink(capacity=ring_slots, slot_size=512)
+    ring_line = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+    ring_new_bus = EventBus([ring_new])
+    try:
+        # Apfel-gegen-Apfel: *nur* der Sink-Schreibvorgang, einmal mit eigener
+        # Serialisierung (Triad 1) und einmal mit der vom Bus gelieferten Zeile.
+        ring_self_serialized = measure(lambda: ring_old.write(record), n=ring_n, warm=8)
+        ring_prepared = measure(lambda: ring_new.write_prepared(record, ring_line), n=ring_n, warm=8)
+        ring_emit = measure(lambda: emit(ring_new_bus), n=ring_n, warm=8)
+    finally:
+        ring_old.unlink()
+        ring_new.unlink()
 
     results["focus_a"] = {
-        "emit_baseline_us": round(baseline, 3),
-        "emit_optimized_us": round(optimized, 3),
-        "emit_delta_us": round(baseline - optimized, 3),
-        "emit_speedup_x": round(baseline / optimized, 2),
-        "emit_collect_us": round(collect, 3),
-        "shared_mem_ring_write_us": round(ring_us, 3),
-        "reference_baseline_us": REFERENCE_BASELINE["focus_a_emit_us"],
+        "emit_null_us": emit_null,
+        "emit_null_triad1_replica_us": emit_null_before,
+        # "Marginal" = was der *eine* zusaetzliche Sink kostet, nachdem der Bus
+        # selbst (Seq, Zeitstempel, Record, Zeile) abgezogen ist. Nur diese Zahl
+        # ist zwischen Transporten vergleichbar.
+        "uds_sink_marginal_us": round(uds_emit - emit_null, 3),
+        "ring_sink_marginal_us": round(ring_emit - emit_null, 3),
+        "emit_null_reference_triad0_us": REFERENCE_BASELINE["emit_null_us_triad0"],
+        "emit_null_reference_triad1_us": REFERENCE_BASELINE["emit_null_us_triad1"],
+        "one_sink_serialize_in_sink_us": legacy_write,
+        "one_sink_shared_line_us": fast_write,
+        "one_sink_delta_us": round(legacy_write - fast_write, 3),
+        "one_sink_speedup_x": round(legacy_write / fast_write, 2),
+        "fanout_3_sinks_before_us": fanout_before,
+        "fanout_3_sinks_after_us": fanout_after,
+        "fanout_3_sinks_delta_us": round(fanout_before - fanout_after, 3),
+        "fanout_speedup_x": round(fanout_before / fanout_after, 2),
+        "uds_emit_us": uds_emit,
+        "uds_round_trip_us": uds_round_trip,
+        "uds_burst_per_event_us": round(uds_burst, 3),
+        "uds_batched_per_event_us": round(uds_batched, 3),
+        "uds_batch_events_per_syscall": 64,
+        "uds_saturated_drop_path_us": saturated,
+        "uds_sent": stats["sent"],
+        "uds_dropped": stats["dropped"],
+        "ring_self_serialized_us": ring_self_serialized,
+        "ring_prepared_line_us": ring_prepared,
+        "ring_delta_us": round(ring_self_serialized - ring_prepared, 3),
+        "ring_speedup_x": round(ring_self_serialized / ring_prepared, 2),
+        "ring_emit_total_us": ring_emit,
+        "ring_reference_triad1_us": REFERENCE_BASELINE["ring_write_us_triad1"],
     }
 
 
 def bench_focus_b(results: dict[str, Any]) -> None:
+    when = "elapsed >= 6"
+    raw_parse = measure(lambda: _compile_condition(when))
+    cached_eval = measure(lambda: evaluate_condition(when, 3.5))
+    # "Vorher" = jeder Tick parst neu. Das emuliert der Cache-Leerlauf, denn der
+    # Parse war exakt der teure Teil des alten ``evaluate_condition``.
+    _CONDITION_CACHE.clear()
+    uncached_eval = measure(lambda: (_CONDITION_CACHE.clear(), evaluate_condition(when, 3.5)), n=30_000, warm=50)
+    _CONDITION_CACHE.clear()
+    per_tick_before = uncached_eval * _TRIGGERS_PER_JOB
+    per_tick_after = cached_eval * _TRIGGERS_PER_JOB
+
+    t0 = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    state = ScheduleState(job_id="job_bench", t0=t0, tick_s=0.05)
+    elapsed_after = measure(lambda: state.elapsed_s(), n=100_000)
+
+    def elapsed_before() -> float:
+        """Wortgleich der Triad-1-Pfad: datetime-Anker pro Aufruf neu geparst."""
+        return round(max(0.0, (utc_now() - parse_timestamp(t0, "$.schedule.t0")).total_seconds()), 3)
+
+    elapsed_before_us = measure(elapsed_before, n=100_000)
+
     config = NeuConfig.load(_REPO, mode="dev", runtime_dir=Path(tempfile.mkdtemp(prefix="neu-bench-")) / "runtime")
     config.ensure_dirs()
     ops = Operations.load(config.protocol_dir / "operations.json")
@@ -124,38 +342,43 @@ def bench_focus_b(results: dict[str, Any]) -> None:
     intent = kernel.build_intent(operation="sys.echo", params={"message": "ping"}, limb="echo", goal="Bench")
     schema = json.loads((config.protocol_dir / "intent.schema.json").read_text(encoding="utf-8"))
     data = intent.to_dict()
-    n = 4000
-
-    for _ in range(100):  # Warm-up (Regex-Cache)
-        v_validate(data, schema)
-    t0 = time.perf_counter_ns()
-    for _ in range(n):
-        v_validate(data, schema)
-    optimized = (time.perf_counter_ns() - t0) / n / 1000.0
-
-    # Negative Kontrolle: der Pruefer findet Fehler weiterhin
+    validate_us = measure(lambda: v_validate(data, schema), n=4_000, warm=200)
     errors = v_validate({"bad": "x"}, {"type": "object", "required": ["x"]})
     assert errors, "Pruefer darf Fehler nicht durchwinken"
 
     results["focus_b"] = {
-        "validate_optimized_us": round(optimized, 3),
-        "reference_baseline_us": REFERENCE_BASELINE["focus_b_validate_us"],
-        "delta_us": round(REFERENCE_BASELINE["focus_b_validate_us"] - optimized, 3),
-        "speedup_x": round(REFERENCE_BASELINE["focus_b_validate_us"] / optimized, 2),
+        "condition_parse_raw_us": raw_parse,
+        "condition_eval_cached_us": cached_eval,
+        "condition_eval_uncached_us": round(uncached_eval, 3),
+        "condition_reference_triad1_us": REFERENCE_BASELINE["condition_eval_us_triad1"],
+        "condition_speedup_x": round(uncached_eval / cached_eval, 2),
+        "condition_per_tick_8_triggers_before_us": round(per_tick_before, 3),
+        "condition_per_tick_8_triggers_after_us": round(per_tick_after, 3),
+        "elapsed_after_us": elapsed_after,
+        "elapsed_before_us": elapsed_before_us,
+        "elapsed_delta_us": round(elapsed_before_us - elapsed_after, 3),
+        "elapsed_speedup_x": round(elapsed_before_us / elapsed_after, 2),
+        "elapsed_reference_triad1_us": REFERENCE_BASELINE["elapsed_s_us_triad1"],
+        "schema_validate_us": validate_us,
+        "schema_reference_triad0_us": REFERENCE_BASELINE["validate_us_triad0"],
+        "schema_reference_triad1_us": REFERENCE_BASELINE["validate_us_triad1"],
+        "tick_savings_us": round(per_tick_before - per_tick_after + (elapsed_before_us - elapsed_after), 3),
     }
 
 
-def bench_focus_c(results: dict[str, Any]) -> None:
-    rt = tempfile.mkdtemp(prefix="neu-arch-bench-")
-    config = NeuConfig.load(_REPO, mode="dev", runtime_dir=Path(rt) / "runtime")
+def _archive_fixture(entries: int = 400) -> tuple[FileTransport, NeuConfig, list[str]]:
+    rt = Path(tempfile.mkdtemp(prefix="neu-arch-bench-"))
+    os.environ["NEU_ARCHIVE_AUTOCOMPACT"] = "0"  # die manuelle Kompaktierung wird gemessen
+    config = NeuConfig.load(_REPO, mode="dev", runtime_dir=rt / "runtime")
     config.ensure_dirs()
     ops = Operations.load(config.protocol_dir / "operations.json")
     kernel = Kernel(config, ops)
     transport = FileTransport(config)
-
-    total = 120
-    for i in range(total):
-        intent = kernel.build_intent(operation="sys.echo", params={"message": f"m{i}"}, limb="echo", goal=f"Goal {i}")
+    ids: list[str] = []
+    for index in range(entries):
+        intent = kernel.build_intent(
+            operation="sys.echo", params={"message": f"m{index}"}, limb="echo", goal=f"Goal {index}"
+        )
         result = Result(
             result_id=new_id("res"),
             intent_id=intent.intent_id,
@@ -165,12 +388,16 @@ def bench_focus_c(results: dict[str, Any]) -> None:
             limb_name="echo",
             started_at=utc_now_iso(),
             finished_at=utc_now_iso(),
-            output={"echo": f"m{i}"},
+            output={"echo": f"m{index}"},
         )
         transport.archive(intent, result, {"verdict": "accept", "iteration": intent.iteration})
+        ids.append(intent.intent_id)
+    return transport, config, ids
 
+
+def bench_focus_c(results: dict[str, Any]) -> None:
+    transport, config, ids = _archive_fixture(400)
     before = transport.archive_stats()
-    # Eintraege in die Vergangenheit aeltern (aehnlich realer Lauf ueber Monate)
     cutoff = time.time() - 10 * 86400
     for day_dir in config.archive_dir.iterdir():
         if day_dir.is_dir() and day_dir.name != "compacted":
@@ -178,27 +405,74 @@ def bench_focus_c(results: dict[str, Any]) -> None:
                 if entry.is_dir():
                     os.utime(entry, (cutoff, cutoff))
 
-    summary = transport.compact_archive(older_than_days=7)
+    started = time.perf_counter()
+    summary = transport.compact_archive(older_than_days=7, keep_recent=8)
+    compact_ms = round((time.perf_counter() - started) * 1000, 2)
     after = transport.archive_stats()
-    violations = transport.verify_archive()
+    snapshot_files = sorted((config.archive_dir / "compacted").glob("*.jsonl"))
+    snapshot = snapshot_files[0]
+    target = ids[len(ids) // 2]
 
-    snapshot_bytes_after = sum(info["bytes"] for info in after["compacted"].values())
+    def scan_lookup() -> Any:
+        """Der einzige Weg vor Triad 2: ganze Datei lesen, Zeile fuer Zeile parseen."""
+        return next((record for record in read_jsonl(snapshot) if record.get("intent_id") == target), None)
+
+    scan_us = measure(scan_lookup, n=60, warm=5)
+    indexed_us = measure(lambda: transport.lookup_archived(target), n=5_000, warm=200)
+    sidecar = snapshot.with_name(snapshot.stem + ".index.json")
+    sidecar.unlink()
+    transport._index_cache.clear()
+    cold_us = measure(lambda: (transport._index_cache.clear(), transport.lookup_archived(target)), n=6, warm=0)
+    assert transport.lookup_archived(target), "Kalter Neuaufbau muss denselben Datensatz finden"
+
+    def stats_by_scan() -> int:
+        return sum(len(read_jsonl(path)) for path in snapshot_files)
+
+    stats_before = measure(stats_by_scan, n=60, warm=5)
+    stats_after = measure(lambda: transport.archive_stats(), n=60, warm=5)
+    verify_deep = measure(lambda: transport.verify_archive(force=True), n=20, warm=3)
+    verify_fast = measure(lambda: transport.verify_archive(), n=200, warm=20)
+    gate_us = measure(lambda: transport.stale_entry_count(), n=200, warm=20)
+
+    # Integritaet: Manipulation muss beiden Pradpfaden auffallen
+    assert transport.verify_archive() == []
+    raw = bytearray(snapshot.read_bytes())
+    raw[raw.find(b'"output"') + 1] = ord("X")
+    snapshot.write_bytes(bytes(raw))
+    tamper_fast = len(transport.verify_archive())
+    tamper_deep = len(transport.verify_archive(force=True))
+
     results["focus_c"] = {
         "entries_before": before["total_entries"],
-        "entries_after": after["total_entries"],
-        "expanded_bytes_before": before["total_bytes"],
-        "expanded_bytes_after": after["total_bytes"],
-        "snapshot_bytes_after": snapshot_bytes_after,
-        "total_bytes_after": after["total_bytes"] + snapshot_bytes_after,
-        "bytes_freed": summary["bytes_freed"],
+        "expanded_after": after["total_entries"],
         "pruned_dirs": summary["pruned_dirs"],
-        "compacted_entries": len(summary["compacted_entries"]),
-        "integrity_violations": len(violations),
+        "compact_ms": compact_ms,
+        "bytes_freed": summary["bytes_freed"],
+        "snapshot_bytes": summary["snapshot_bytes"],
+        "index_bytes": summary["index_bytes"],
+        "index_overhead_pct": round(100.0 * summary["index_bytes"] / max(1, summary["snapshot_bytes"]), 2),
+        "lookup_scan_us": round(scan_us, 3),
+        "lookup_indexed_us": indexed_us,
+        "lookup_speedup_x": round(scan_us / indexed_us, 1),
+        "lookup_cold_rebuild_us": round(cold_us, 1),
+        "lookup_reference_triad1_us": REFERENCE_BASELINE["lookup_scan_us_triad1"],
+        "stats_scan_us": round(stats_before, 3),
+        "stats_manifest_us": round(stats_after, 3),
+        "stats_speedup_x": round(stats_before / stats_after, 1),
+        "stats_reference_triad1_us": REFERENCE_BASELINE["stats_us_triad1"],
+        "verify_deep_us": round(verify_deep, 3),
+        "verify_digest_us": round(verify_fast, 3),
+        "verify_speedup_x": round(verify_deep / verify_fast, 1),
+        "verify_reference_triad1_us": REFERENCE_BASELINE["verify_us_triad1"],
+        "stale_gate_us": gate_us,
+        "tamper_detected_fast": tamper_fast,
+        "tamper_detected_deep": tamper_deep,
+        "violations_clean": 0,
     }
 
 
 def main() -> int:
-    results: dict[str, Any] = {}
+    results: dict[str, Any] = {"reference_baseline": REFERENCE_BASELINE}
     bench_focus_a(results)
     bench_focus_b(results)
     bench_focus_c(results)

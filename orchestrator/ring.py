@@ -56,6 +56,8 @@ class SharedMemoryRingSink:
             raise ValueError("capacity >= 1 und slot_size > 4")
         self.capacity = capacity
         self.slot_size = slot_size
+        #: Verworfene Events im Nicht-Strict-Pfad (``write_prepared``).
+        self.dropped = 0
         self.total_size = _HDR_SIZE + capacity * slot_size
         self.shm = shared_memory.SharedMemory(name=name, create=True, size=self.total_size)
         self.shm_name = self.shm.name
@@ -81,17 +83,36 @@ class SharedMemoryRingSink:
         return _HDR_SIZE + (index % self.capacity) * self.slot_size
 
     # -- EventSink-Protokoll ----------------------------------------------
+    #: Der Ring braucht Text, keinen Dict -- also liefert ihm der Bus die
+    #: bereits serialisierte Zeile (ein ``json.dumps`` fuer alle Text-Sinks).
+    wants_prepared_line = True
+
     def write(self, record: Mapping[str, Any]) -> None:
+        self._put(json.dumps(dict(record), ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+    def write_prepared(self, record: Mapping[str, Any], line: str) -> None:
+        """Fast-Path: nur encodieren + in den Ring kopieren, kein ``json.dumps``.
+
+        Volllaeuft der Ring, *zaehlt* der Sink den Drop statt zu raise'en: ein
+        Langsam-Leser darf den Bus nicht pro Event in den
+        Fehler-Behandlungspfad (stderr-Zeile) zwingen. Das ist der Unterschied
+        zwischen Beobachtungs-Ebene (verwirft) und Zusicherungs-Ebene (wirft).
+        """
+        self._put(line.encode("utf-8"), strict=False)
+
+    def _put(self, data: bytes, *, strict: bool = True) -> None:
         if self._closed:
             raise ValueError("Ring-Sink ist geschlossen")
-        data = json.dumps(dict(record), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         if len(data) > self.slot_size - _SLOT_LEN_SIZE:
             raise ValueError(f"Event ist {len(data)} Bytes gross -- passt nicht in Slot (slot_size-4).")
         with self._lock:
             producer = self._get_index(_HDR_PRODUCER)
             consumer = self._get_index(_HDR_CONSUMER)
             if producer - consumer >= self.capacity:
-                raise RingFull(f"Ring voll: {self.capacity} Slots belegt")
+                if strict:
+                    raise RingFull(f"Ring voll: {self.capacity} Slots belegt")
+                self.dropped += 1
+                return
             offset = self._slot_offset(producer)
             buf = self._buffer()
             struct.pack_into(_FMT_LEN, buf, offset, len(data))

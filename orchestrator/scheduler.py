@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -57,6 +58,7 @@ from core.protocol import (
     Trigger,
     format_timestamp,
     parse_timestamp,
+    timestamp_epoch_s,
     utc_now,
 )
 
@@ -83,7 +85,9 @@ ACTION_LOG = "log"
 #: Wie viele Feuerungen pro Job maximal im Zustand mitgeschrieben werden.
 HISTORY_LIMIT = 200
 
-_COMPARISONS = ("<=", ">=", "==", "!=", "<", ">")
+#: Operator-Syntax als Menge: ``op not in _COMPARISONS`` laeuft pro Tick und wird
+#: hier nur noch als Mengentest benoetigt (ein Tupel waere eine Linearsuche).
+_COMPARISONS = frozenset(("<=", ">=", "==", "!=", "<", ">"))
 
 #: Dieselbe Grammatik wie ``core.protocol._CONDITION_RE`` (Schema + Parser).
 _CONDITION_TOKEN_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*(<=|>=|==|!=|<|>)\s*(\d+(?:\.\d+)?)")
@@ -92,13 +96,43 @@ _CONDITION_TOKEN_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*(<=|>=|==|!=|<|>)\
 # =============================================================================
 # Bedingungen ("elapsed >= 30")
 # =============================================================================
+#: Vorkompilierte Bedingungen: roher ``when``-Text -> ``(Operator, Schwellwert)``.
+#:
+#: Derselbe Text wird **pro Tick und pro Ausloeser** ausgewertet (bei 8 Triggern
+#: und ``tick_s=0,05`` sind das 160 Parses pro Sekunde und Job), obwohl das
+#: Ergebnis mit dem Stellen des Auftrags feststeht. Der Parser selbst ist der
+#: teure Teil: ``str.strip`` + ``re.fullmatch`` + ``float()`` + Operator-
+#: Mitgliedschaftstest kosten ~0,76 µs -- der eigentliche Vergleich ~0,08 µs.
+#: Der Cache ist **gebunden** (Leeren bei Vollstand), damit ein Logger oder eine
+#: endlose Folge handschriftlicher Bedingungen keinen Speicherballast erzeugt.
+#: Fehler werden bewusst *nicht* gecacht: die Meldung muss den rohen Text nennen
+#: koennen, und ein ungueltiger Zustand soll weiterhin jeden Tick laut verwerfen.
+_CONDITION_CACHE_MAX = 512
+_CONDITION_CACHE: dict[str, tuple[str, float]] = {}
+
+
 def parse_condition(when: str) -> tuple[str, float]:
     """Zerlegt ``"elapsed <op> <sekunden>"`` in Operator und Schwellwert.
 
     Der Operator muss aus dem Protokoll stammen (``<=``, ``>=``, ``==``, ``!=``,
     ``<``, ``>``). Groesser-/Kleiner-Vergleiche sind exakt, ``==``/``!=`` werden
     mit der Trigger-Toleranz ausgewertet (Zeitscheiben sind nie exakt).
+
+    Gleiche Eingabe ergibt immer dasselbe Resultat -- deshalb darf der Wert
+    gecacht werden (schnellster Pfad = ein einziger Dict-Treffer).
     """
+    cached = _CONDITION_CACHE.get(when)
+    if cached is not None:
+        return cached
+    compiled = _compile_condition(when)
+    if len(_CONDITION_CACHE) >= _CONDITION_CACHE_MAX:
+        _CONDITION_CACHE.clear()
+    _CONDITION_CACHE[when] = compiled
+    return compiled
+
+
+def _compile_condition(when: str) -> tuple[str, float]:
+    """Einmalige Analyse einer Bedingung (der Teil, den ``parse_condition`` cacht)."""
     text = (when or "").strip()
     if not text:
         raise ProtocolError(ErrorCode.TRIGGER_INVALID, "when darf nicht leer sein", "$.schedule.triggers[].when")
@@ -258,10 +292,17 @@ class ScheduleState:
 
     # -- Uhr -----------------------------------------------------------------
     def elapsed_s(self, *, now: datetime | None = None) -> float:
-        """``t_unlimited``: Sekunden seit ``t0``."""
-        moment = now or utc_now()
-        origin = parse_timestamp(self.t0, "$.schedule.t0")
-        return round(max(0.0, (moment - origin).total_seconds()), 3)
+        """``t_unlimited``: Sekunden seit ``t0``.
+
+        Schnellpfad ohne vorgegebenes ``now``: ``t0`` ist nach dem Schaerfen
+        unveraenderlich, also wird der Anker nicht pro Tick neu geparst, sondern
+        aus dem memoisierten Epoche-Wert gelesen (``timestamp_epoch_s``). Der
+        Pfad mit explizitem ``now`` (Tests, ``tick(now=...)``) bleibt unveraendert.
+        """
+        if now is not None:
+            origin = parse_timestamp(self.t0, "$.schedule.t0")
+            return round(max(0.0, (now - origin).total_seconds()), 3)
+        return round(max(0.0, time.time() - timestamp_epoch_s(self.t0, "$.schedule.t0")), 3)
 
     def state_for(self, trigger: Trigger) -> TriggerState:
         found = self.states.get(trigger.id)

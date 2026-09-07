@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -188,6 +189,38 @@ def parse_timestamp(value: Any, path: str) -> datetime:
     if parsed.tzinfo is None:
         raise ProtocolError(ErrorCode.SCHEMA_INVALID, "Zeitstempel muss eine Zeitzone tragen (UTC/Z)", path)
     return parsed.astimezone(UTC)
+
+
+#: Memoisierung des Epoche-Werts bereits gelesener Zeitstempel.
+#:
+#: ``t0`` und ``armed_at`` eines Auftrags sind **unveraenderlich**, sobald der
+#: Timer geschaerft ist -- aber jeder Event (``,emit`` leitet ``clock_s`` aus
+#: ``intent.timer.elapsed()`` ab) und jeder Scheduler-Tick hat denselben String
+#: erneut durch ``str.replace`` + ``fromisoformat`` + ``astimezone`` gejagt
+#: (~0,5 µs). Bei ``tick_s=0,05`` und 8 Ausloesern sind das ~100 µs reine
+#: Re-Analyse pro Sekunde und Job -- CPU, die nichts berechnet, weil das
+#: Ergebnis laengst feststeht. Darf nie ins Unendliche wachsen, deshalb
+#: Gebundene-Cache mit Leeren bei Vollstand (Quirks im Journal: .nio/nexus.md).
+_EPOCH_CACHE_MAX = 512
+_EPOCH_CACHE: dict[str, float] = {}
+
+
+def timestamp_epoch_s(value: Any, path: str) -> float:
+    """Epoche-Sekunden eines ISO-8601-Stempels, memoisiert (identisch zu ``parse_timestamp``).
+
+    Ungueltige Stempel loesen wie bei ``parse_timestamp`` einen ``ProtocolError``
+    aus und werden nicht gecacht -- die Fehlermeldung muss den rohen Wert nennen koennen.
+    """
+    if isinstance(value, str):
+        cached = _EPOCH_CACHE.get(value)
+        if cached is not None:
+            return cached
+        epoch = parse_timestamp(value, path).timestamp()
+        if len(_EPOCH_CACHE) >= _EPOCH_CACHE_MAX:
+            _EPOCH_CACHE.clear()
+        _EPOCH_CACHE[value] = epoch
+        return epoch
+    return parse_timestamp(value, path).timestamp()
 
 
 def _optional_timestamp(value: Any, path: str) -> str | None:
@@ -686,13 +719,18 @@ class Timer:
         """Vergangene Sekunden seit ``reference`` (Default: ``t0``).
 
         Das ist der Wert, gegen den Trigger vergleichen (``t_unlimited``).
+
+        Schnellpfad: ohne vorgegebenes ``now`` wird der Anker ueber den memoisierten
+        Epoche-Wert gelesen (``timestamp_epoch_s``) statt pro Aufruf neu geparst --
+        der Aufrufer-Pfad mit explizitem ``now`` bleibt Wort fuer Wort erhalten.
         """
         anchor = reference or self.t0 or self.armed_at
         if not anchor:
             return 0.0
-        moment = now or utc_now()
-        start = parse_timestamp(anchor, "$.timer.t0")
-        return round(max(0.0, (moment - start).total_seconds()), 3)
+        if now is not None:
+            start = parse_timestamp(anchor, "$.timer.t0")
+            return round(max(0.0, (now - start).total_seconds()), 3)
+        return round(max(0.0, time.time() - timestamp_epoch_s(anchor, "$.timer.t0")), 3)
 
     def remaining_s(self, *, now: datetime | None = None) -> float | None:
         """Restbudget; ``None`` im Unlimited-Modus (es gibt keins)."""
