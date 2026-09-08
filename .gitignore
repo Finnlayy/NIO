@@ -30,3 +30,8 @@ __pycache__/
 venv/
 Architect/venv/
 Architect/.env
+
+# Fremdartefakt: Applet-Verlauf eines externen Tools (enthaelt Chat-Transkripte
+# und persoenliche Daten). Gehoert nicht ins Repo -- wurde 2026-09-08 entfernt,
+# siehe docs/AUDIT-2026-09-08-BLUEPRINT-V4-VS-CODE.md, Abschnitt 5.
+applet_access_history.json
