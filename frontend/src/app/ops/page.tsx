@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
 import { BrainCircuit, Download, Library, Radio, Zap } from "lucide-react";
 import { GridCanvas } from "@/ops/GridCanvas";
 import { GalleryDrawer } from "@/ops/GalleryDrawer";
@@ -25,10 +26,29 @@ const BOOT_LAYOUT: Array<{ key: string; span?: 2 | 3 | 4 | 6; title?: string }> 
 
 export default function OpsGridPage() {
   const setGalleryOpen = useGridStore((s) => s.setGalleryOpen);
+  const galleryOpen = useGridStore((s) => s.galleryOpen);
   const setConsoleOpen = useGridStore((s) => s.setConsoleOpen);
   const consoleOpen = useGridStore((s) => s.consoleOpen);
   const dataSource = useDataSourceStatus();
   const booted = useRef(false);
+
+  useHotkeys('mod+k', (e) => {
+    e.preventDefault();
+    setConsoleOpen(!consoleOpen);
+  }, { enableOnFormTags: false, description: 'Toggle MCP Console' }, [consoleOpen, setConsoleOpen]);
+
+  useHotkeys('mod+g', (e) => {
+    e.preventDefault();
+    setGalleryOpen(!galleryOpen);
+  }, { enableOnFormTags: false, description: 'Toggle Gallery Drawer' }, [galleryOpen, setGalleryOpen]);
+
+  useHotkeys('Escape', (e) => {
+    if (consoleOpen || galleryOpen) {
+      e.preventDefault();
+      setConsoleOpen(false);
+      setGalleryOpen(false);
+    }
+  }, { enableOnFormTags: false, description: 'Close modals' }, [consoleOpen, galleryOpen, setConsoleOpen, setGalleryOpen]);
 
   useEffect(() => {
     if (booted.current) return;
@@ -139,7 +159,7 @@ export default function OpsGridPage() {
             }`}
           >
             <Radio className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">MCP Bus</span>
+            <span className="hidden sm:inline">MCP Bus <kbd className="ml-1 opacity-50 font-sans">⌘K</kbd></span>
           </button>
           <button
             onClick={exportLayout}
@@ -153,7 +173,7 @@ export default function OpsGridPage() {
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:brightness-110 transition-all"
           >
             <Library className="w-3.5 h-3.5" />
-            Add widget
+            Add widget <kbd className="ml-1 opacity-50 font-sans">⌘G</kbd>
             <Zap className="w-3 h-3 opacity-80" />
           </button>
         </div>
