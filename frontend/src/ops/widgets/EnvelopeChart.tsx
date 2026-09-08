@@ -1,5 +1,5 @@
-import { Sparkline, Pct, LiveBadge } from "./bits";
-import { toTvSymbol, useMarketData } from "../hooks/useMarketData";
+import { Sparkline, Pct, LiveBadge, FeedBadge } from "./bits";
+import { toTvSymbol, useMarketData, useEngineTelemetry } from "../hooks/useMarketData";
 
 interface TfStat {
   tf: string;
@@ -17,6 +17,15 @@ export function EnvelopeChart({ data, symbol }: { data: Record<string, unknown>;
     { spark: simSpark, price: simPrice, changePct: simChange },
     120_000,
   );
+
+  /* Engine telemetry (gravity potential + regime) over the UDS event bus.
+     Price/OHLC still come from the tvremix proxy — two independent feeds, two
+     independent badges, so a dead bus is never masked by a healthy price feed. */
+  const { telemetry, connection } = useEngineTelemetry();
+  const feedLive = connection === "CONNECTED_LIVE";
+  const gravity = feedLive ? telemetry.gravity : null;
+  const regime = feedLive ? telemetry.regime : null;
+  const micro = feedLive ? telemetry.microstructure : null;
 
   const spark = ohlcv.spark ?? simSpark;
   const marketCap = data.marketCap as string;
@@ -42,7 +51,10 @@ export function EnvelopeChart({ data, symbol }: { data: Record<string, unknown>;
         </div>
         <div className="flex flex-col items-end gap-1">
           <Pct value={changePct} />
-          <LiveBadge source={source} />
+          <div className="flex items-center gap-1">
+            <LiveBadge source={source} />
+            <FeedBadge connection={connection} />
+          </div>
         </div>
       </div>
 
@@ -61,6 +73,31 @@ export function EnvelopeChart({ data, symbol }: { data: Record<string, unknown>;
           </div>
         ))}
       </div>
+
+      {/* Engine read: gravity potential and regime, straight off the bus.
+          Rendered only while a tick arrived inside the staleness window —
+          fail-closed means no frozen number is shown as if it were current. */}
+      <div className="grid grid-cols-4 gap-1 text-center border-t border-white/[0.06] pt-2.5 mt-1">
+        {[
+          { label: "V total", value: gravity ? gravity.v_total.toFixed(3) : "—" },
+          { label: "L2 depth", value: gravity ? gravity.l2_depth.toFixed(2) : "—" },
+          { label: "Imbalance", value: micro ? micro.imbalance_ratio.toFixed(3) : "—" },
+          { label: "Confidence", value: regime ? `${(regime.confidence * 100).toFixed(0)}%` : "—" },
+        ].map((cell) => (
+          <div key={cell.label} className="rounded-md bg-white/[0.03] border border-white/[0.05] py-1.5">
+            <p className="text-[9px] uppercase tracking-wide text-slate-600">{cell.label}</p>
+            <p className={`text-[10px] font-mono ${feedLive ? "text-white" : "text-slate-600"}`}>
+              {cell.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {regime && regime.is_forbidden_zone > 0 && (
+        <p className="text-[10px] font-medium text-rose-300 border border-rose-400/30 bg-rose-400/10 rounded px-2 py-1">
+          Verbotene Zone (Axiom 1) — kein Trade in dieses Niveau.
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-2 border-t border-white/[0.06] pt-2.5 mt-1">
         <div>
