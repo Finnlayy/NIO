@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { MAX_BACKOFF_MS, backoffDelayMs } from "../backoff";
+
+export { backoffDelayMs, MAX_BACKOFF_MS };
 
 export type DataSource = "live" | "sim" | "loading";
 
@@ -137,8 +140,6 @@ export const EMPTY_TELEMETRY: TelemetrySnapshot = {
 /** No tick for this long ⇒ the cached values may no longer describe the market. */
 export const STALE_AFTER_MS = 3000;
 
-const MAX_BACKOFF_MS = 30_000;
-
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
@@ -205,12 +206,6 @@ export function nextFeedConnection(
   if (!info.transportOpen) return "DISCONNECTED";
   if (info.lastTickAt === 0) return current; // connected, nothing received yet
   return now - info.lastTickAt <= staleAfterMs ? "CONNECTED_LIVE" : "STALE_CACHE_DEGRADED";
-}
-
-/** Exponential backoff with a ceiling: 1s, 2s, 4s … capped at MAX_BACKOFF_MS. */
-export function backoffDelayMs(attempt: number): number {
-  const safeAttempt = Math.max(0, Math.min(20, Math.floor(attempt)));
-  return Math.min(MAX_BACKOFF_MS, 1000 * 2 ** safeAttempt);
 }
 
 export interface EngineFeed {
