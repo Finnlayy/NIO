@@ -21,6 +21,17 @@ def _write_samples(tmpdir, samples, name="train.json"):
     return str(path)
 
 
+def _read_json(path):
+    """Read JSON without leaking the file handle.
+
+    Passing a bare ``open(...)`` straight into ``json.load`` closes the handle
+    only at GC time, which trips ``-W error::ResourceWarning`` -- the standard
+    this repo's root suite and CI already enforce (see Makefile ``test`` and
+    ci/neu.yml).
+    """
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
 class TestPreferenceModelUpdater(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
@@ -55,7 +66,7 @@ class TestPreferenceModelUpdater(unittest.TestCase):
 
     def test_predictions_improve_with_training(self):
         # Before training, all predictions are 0.5.
-        samples = json.load(open(RLHF_DATASET))
+        samples = _read_json(RLHF_DATASET)
         model = self.updater.load_model()
         baseline = [self.updater._predict_score(model, s["agentOutput"]) for s in samples]
         self.assertTrue(all(abs(p - 0.5) < 1e-9 for p in baseline))
@@ -99,13 +110,13 @@ class TestPreferenceModelUpdater(unittest.TestCase):
         # Update #1 creates the initial lineage; update #2 continues training
         # from it (weights move) and must be recoverable via rollback.
         self.updater.update(RLHF_DATASET)
-        first_digest = json.load(open(self.models_dir / "current_model.json"))["weights_sha256"]
+        first_digest = _read_json(self.models_dir / "current_model.json")["weights_sha256"]
         self.updater.update(RLHF_DATASET)
-        second_digest = json.load(open(self.models_dir / "current_model.json"))["weights_sha256"]
+        second_digest = _read_json(self.models_dir / "current_model.json")["weights_sha256"]
         self.assertNotEqual(first_digest, second_digest)  # continued training moved the weights
         rollback = self.updater.rollback()
         self.assertTrue(rollback["rolled_back"])
-        restored = json.load(open(self.models_dir / "current_model.json"))
+        restored = _read_json(self.models_dir / "current_model.json")
         self.assertEqual(restored["weights_sha256"], first_digest)
 
     def test_rollback_without_backups(self):

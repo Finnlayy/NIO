@@ -1,6 +1,6 @@
 import { useId } from "react";
 import type { ReactNode } from "react";
-import type { DataSource } from "../hooks/useMarketData";
+import type { DataSource, FeedConnectionState } from "../hooks/useMarketData";
 
 export const up = "text-emerald-400";
 export const down = "text-rose-400";
@@ -22,6 +22,46 @@ export function LiveBadge({ source }: { source: DataSource }) {
     >
       <span className={`w-1 h-1 rounded-full ${live ? "bg-emerald-400 pulse-dot" : "bg-slate-600"}`} />
       {live ? "Live" : "Sim"}
+    </span>
+  );
+}
+
+const FEED_BADGE_STYLE: Record<FeedConnectionState, { label: string; className: string; dot: string; title: string }> = {
+  CONNECTED_LIVE: {
+    label: "Feed live",
+    className: "text-emerald-300 border-emerald-400/30 bg-emerald-400/10",
+    dot: "bg-emerald-400 pulse-dot",
+    title: "Engine-Telemetrie über den UDS-Event-Bus",
+  },
+  STALE_CACHE_DEGRADED: {
+    label: "Stale cache",
+    className: "text-amber-300 border-amber-400/30 bg-amber-400/10",
+    dot: "bg-amber-400",
+    title: "Transport steht, aber seit über 3 s kein Tick — Werte sind eingefroren",
+  },
+  DISCONNECTED: {
+    label: "Disconnected",
+    className: "text-rose-300 border-rose-400/30 bg-rose-400/10",
+    dot: "bg-rose-400",
+    title: "Kein Event-Bus — die Werte darunter sind der letzte Stand, nicht der Markt",
+  },
+};
+
+/**
+ * Shows the *engine feed* state — deliberately a different badge from
+ * `LiveBadge`, which reports the tvremix HTTP proxy. A widget can be
+ * `Live` on market data and still `Disconnected` on engine telemetry.
+ */
+export function FeedBadge({ connection }: { connection: FeedConnectionState }) {
+  const style = FEED_BADGE_STYLE[connection];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide border ${style.className}`}
+      title={style.title}
+      data-feed-state={connection}
+    >
+      <span className={`w-1 h-1 rounded-full ${style.dot}`} />
+      {style.label}
     </span>
   );
 }

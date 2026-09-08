@@ -28,7 +28,56 @@ VALID_EVENT_KINDS = [
     "review_due",
     "risk_guard_failed",
     "risk_guard_warning",
+    # Engine-Telemetrie (P1 Live-UDS-Feed -> frontend/src/ops/hooks/useMarketData.ts).
+    # Die Feldnamen sind der Wire-Vertrag; TELEMETRY_PAYLOAD_FIELDS ist die
+    # maschinell gepruefte Quelle dafuer.
+    "microstructure_tick",
+    "gravity_tick",
+    "regime_tick",
 ]
+
+#: Wire-Vertrag der Engine-Telemetrie: event_kind -> Pflichtfelder.
+#: Ein Payload, dem ein Feld fehlt oder dessen Feld kein endlicher Zahlenwert
+#: ist, wird abgewiesen -- bevor er auf dem Bus landet, nicht erst im Client.
+TELEMETRY_PAYLOAD_FIELDS = {
+    "microstructure_tick": ("imbalance_ratio", "depth_2pct", "footprint_delta"),
+    "gravity_tick": ("l2_depth", "l3_iceberg", "polymarket_prob", "v_total"),
+    "regime_tick": ("cluster_id", "confidence", "is_forbidden_zone"),
+}
+
+
+def _is_finite_number(value):
+    """Endliche Zahl -- ``bool`` gilt ausdruecklich nicht (``isinstance(True, int)``)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return value == value and value not in (float("inf"), float("-inf"))
+
+
+def validate_telemetry_payload(event_kind, payload):
+    """Prueft einen Engine-Payload gegen den Wire-Vertrag.
+
+    Liefert ``(ok, fehler)``. Fail-closed: lieber ein verworfenes Event als ein
+    halb gefuelltes Widget, das einen Wert vorgaukelt, den keine Engine
+    geliefert hat. Ein Feld ist entweder eine endliche Zahl oder ein nicht
+    leerer Vektor endlicher Zahlen (``footprint_delta``).
+    """
+    required = TELEMETRY_PAYLOAD_FIELDS.get(event_kind)
+    if required is None:
+        return False, "event_kind %r ist kein Telemetrie-Event" % (event_kind,)
+    if not isinstance(payload, dict):
+        return False, "Payload ist kein Objekt"
+    for field in required:
+        if field not in payload:
+            return False, "Pflichtfeld %r fehlt" % (field,)
+        value = payload[field]
+        if _is_finite_number(value):
+            continue
+        if isinstance(value, (list, tuple)) and value and all(_is_finite_number(v) for v in value):
+            continue
+        return False, "Feld %r ist weder endliche Zahl noch Vektor endlicher Zahlen (gefunden: %r)" % (
+            field, value if not isinstance(value, (list, tuple)) else "%s[%d]" % (type(value).__name__, len(value)))
+    return True, ""
+
 
 class EventBus:
     """NDJSON event emission: stderr, file sink (runtime/system.log), optional UDS/shared-memory."""
@@ -91,3 +140,30 @@ class EventBus:
         }
         event_dict.update(extra)
         return event_dict
+
+    def build_telemetry_event(self, event_kind: str, payload: dict, job_id: str = None,
+                              symbol: str = None, clock_s: float = None, **extra) -> dict:
+        """Baut ein Engine-Telemetrie-Event und prueft es gegen den Wire-Vertrag.
+
+        Wirft ``ValueError``, wenn der Payload unvollstaendig oder nicht numerisch
+        ist -- der Aufrufer soll das hoeren, statt einen stillen Fehlbetrag auf
+        den Bus zu schicken.
+        """
+        ok, reason = validate_telemetry_payload(event_kind, payload)
+        if not ok:
+            raise ValueError("Telemetrie-Payload fuer %s abgewiesen: %s" % (event_kind, reason))
+        event_dict = self.build_event(event_kind, job_id=job_id, clock_s=clock_s,
+                                      message="engine telemetry", **extra)
+        if symbol is not None:
+            event_dict["symbol"] = symbol
+        event_dict["payload"] = payload
+        return event_dict
+
+    def emit_telemetry(self, event_kind: str, payload: dict, **kwargs) -> bool:
+        """Bauen + senden in einem Schritt; ``False`` bei abgewiesenem Payload."""
+        try:
+            event_dict = self.build_telemetry_event(event_kind, payload, **kwargs)
+        except ValueError as exc:
+            logger.error("Telemetrie verworfen: %s", exc)
+            return False
+        return self.emit(event_dict)

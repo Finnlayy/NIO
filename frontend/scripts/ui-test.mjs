@@ -32,6 +32,8 @@ const entries = [
   "ops/McpConsole.tsx",
   "ops/store.ts",
   "ops/widgets/bits.tsx",
+  "ops/widgets/CvdHeatmap.tsx",
+  "ops/hooks/useMarketData.ts",
   "data/network.ts",
 ].filter((rel) => existsSync(path.join(srcDir, rel)));
 

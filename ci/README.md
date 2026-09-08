@@ -29,6 +29,22 @@ Danach läuft bei jedem Push und jedem Pull Request:
 
 Lokal identisch ohne GitHub: `make check`.
 
+## Noch nicht enthalten: Architect-Suite und Frontend
+
+`Architect/tests/` (214 Tests) und `frontend/` (23 UI-Tests) laufen seit dem
+2026-09-08 in `make test` bzw. `make check`, aber **noch nicht** in diesem
+Workflow. Der CI-Teil liegt als anwendbarer Patch bereit, weil `ci/neu.yml` nach
+`tests/test_policy.py:138` nicht vom System selbst geändert werden darf:
+
+```bash
+git apply docs/ci-architect-frontend-gate.README.md
+```
+
+Der Patch ergänzt im Job `tests` einen Schritt mit `working-directory: Architect`
+und nimmt `Architect/core|limbs|tests|gui` in `compileall` auf. Den Frontend-Job
+beschreibt dieselbe Datei — er gehört nach `.github/workflows/`, das zusätzlich
+unter `human_only_globs` steht.
+
 ## Hinweis zur Absicht
 
 Dasselbe Repo schützt `.github/*` über `denied_globs` in `neu.config.json` —

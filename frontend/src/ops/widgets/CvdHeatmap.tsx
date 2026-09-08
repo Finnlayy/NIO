@@ -1,5 +1,6 @@
 import type { CvdCell } from "../marketData";
-import { Insight } from "./bits";
+import { useEngineTelemetry, type MicrostructurePayload } from "../hooks/useMarketData";
+import { FeedBadge, Insight } from "./bits";
 
 function cellStyle(delta: number) {
   const intensity = Math.min(1, Math.abs(delta));
@@ -7,10 +8,48 @@ function cellStyle(delta: number) {
   return { background: `rgba(248,113,113,${0.12 + intensity * 0.5})` };
 }
 
+/**
+ * Map a `microstructure_tick` payload onto the heatmap grid.
+ *
+ * `footprint_delta` is the engine's own volume-delta footprint
+ * (`MicrostructureEngine.calculate_footprint_map`, resampled to 12 bins by
+ * `Architect/limbs/telemetry_feed.py`) — the same quantity this widget draws,
+ * so no re-interpretation happens here.
+ */
+export function cvdFromTelemetry(payload: MicrostructurePayload, labels?: string[]): {
+  bins: CvdCell[];
+  buyPct: number;
+  sellPct: number;
+  imbalanceRatio: number;
+  depthPct: number;
+} {
+  const bins: CvdCell[] = payload.footprint_delta.map((delta, i) => ({
+    delta,
+    label: labels?.[i] ?? String(i).padStart(2, "0"),
+  }));
+  const buys = bins.filter((b) => b.delta > 0).length;
+  const buyPct = bins.length ? Math.round((buys / bins.length) * 100) : 0;
+  return {
+    bins,
+    buyPct,
+    sellPct: 100 - buyPct,
+    imbalanceRatio: payload.imbalance_ratio,
+    depthPct: payload.depth_2pct,
+  };
+}
+
 export function CvdHeatmap({ data }: { data: Record<string, unknown> }) {
-  const bins = (data.bins as CvdCell[]) ?? [];
-  const buyPct = data.buyPct as number;
-  const sellPct = data.sellPct as number;
+  const { telemetry, connection } = useEngineTelemetry();
+  const live = connection === "CONNECTED_LIVE" && telemetry.microstructure !== null;
+
+  // Fail-closed: the engine's footprint replaces the template mock only while a
+  // tick arrived inside the staleness window. On STALE/DISCONNECTED the grid
+  // keeps the last shape it was hydrated with and the badge says so — no value
+  // here is presented as live that the bus did not just deliver.
+  const fromFeed = live ? cvdFromTelemetry(telemetry.microstructure!) : null;
+  const bins = (fromFeed?.bins ?? (data.bins as CvdCell[])) ?? [];
+  const buyPct = fromFeed?.buyPct ?? (data.buyPct as number);
+  const sellPct = fromFeed?.sellPct ?? (data.sellPct as number);
 
   const imbalance = buyPct > sellPct ? "buy-side pressure dominant" : "sell-side pressure dominant";
 
@@ -27,6 +66,7 @@ export function CvdHeatmap({ data }: { data: Record<string, unknown> }) {
         <span className="text-[11px] text-slate-400">
           <b className="text-rose-400 tabular-nums">{sellPct}%</b> Sell
         </span>
+        <FeedBadge connection={connection} />
       </div>
 
       <div className="grid grid-cols-12 gap-1">
@@ -47,8 +87,18 @@ export function CvdHeatmap({ data }: { data: Record<string, unknown> }) {
       </div>
 
       <Insight>
-        Session cumulative-volume-delta: {imbalance}. Aggressive flow clusters around the
-        session open bins; thin participation mid-session. Hydrated by master-twin liquidity radar.
+        {live ? (
+          <>
+            Engine-Orderflow: {imbalance} (Imbalance {fromFeed!.imbalanceRatio.toFixed(3)} bei{" "}
+            {(fromFeed!.depthPct * 100).toFixed(1)} % Buchtiefe). Quelle:{" "}
+            <code>MicrostructureEngine.calculate_footprint_map</code> über den UDS-Event-Bus.
+          </>
+        ) : (
+          <>
+            Kein Live-Orderflow ({connection === "STALE_CACHE_DEGRADED" ? "Cache veraltet" : "Bus getrennt"}) —
+            gezeigt wird die Vorlagen-Hydratation, nicht der Markt.
+          </>
+        )}
       </Insight>
     </div>
   );

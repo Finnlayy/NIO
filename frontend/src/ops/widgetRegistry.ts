@@ -38,6 +38,11 @@ export const widgetTemplates: WidgetTemplate[] = [
   },
   {
     id: "TPL_02",
+    /* dataFactory is bootstrap/fallback only. At runtime EnvelopeChart layers two
+       live feeds over it: OHLCV via useMarketData (tvremix proxy) and the engine
+       read (V_total, L2 depth, imbalance, confidence, forbidden zone) via
+       useEngineTelemetry on the UDS bus. While the bus is STALE/DISCONNECTED the
+       engine cells render "—" rather than a frozen number. */
     key: "quantum-envelope-chart",
     title: "Envelope Chart",
     tagline: "Price area · timeframe bands · key stats",
@@ -122,6 +127,10 @@ export const widgetTemplates: WidgetTemplate[] = [
     category: "Data",
     defaultSpan: 3,
     defaultHeight: "compact",
+    /* cvdGrid() is the bootstrap shape (12 bins) used before the first tick and
+       whenever the feed is not CONNECTED_LIVE. Live, CvdHeatmap replaces it with
+       MicrostructurePayload.footprint_delta from the engine — same 12 bins, so
+       the grid never changes size between mock and live. */
     dataFactory: () => cvdGrid(),
   },
   {

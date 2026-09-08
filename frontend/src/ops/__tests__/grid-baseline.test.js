@@ -92,13 +92,17 @@ test("minimized widgets keep the expand control and drop the body", () => {
  * DOM budget guard: the default 10-widget layout must not bloat.
  * Baseline 2026-09-06: 1065 nodes (heaviest: Market Breadth Radar 218,
  * Composite Rankings 146, Key Levels Table 110).
+ * Baseline 2026-09-08: 1083 nodes (+18) — P1 engine-feed wiring adds a
+ * `FeedBadge` to `orderflow-cvd-heatmap` (+2) and to `quantum-envelope-chart`
+ * (+2) plus a 4-cell engine read row there (+14). Both are intentional: the
+ * badges are what makes a dead bus visible instead of showing a frozen value.
  */
-test("DOM node budget of the default layout is stable (1065)", () => {
+test("DOM node budget of the default layout is stable (1083)", () => {
   const widgets = seedDefaultLayout();
   let total = 0;
   for (const [i, widget] of widgets.entries()) {
     total += countOpenTags(frameHtml(widget, i));
   }
   resetStore();
-  assert.equal(total, 1065, "default layout DOM node count");
+  assert.equal(total, 1083, "default layout DOM node count");
 });
