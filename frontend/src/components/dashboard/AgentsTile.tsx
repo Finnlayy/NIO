@@ -2,6 +2,8 @@ import { Bot } from "lucide-react";
 import { networkNodes, palette } from "@/data/network";
 import { ModuleHeader, StatusDot, Tile } from "./shared";
 
+const SPECIALIST_AGENTS = networkNodes.filter((node) => node.kind === "agent");
+
 export function AgentsTile({
   visibleIds,
   selectedId,
@@ -11,19 +13,17 @@ export function AgentsTile({
   selectedId: string;
   onSelect: (id: string) => void;
 }) {
-  const agents = networkNodes.filter((node) => node.kind === "agent");
-
   return (
     <Tile className="p-4 h-full">
       <ModuleHeader
         icon={<Bot className="w-4 h-4" />}
         title="Specialist Agents"
-        meta={`${agents.length} routed`}
+        meta={`${SPECIALIST_AGENTS.length} routed`}
         status={<StatusDot tone="active" label="Live" />}
       />
 
       <div className="grid grid-cols-2 gap-2.5">
-        {agents.map((agent) => {
+        {SPECIALIST_AGENTS.map((agent) => {
           const color = palette[agent.color] ?? palette.slate;
           const dimmed = !visibleIds.has(agent.id);
           const selected = selectedId === agent.id;

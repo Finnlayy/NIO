@@ -9,6 +9,20 @@ import {
 } from "@/data/network";
 import { ModuleHeader, StatusDot, Tile } from "./shared";
 
+const DOMAIN_CLUSTERS = domainFilters
+  .filter((filter) => filter.id !== "all")
+  .map((filter) => {
+    const nodes = networkNodes.filter((node) => node.domain === filter.id);
+    const domainNode = nodes.find((node) => node.kind === "domain");
+    const topics = nodes.filter((node) => node.kind === "topic");
+    const links = networkEdges.filter((edge) => {
+      const from = networkNodes.find((n) => n.id === edge.from);
+      const to = networkNodes.find((n) => n.id === edge.to);
+      return from?.domain === filter.id || to?.domain === filter.id;
+    }).length;
+    return { filter, nodes, domainNode, topics, links };
+  });
+
 export function DomainsGrid({
   visibleIds,
   selectedId,
@@ -18,31 +32,17 @@ export function DomainsGrid({
   selectedId: string;
   onSelectNode: (id: string) => void;
 }) {
-  const domains = domainFilters
-    .filter((filter) => filter.id !== "all")
-    .map((filter) => {
-      const nodes = networkNodes.filter((node) => node.domain === filter.id);
-      const domainNode = nodes.find((node) => node.kind === "domain");
-      const topics = nodes.filter((node) => node.kind === "topic");
-      const links = networkEdges.filter((edge) => {
-        const from = networkNodes.find((n) => n.id === edge.from);
-        const to = networkNodes.find((n) => n.id === edge.to);
-        return from?.domain === filter.id || to?.domain === filter.id;
-      }).length;
-      return { filter, nodes, domainNode, topics, links };
-    });
-
   return (
     <Tile className="p-4 h-full">
       <ModuleHeader
         icon={<Layers className="w-4 h-4" />}
         title="Domain Clusters"
-        meta={`${domains.filter((d) => d.nodes.length > 0).length} active`}
+        meta={`${DOMAIN_CLUSTERS.filter((d) => d.nodes.length > 0).length} active`}
         status={<StatusDot tone="active" label="Mesh" />}
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {domains.map(({ filter, nodes, domainNode, topics, links }) => {
+        {DOMAIN_CLUSTERS.map(({ filter, nodes, domainNode, topics, links }) => {
           const color = palette[filter.color] ?? palette.slate;
           const idle = nodes.length === 0;
           const selected = domainNode?.id === selectedId || topics.some((t) => t.id === selectedId);

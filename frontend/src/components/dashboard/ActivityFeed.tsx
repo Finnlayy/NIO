@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { Activity, AlertTriangle, ArrowRight, CheckCircle2, Info, Radio } from "lucide-react";
 import { ModuleHeader, Tile } from "./shared";
 import type { FeedEvent, FeedStatus } from "./types";
@@ -11,7 +11,7 @@ const statusIcon: Record<FeedStatus, React.ReactNode> = {
   trace: <ArrowRight className="w-3 h-3 text-slate-500" />,
 };
 
-export function ActivityFeed({ events }: { events: FeedEvent[] }) {
+export const ActivityFeed = React.memo(function ActivityFeed({ events }: { events: FeedEvent[] }) {
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -54,4 +54,4 @@ export function ActivityFeed({ events }: { events: FeedEvent[] }) {
       </div>
     </Tile>
   );
-}
+});
