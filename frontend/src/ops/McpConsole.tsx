@@ -23,6 +23,15 @@ export function McpConsole() {
   const open = useGridStore((s) => s.consoleOpen);
   const setOpen = useGridStore((s) => s.setConsoleOpen);
 
+  useEffect(() => {
+    if (!open) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [open, setOpen]);
+
   return (
     <AnimatePresence>
       {open && (
