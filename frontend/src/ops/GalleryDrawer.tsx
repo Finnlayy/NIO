@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Library, Plus, X, Zap } from "lucide-react";
 import { widgetTemplates } from "./widgetRegistry";
@@ -16,6 +17,15 @@ export function GalleryDrawer() {
   const open = useGridStore((s) => s.galleryOpen);
   const setOpen = useGridStore((s) => s.setGalleryOpen);
   const widgetCount = useGridStore((s) => s.widgets.length);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [open, setOpen]);
 
   return (
     <AnimatePresence>

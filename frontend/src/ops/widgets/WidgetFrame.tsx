@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowDownUp,
@@ -73,6 +73,15 @@ export const WidgetFrameContent = memo(function WidgetFrameContent({ widget }: {
   const togglePin = useGridStore((s) => s.togglePin);
   const cycleSpan = useGridStore((s) => s.cycleSpan);
   const cycleHeight = useGridStore((s) => s.cycleHeight);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [menuOpen]);
 
   return (
     <>
