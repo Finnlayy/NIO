@@ -73,7 +73,7 @@ export function CvdHeatmap({ data }: { data: Record<string, unknown> }) {
         {bins.map((bin, i) => (
           <div key={i} className="flex flex-col items-center gap-1">
             <div
-              className="w-full h-14 rounded-md grid place-items-center transition-all"
+              className="w-full h-14 rounded-md grid place-items-center"
               style={cellStyle(bin.delta)}
               title={`${bin.label}:00 · CVD ${bin.delta > 0 ? "+" : ""}${bin.delta.toFixed(2)}`}
             >
