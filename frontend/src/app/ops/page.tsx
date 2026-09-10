@@ -52,6 +52,23 @@ export default function OpsGridPage() {
     }
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        const activeTag = document.activeElement?.tagName;
+        if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') {
+          return;
+        }
+        e.preventDefault();
+        const state = useGridStore.getState();
+        state.setGalleryOpen(!state.galleryOpen);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   /* Simulated live-tick telemetry: direct (virtualized) data binding —
      streams into the store without flooding the MCP control log. */
   useEffect(() => {
@@ -155,6 +172,9 @@ export default function OpsGridPage() {
             <Library className="w-3.5 h-3.5" />
             Add widget
             <Zap className="w-3 h-3 opacity-80" />
+            <kbd className="hidden sm:inline-block ml-1 px-1.5 py-0.5 text-[9px] font-mono bg-white/20 rounded border border-white/20">
+              ⌘K
+            </kbd>
           </button>
         </div>
       </header>
