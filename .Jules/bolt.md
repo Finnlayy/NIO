@@ -1,0 +1,3 @@
+## 2026-09-10 - [Keyboard Accessibility and Ergonomics in Overlays]
+**Learning:** Implemented native global hotkeys using `useEffect` while correctly suppressing them within `INPUT`, `TEXTAREA`, or `SELECT` forms. Verified that Modals require an active Escape key listener to close and that actionable keyboard shortcuts should display a visual `<kbd>` badge to enhance discoverability.
+**Action:** Use native `useEffect` checking `document.activeElement?.tagName` to map keybindings without interfering with text input forms. Always implement `Escape` listeners inside React Modals for full keyboard traversal and always decorate corresponding shortcut triggers with `<kbd>` tags.
