@@ -45,6 +45,14 @@ export function TaskConsole({
       <textarea
         value={taskText}
         onChange={(event) => onTaskText(event.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            if (!isRunning && taskText.trim()) {
+              onRun();
+            }
+          }
+        }}
         rows={3}
         className="console-input resize-none text-[12.5px] leading-relaxed"
         placeholder="Describe a task for the Neural Core …"
@@ -64,10 +72,21 @@ export function TaskConsole({
       <button
         onClick={onRun}
         disabled={isRunning || !taskText.trim()}
-        className="primary-button w-full mt-3"
+        className="primary-button w-full mt-3 flex items-center justify-center gap-2"
       >
         {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-        {isRunning ? "Routing through core …" : "Run through Neural Core"}
+        {isRunning ? "Routing through core …" : (
+          <span className="flex items-center gap-2">
+            Run through Neural Core
+            <span className="hidden sm:inline-flex items-center gap-0.5 text-[9px] font-mono text-cyan-200/50 bg-cyan-950/30 border border-cyan-800/30 px-1 py-0.5 rounded shadow-sm leading-none ml-1">
+              <kbd>⌘</kbd>
+              <span>/</span>
+              <kbd>Ctrl</kbd>
+              <span>+</span>
+              <kbd>Enter</kbd>
+            </span>
+          </span>
+        )}
       </button>
 
       <div
