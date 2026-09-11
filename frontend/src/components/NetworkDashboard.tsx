@@ -28,6 +28,14 @@ type TaskResponse = {
   metadata: Record<string, unknown>;
 };
 
+// ⚡ Bolt Optimization:
+// Extracted static configurations derived from constant network data to
+// module-level constants. This avoids unnecessary re-evaluations
+// and the overhead of React useMemo inside the render loop.
+const nodeById = Object.fromEntries(networkNodes.map((node) => [node.id, node]));
+const activeDomainCount = new Set(networkNodes.map((node) => node.domain).filter(Boolean)).size;
+const agentCount = networkNodes.filter((node) => node.kind === "agent").length;
+
 export default function NetworkDashboard() {
   const [selectedId, setSelectedId] = useState("neural-core");
   const [activeFilter, setActiveFilter] = useState<DomainId | "all">("all");
@@ -66,10 +74,6 @@ export default function NetworkDashboard() {
     });
   }, [log]);
 
-  const nodeById = useMemo(
-    () => Object.fromEntries(networkNodes.map((node) => [node.id, node])),
-    [],
-  );
   const selectedNode = nodeById[selectedId] ?? nodeById["neural-core"];
   const selectedPreset = taskPresets[selectedId];
 
@@ -160,15 +164,6 @@ export default function NetworkDashboard() {
       setIsRunning(false);
     }
   }
-
-  const activeDomainCount = useMemo(
-    () => new Set(networkNodes.map((node) => node.domain).filter(Boolean)).size,
-    [],
-  );
-  const agentCount = useMemo(
-    () => networkNodes.filter((node) => node.kind === "agent").length,
-    [],
-  );
 
   return (
     <main className="min-h-screen bg-[#090b12]">
