@@ -21,6 +21,11 @@ Renew/Heartbeat nur alle `renew_s/5` Sekunden (Fristen >= 30 s -> ~92 % weniger 
 Ergebnis: 1,69 -> 0,19 ms/Tick (-89 %). Fuer kuenftige Optimierungen: erst pruefen, ob
 ein "Pro-Tick-Schreiber" mit derivablem Zustand existiert; bei jeder neuen
 Runtime-Persistenz fragen: Was ist durabler Zustand vs. abgeleitete Metrik?
+
+## 2026-09-08 - Keyboard shortcuts for core menus
+**Learning:** Operators clicked to toggle the MCP Console and Template Gallery, which slows rapid workspace changes. A new `react-hotkeys-hook` dependency would have fought the frozen `package.json` rule (Specter 2026-09-06).
+**Action:** `mod+k` toggles MCP Console, `mod+g` toggles Gallery, Escape closes both. Mapping lives in `frontend/src/ops/hotkeys.ts` (`enableOnFormTags: false` via `isTypingTarget`). Badges on the buttons read `Ctrl/⌘` so they stay true on Windows/Linux. No new npm dependency.
+
 ## 2026-09-09 - React Render Loop Write-Amplification
 **Learning:** Computing heavy nested filters and object derivations directly inside a React component (like DomainsGrid computing nodes, topics, and links per domain) triggers an expensive  execution on every re-render, creating CPU spikes even when underlying static data (e.g., ) hasn't changed. This is a common performance anti-pattern in dashboards fetching layout configuration.
 **Action:** When component properties are derived from static configurations (like  and ), extract the calculation into a module-level constant (e.g., ) instead of keeping it in the render loop or relying exclusively on .

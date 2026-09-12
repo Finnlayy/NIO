@@ -7,6 +7,7 @@ import { GalleryDrawer } from "@/ops/GalleryDrawer";
 import { McpConsole } from "@/ops/McpConsole";
 import { emitMcp, useGridStore } from "@/ops/store";
 import { useDataSourceStatus } from "@/ops/hooks/useMarketData";
+import { isTypingTarget, opsHotkey } from "@/ops/hotkeys";
 import { widgetTemplates } from "@/ops/widgetRegistry";
 
 /* Boot layout the Master Twin hydrates on session start */
@@ -29,6 +30,32 @@ export default function OpsGridPage() {
   const consoleOpen = useGridStore((s) => s.consoleOpen);
   const dataSource = useDataSourceStatus();
   const booted = useRef(false);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (isTypingTarget(e.target)) return;
+      const action = opsHotkey(e);
+      if (!action) return;
+      const s = useGridStore.getState();
+      if (action === "toggle-console") {
+        e.preventDefault();
+        s.setConsoleOpen(!s.consoleOpen);
+        return;
+      }
+      if (action === "toggle-gallery") {
+        e.preventDefault();
+        s.setGalleryOpen(!s.galleryOpen);
+        return;
+      }
+      if (s.consoleOpen || s.galleryOpen) {
+        e.preventDefault();
+        s.setConsoleOpen(false);
+        s.setGalleryOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     if (booted.current) return;
@@ -139,7 +166,7 @@ export default function OpsGridPage() {
             }`}
           >
             <Radio className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">MCP Bus</span>
+            <span className="hidden sm:inline">MCP Bus <kbd className="ml-1 opacity-50 font-sans">Ctrl/⌘K</kbd></span>
           </button>
           <button
             onClick={exportLayout}
@@ -153,7 +180,7 @@ export default function OpsGridPage() {
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:brightness-110 transition-all"
           >
             <Library className="w-3.5 h-3.5" />
-            Add widget
+            Add widget <kbd className="ml-1 opacity-50 font-sans">Ctrl/⌘G</kbd>
             <Zap className="w-3 h-3 opacity-80" />
           </button>
         </div>

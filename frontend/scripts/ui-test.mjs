@@ -33,6 +33,8 @@ const entries = [
   "ops/store.ts",
   "ops/widgets/bits.tsx",
   "ops/widgets/CvdHeatmap.tsx",
+  "ops/widgets/NewsSentiment.tsx",
+  "ops/hotkeys.ts",
   "ops/hooks/useMarketData.ts",
   "data/network.ts",
 ].filter((rel) => existsSync(path.join(srcDir, rel)));
