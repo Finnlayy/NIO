@@ -11,10 +11,10 @@ with a keyword fallback for unclassified errors.
 Storage: `Architect/runtime/learning/error_patterns/<pattern_id>.json`
 """
 
-import json
-import logging
 import datetime
 import hashlib
+import json
+import logging
 import re
 from pathlib import Path
 
@@ -32,13 +32,15 @@ KNOWN_ERROR_TYPES = [
 ]
 
 # Keyword heuristics for errors that arrive without an explicit error code.
+_TOKEN_PATTERN = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]{2,}")
+
 _KEYWORD_MAP = [
-    (r"safety[_ ]?net", "E_SAFETY_NET"),
-    (r"trigger", "E_TRIGGER_INVALID"),
-    (r"schema|invalid[_ ]?json|validation", "E_SCHEMA_INVALID"),
-    (r"forbidden[_ ]?zone", "E_FORBIDDEN_ZONE"),
-    (r"timeout|timed[_ ]?out", "E_TIMEOUT"),
-    (r"permission|denied|sandbox", "E_PERMISSION_DENIED"),
+    (re.compile(r"safety[_ ]?net"), "E_SAFETY_NET"),
+    (re.compile(r"trigger"), "E_TRIGGER_INVALID"),
+    (re.compile(r"schema|invalid[_ ]?json|validation"), "E_SCHEMA_INVALID"),
+    (re.compile(r"forbidden[_ ]?zone"), "E_FORBIDDEN_ZONE"),
+    (re.compile(r"timeout|timed[_ ]?out"), "E_TIMEOUT"),
+    (re.compile(r"permission|denied|sandbox"), "E_PERMISSION_DENIED"),
 ]
 
 DEFAULT_ALERT_THRESHOLD = 3
@@ -61,14 +63,14 @@ def classify_error(error) -> str:
             return known
     lowered = message.lower()
     for pattern, error_type in _KEYWORD_MAP:
-        if re.search(pattern, lowered):
+        if pattern.search(lowered):
             return error_type
     return "E_UNKNOWN"
 
 
 def make_pattern_id(error_type: str, tokens: list) -> str:
     """Deterministic fingerprint for an error signature (blueprint `fingerprint`)."""
-    fingerprint = "|".join([error_type] + sorted(tokens))
+    fingerprint = "|".join([error_type, *sorted(tokens)])
     return "ep_" + hashlib.sha1(fingerprint.encode("utf-8")).hexdigest()[:12]
 
 
@@ -76,8 +78,8 @@ class ErrorPattern:
     """A recurring failure signature with occurrence statistics."""
 
     def __init__(self, pattern_id: str, error_type: str, frequency: int = 0,
-                 first_seen: str = None, last_seen: str = None,
-                 sample_messages: list = None, tokens: list = None):
+                 first_seen: str | None = None, last_seen: str | None = None,
+                 sample_messages: list | None = None, tokens: list | None = None):
         self.pattern_id = pattern_id
         self.error_type = error_type
         self.frequency = frequency
@@ -130,8 +132,9 @@ class ErrorPatternDetector:
             error_type = classify_error(error)
             message = error.get("message", "") if isinstance(error, dict) else str(error)
             timestamp = (error.get("timestamp") if isinstance(error, dict) else None) or now
-            tokens = sorted(set(re.findall(r"[a-zA-Z_][a-zA-Z0-9_]{2,}", message.lower())))[:12]
-            pattern_id = make_pattern_id(error_type, [])
+            tokens = sorted(set(_TOKEN_PATTERN.findall(message.lower())))[:12]
+            fingerprint = error_type
+            pattern_id = "ep_" + hashlib.sha1(fingerprint.encode("utf-8")).hexdigest()[:12]
             group = groups.setdefault(pattern_id, ErrorPattern(
                 pattern_id=pattern_id,
                 error_type=error_type,
@@ -212,14 +215,14 @@ class ErrorPatternStorage:
         path = self.patterns_dir / f"{pattern_id}.json"
         if not path.exists():
             return None
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return ErrorPattern.from_dict(json.load(f))
 
     def load_all(self) -> list:
         patterns = []
         for path in sorted(self.patterns_dir.glob("*.json")):
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     patterns.append(ErrorPattern.from_dict(json.load(f)))
             except Exception as exc:
                 logger.error("Failed to load error pattern %s: %s", path, exc)
