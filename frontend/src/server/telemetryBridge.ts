@@ -56,7 +56,6 @@ export type HubState = "live" | "stale";
 
 export const STALE_AFTER_MS = 3000;
 const RING_SIZE = 240;
-const RESPAWN_BACKOFF_MS = 2000;
 const MAX_STDERR_LOGS = 40;
 
 type Proc = ChildProcessByStdio<null, Readable, Readable>;
@@ -138,6 +137,7 @@ class TelemetryHub {
   private ring: TelemetryRecord[] = [];
   private lastRecordAt = 0;
   private respawnTimer: NodeJS.Timeout | null = null;
+  private respawnAttempts = 0;
   private started = false;
   private stopping = false;
   /** Tail of the children's stderr, so a broken producer is diagnosable. */
@@ -221,6 +221,7 @@ class TelemetryHub {
     const record = parseTelemetryLine(line);
     if (!record) return; // unverifiable lines never reach a widget
     this.lastRecordAt = Date.now();
+    this.respawnAttempts = 0;
     this.ring.push(record);
     if (this.ring.length > RING_SIZE) this.ring.splice(0, this.ring.length - RING_SIZE);
     for (const listener of [...this.listeners]) {
@@ -297,12 +298,14 @@ class TelemetryHub {
 
   private scheduleRespawn(): void {
     if (this.stopping || this.respawnTimer) return;
+    const delay = Math.min(1000 * Math.pow(2, this.respawnAttempts), 30000);
+    this.respawnAttempts++;
     this.respawnTimer = setTimeout(() => {
       this.respawnTimer = null;
       if (this.stopping) return;
       if (!alive(this.consumer)) this.spawnConsumer();
       else if (!alive(this.producer)) this.spawnProducer();
-    }, RESPAWN_BACKOFF_MS);
+    }, delay);
     // Must never keep the Node process alive on its own.
     this.respawnTimer.unref?.();
   }
