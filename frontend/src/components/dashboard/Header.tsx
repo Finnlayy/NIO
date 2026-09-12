@@ -15,7 +15,7 @@ export function Header({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeTagName = document.activeElement?.tagName.toLowerCase();
-      if (activeTagName === "input" || activeTagName === "textarea") {
+      if (activeTagName === "input" || activeTagName === "textarea" || (document.activeElement as HTMLElement)?.isContentEditable) {
         if (e.key === "Escape" && document.activeElement === searchInputRef.current) {
           searchInputRef.current?.blur();
         }
