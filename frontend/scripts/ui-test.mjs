@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 const frontendRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const buildDir = path.join(frontendRoot, ".test-build");
 const srcDir = path.join(frontendRoot, "src");
-const tscBin = path.join(frontendRoot, "node_modules", ".bin", "tsc");
+const tscBin = path.join(frontendRoot, "node_modules", "typescript", "bin", "tsc");
 
 /* Entry points whose import closure gets compiled. Files that do not
    exist yet (new modules introduced by a cycle) are skipped. */
