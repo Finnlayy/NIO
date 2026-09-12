@@ -43,7 +43,7 @@ if str(_ARCHITECT) not in sys.path:
 
 from core.events import EventBus  # noqa: E402
 from limbs.intelligence.microstructure_engine import MicrostructureEngine  # noqa: E402
-from limbs.math.ac_gravity_engine import ACGravityEngine  # noqa: E402
+from limbs.math_engines.ac_gravity_engine import ACGravityEngine  # noqa: E402
 
 #: Repo-Wurzel, nur fuer den UDS-Transport genutzt.
 _REPO_ROOT = _ARCHITECT.parent

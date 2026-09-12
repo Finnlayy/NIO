@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 AGENT_REGISTRY = {
     "judge_m8_agent": {
         "capabilities": ["risk_invariant_check", "execution_validation", "post_mortem_assessment"],
-        "module": "limbs.math.the_judge_m8",
+        "module": "limbs.math_engines.the_judge_m8",
         "class": "TheJudgeM8",
         "description": "Checks 6 trading risk invariants (feed, zone, leverage, slippage, power factor, vault reserve).",
     },
@@ -20,7 +20,7 @@ AGENT_REGISTRY = {
     },
     "gravity_agent": {
         "capabilities": ["ac_gravity", "forbidden_zone_detection", "power_factor"],
-        "module": "limbs.math.ac_gravity_engine",
+        "module": "limbs.math_engines.ac_gravity_engine",
         "class": "ACGravityEngine",
         "description": "Computes AC power fields and detects forbidden zones at 99.9% quantile.",
     },
