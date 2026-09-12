@@ -41,7 +41,9 @@ export function CompositeRankings({ data }: { data: Record<string, unknown> }) {
                 <div
                   className="h-full rounded-full"
                   style={{
-                    width: `${row.score}%`,
+                    width: '100%',
+                    transform: `scaleX(${row.score / 100})`,
+                    transformOrigin: 'left',
                     background: "linear-gradient(90deg, #0d9488, #2fae87)",
                   }}
                 />

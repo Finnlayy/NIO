@@ -1,3 +1,6 @@
 ## 2026-09-12 - [Animation / Rendering Optimization]
 **Learning:** High-frequency live orderbook (CVD heatmap) updates were causing a layout-thrashing bottleneck due to animating the non-composite `width` property on progress bars and utilizing `transition-all` on dynamically repainted elements.
 **Action:** Removed `transition-all` from the CVD heatmap grid cells to prevent unnecessary layout recalculations. Refactored the `buyPct` and `sellPct` progress bars to use the hardware-accelerated composite property `transform: scaleX(...)` with `transformOrigin` instead of animating layout-invalidating `width`. Enforced `contain: layout paint;` on the isolated `.ops-widget` trading cards in `globals.css` to limit reflow scopes.
+## 2026-09-12 - [Graphics / Rendering Insight]
+**Learning:** Live orderbook updates in the composite rankings widget were causing layout-thrashing due to animating the non-composite `width` property on progress bars.
+**Action:** Refactored the score progress bar to use the hardware-accelerated composite property `transform: scaleX(...)` with `transformOrigin` instead of animating layout-invalidating `width`.

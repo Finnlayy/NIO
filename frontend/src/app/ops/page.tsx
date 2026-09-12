@@ -150,7 +150,7 @@ export default function OpsGridPage() {
           </button>
           <button
             onClick={() => setGalleryOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:brightness-110 transition-all"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:brightness-110 transition-[filter,transform]"
           >
             <Library className="w-3.5 h-3.5" />
             Add widget
