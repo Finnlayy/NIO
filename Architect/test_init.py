@@ -58,7 +58,7 @@ def test_imports():
     from core.self_model.self_model_engine import Insight
     assert Insight(category="strength", content="ok").insight_id.startswith("ins_")
     # Risk invariants (Judge M8)
-    from limbs.math.the_judge_m8 import TheJudgeM8
+    from limbs.math_engines.the_judge_m8 import TheJudgeM8
     class _Limits:
         MAX_TOTAL_LEVERAGE = 5.0
         MAX_SLIPPAGE_BPS = 15.0

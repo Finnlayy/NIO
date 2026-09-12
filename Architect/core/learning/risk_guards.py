@@ -39,7 +39,7 @@ class RiskGuardEngine:
     def __init__(self, judge=None, policy=None, event_bus=None, config=None):
         # Lazy imports keep this module import-safe without pydantic_settings.
         if judge is None:
-            from limbs.math.the_judge_m8 import TheJudgeM8
+            from limbs.math_engines.the_judge_m8 import TheJudgeM8
             judge = TheJudgeM8(config or _DefaultRiskLimits())
         if policy is None:
             from core.policy import Policy
