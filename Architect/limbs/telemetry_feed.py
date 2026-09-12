@@ -34,10 +34,25 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
+# Wenn das Skript direkt ausgefuehrt wird, schiebt Python das Verzeichnis
+# dieses Skripts (`Architect/limbs/`) an den Anfang von `sys.path`. Dadurch
+# verdeckt das lokale Paket `limbs.math` das Standard-Modul `math`.
+# Wir entfernen es hier.
+_LIMBS = Path(__file__).resolve().parent
+if sys.path and sys.path[0] == str(_LIMBS):
+    sys.path.pop(0)
+
+# Workaround fuer Python 3: Wenn sys.path manipuliert wurde, waehrend `math`
+# eventuell schon mal versucht wurde zu importieren oder durch den frueheren
+# Pfad verdeckt war, stellen wir sicher, dass `math` nicht das fehlerhafte
+# Paket cached.
+if "math" in sys.modules and getattr(sys.modules["math"], "__file__", "").endswith("limbs/math/__init__.py"):
+    del sys.modules["math"]
+
 # Paketwurzel ist Architect/ (core.*, limbs.*) -- genau wie in Architect/tests.
 # Die Repo-Wurzel darf **nicht** auf sys.path: dort liegt ein zweites Paket
 # ``core/`` (ohne events.py), das Architect/core verdecken wuerde.
-_ARCHITECT = Path(__file__).resolve().parents[1]
+_ARCHITECT = _LIMBS.parent
 if str(_ARCHITECT) not in sys.path:
     sys.path.insert(0, str(_ARCHITECT))
 

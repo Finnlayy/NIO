@@ -1,0 +1,3 @@
+## 2026-09-12 - Math module shadowing in direct script execution
+**Learning:** When Node.js spawns a local Python script (e.g. `Architect/limbs/telemetry_feed.py`), Python implicitly prepends the script's directory (`Architect/limbs/`) to `sys.path[0]`. This causes internal module directories (like `limbs/math/`) to shadow standard library modules (like `math`), leading to runtime crashes like `AttributeError: module 'math' has no attribute 'floor'`.
+**Action:** When a script acts as an IPC producer spawned directly by its filepath, explicitly pop its directory from `sys.path[0]` and carefully clean `sys.modules` if any modules were preemptively resolved incorrectly.

@@ -88,10 +88,11 @@ while (queue.length) {
 }
 
 /* 3. Compile with the project's tsc (CommonJS, noEmit off). */
+const tscJs = path.join(frontendRoot, "node_modules", "typescript", "bin", "tsc");
 execFileSync(
   process.execPath,
   [
-    tscBin,
+    tscJs,
     ...entries.map((rel) => path.join(buildDir, rel)),
     "--outDir", buildDir,
     "--module", "commonjs",
