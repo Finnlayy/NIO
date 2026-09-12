@@ -38,6 +38,16 @@ from typing import Any, Callable, Iterable, Sequence
 # Die Repo-Wurzel darf **nicht** auf sys.path: dort liegt ein zweites Paket
 # ``core/`` (ohne events.py), das Architect/core verdecken wuerde.
 _ARCHITECT = Path(__file__).resolve().parents[1]
+
+# Pop sys.path[0] if it matches the script's directory to avoid shadowing stdlib's `math`.
+_script_dir = str(Path(__file__).resolve().parent)
+if sys.path and sys.path[0] == _script_dir:
+    sys.path.pop(0)
+
+# Unload 'math' if it was accidentally loaded from our local limbs/math directory
+if 'math' in sys.modules and hasattr(sys.modules['math'], '__file__') and sys.modules['math'].__file__.startswith(_script_dir):
+    del sys.modules['math']
+
 if str(_ARCHITECT) not in sys.path:
     sys.path.insert(0, str(_ARCHITECT))
 
