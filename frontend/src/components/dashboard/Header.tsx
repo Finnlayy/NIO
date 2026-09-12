@@ -1,4 +1,5 @@
 import { BrainCircuit, Search, Sparkles } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 export function Header({
   search,
@@ -9,6 +10,28 @@ export function Header({
   onSearch: (value: string) => void;
   onMasterSummary: () => void;
 }) {
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTagName = document.activeElement?.tagName.toLowerCase();
+      if (activeTagName === "input" || activeTagName === "textarea" || (document.activeElement as HTMLElement)?.isContentEditable) {
+        if (e.key === "Escape" && document.activeElement === searchInputRef.current) {
+          searchInputRef.current?.blur();
+        }
+        return;
+      }
+
+      if (e.key === "/" || (e.key === "k" && (e.metaKey || e.ctrlKey))) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <header className="sticky top-0 z-30 h-14 border-b border-white/[0.06] bg-[#090b12]/90 backdrop-blur-xl px-4 sm:px-6 flex items-center gap-4">
       <div className="flex items-center gap-3 min-w-0">
@@ -28,12 +51,18 @@ export function Header({
       <div className="hidden md:flex flex-1 max-w-sm ml-auto relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
         <input
+          ref={searchInputRef}
           value={search}
           onChange={(event) => onSearch(event.target.value)}
           placeholder="Filter modules, nodes, tags …"
-          className="console-input pl-9 py-2 text-[13px]"
+          className="console-input pl-9 pr-12 py-2 text-[13px]"
           aria-label="Search network nodes"
         />
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-1">
+          <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-mono text-slate-400 bg-slate-800/50 border border-slate-700 rounded shadow-sm">
+            /
+          </kbd>
+        </div>
       </div>
 
       <button
