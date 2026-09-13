@@ -32,7 +32,12 @@ export const ActivityFeed = React.memo(function ActivityFeed({ events }: { event
         }
       />
 
-      <div className="overflow-y-auto max-h-44 pr-1 -mr-1 space-y-1.5">
+      <div
+        className="overflow-y-auto max-h-44 pr-1 -mr-1 space-y-1.5"
+        role="log"
+        aria-live="polite"
+        aria-atomic="false"
+      >
         {events.map((event) => (
           <div
             key={event.id}
