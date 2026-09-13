@@ -111,7 +111,7 @@ export default function NetworkDashboard() {
     }
   }
 
-  async function runTask() {
+  const runTask = useCallback(async () => {
     if (!taskText.trim() || isRunning) return;
     setIsRunning(true);
     setRunState("running");
@@ -159,7 +159,32 @@ export default function NetworkDashboard() {
     } finally {
       setIsRunning(false);
     }
-  }
+  }, [taskText, isRunning, selectedId, isComplex, log]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTagName = document.activeElement?.tagName.toLowerCase();
+      const isInput = activeTagName === "input";
+      const isTextarea = activeTagName === "textarea";
+      const isContentEditable = (document.activeElement as HTMLElement)?.isContentEditable;
+      const isCmdEnter = e.key === "Enter" && (e.metaKey || e.ctrlKey);
+
+      if (isCmdEnter) {
+        // Allow Mod+Enter to submit even inside textareas (task console)
+        if (isInput || isContentEditable) return;
+        e.preventDefault();
+        void runTask();
+        return;
+      }
+
+      if (isInput || isTextarea || isContentEditable) {
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [runTask]);
 
   const activeDomainCount = useMemo(
     () => new Set(networkNodes.map((node) => node.domain).filter(Boolean)).size,

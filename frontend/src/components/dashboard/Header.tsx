@@ -22,6 +22,11 @@ export function Header({
         return;
       }
 
+      if (e.key === "Escape") {
+        onMasterSummary();
+        return;
+      }
+
       if (e.key === "/" || (e.key === "k" && (e.metaKey || e.ctrlKey))) {
         e.preventDefault();
         searchInputRef.current?.focus();
@@ -30,7 +35,7 @@ export function Header({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [onMasterSummary]);
 
   return (
     <header className="sticky top-0 z-30 h-14 border-b border-white/[0.06] bg-[#090b12]/90 backdrop-blur-xl px-4 sm:px-6 flex items-center gap-4">
@@ -71,6 +76,9 @@ export function Header({
       >
         <Sparkles className="w-3.5 h-3.5" />
         Master Summary
+        <kbd className="hidden md:inline-block ml-1 px-1.5 py-0.5 text-[9px] font-mono text-amber-200/70 bg-amber-900/30 border border-amber-700/50 rounded shadow-sm">
+          Esc
+        </kbd>
       </button>
     </header>
   );
