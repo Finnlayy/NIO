@@ -97,12 +97,12 @@ test("minimized widgets keep the expand control and drop the body", () => {
  * (+2) plus a 4-cell engine read row there (+14). Both are intentional: the
  * badges are what makes a dead bus visible instead of showing a frozen value.
  */
-test("DOM node budget of the default layout is stable (1083)", () => {
+test("DOM node budget of the default layout is stable (1082)", () => {
   const widgets = seedDefaultLayout();
   let total = 0;
   for (const [i, widget] of widgets.entries()) {
     total += countOpenTags(frameHtml(widget, i));
   }
   resetStore();
-  assert.equal(total, 1083, "default layout DOM node count");
+  assert.equal(total, 1082, "default layout DOM node count");
 });

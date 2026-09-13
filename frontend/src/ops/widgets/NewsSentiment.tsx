@@ -41,10 +41,9 @@ export function NewsSentiment({ data, symbol }: { data: Record<string, unknown>;
         <LiveBadge source={source} />
       </p>
 
-      <div className="flex h-1.5 rounded-full overflow-hidden mt-2.5">
-        <div style={{ width: `${negative}%`, background: "#f87171" }} />
-        <div style={{ width: `${neutral}%`, background: "#6b7280" }} />
-        <div style={{ width: `${positive}%`, background: "#34d399" }} />
+      <div className="flex relative h-1.5 rounded-full overflow-hidden mt-2.5 bg-[#6b7280]">
+        <div className="absolute inset-y-0 left-0 h-full" style={{ width: "100%", background: "#f87171", transform: `scaleX(${negative / 100})`, transformOrigin: "left" }} />
+        <div className="absolute inset-y-0 right-0 h-full" style={{ width: "100%", background: "#34d399", transform: `scaleX(${positive / 100})`, transformOrigin: "right" }} />
       </div>
       <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5 text-[10px] text-slate-500">
         <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-rose-400" /> Negative {negative}%</span>
