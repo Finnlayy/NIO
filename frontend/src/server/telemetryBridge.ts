@@ -119,11 +119,12 @@ type Listener = (record: TelemetryRecord) => void;
  */
 export function resolvePaths() {
   const root = (process.env.NIO_REPO_ROOT ?? "").replace(/\/+$/, "");
+  const rootPrefix = root ? `${root}/` : "";
   return {
     root,
-    feed: process.env.NIO_TELEMETRY_FEED ?? `${root}/Architect/limbs/telemetry_feed.py`,
-    consumer: process.env.NIO_TELEMETRY_CONSUMER ?? `${root}/scripts/uds_to_stdout.py`,
-    socketPath: process.env.NIO_TELEMETRY_SOCKET ?? `${root}/runtime/telemetry.sock`,
+    feed: process.env.NIO_TELEMETRY_FEED ?? `${rootPrefix}Architect/limbs/telemetry_feed.py`,
+    consumer: process.env.NIO_TELEMETRY_CONSUMER ?? `${rootPrefix}scripts/uds_to_stdout.py`,
+    socketPath: process.env.NIO_TELEMETRY_SOCKET ?? `${rootPrefix}runtime/telemetry.sock`,
   };
 }
 
