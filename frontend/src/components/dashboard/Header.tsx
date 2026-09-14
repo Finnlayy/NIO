@@ -67,7 +67,7 @@ export function Header({
 
       <button
         onClick={onMasterSummary}
-        className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-400/25 bg-amber-400/10 text-amber-100 text-xs font-medium hover:bg-amber-400/15 transition-colors ml-auto md:ml-0"
+        className="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-amber-400/25 bg-amber-400/10 text-amber-100 text-xs font-medium hover:bg-amber-400/15  ml-auto md:ml-0"
       >
         <Sparkles className="w-3.5 h-3.5" />
         Master Summary

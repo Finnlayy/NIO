@@ -132,7 +132,7 @@ export default function OpsGridPage() {
           </span>
           <button
             onClick={() => setConsoleOpen(!consoleOpen)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border ${
               consoleOpen
                 ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-200"
                 : "border-white/[0.08] text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
@@ -143,14 +143,14 @@ export default function OpsGridPage() {
           </button>
           <button
             onClick={exportLayout}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/[0.08] text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/[0.08] text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] "
           >
             <Download className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Export</span>
           </button>
           <button
             onClick={() => setGalleryOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:brightness-110 transition-all"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:brightness-110 "
           >
             <Library className="w-3.5 h-3.5" />
             Add widget
