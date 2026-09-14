@@ -1,0 +1,80 @@
+{
+  "$comment": "P0a ground truth: kraken-cli v0.4.1 clap-derive analysis (source tarball via codeload, 2026-09-13). Sandbox cannot run the binary (release-assets host blocked); P0b (scripts/kraken_p0_verify.sh) confirms on target box.",
+  "kraken_cli_version": "0.4.1",
+  "repo": "https://github.com/krakenfx/kraken-cli",
+  "active_wrapper_profile": "order-namespace",
+  "global_flags": {
+    "output": "-o/--output <table|json> (default table; NIO always uses -o json)",
+    "verbose": "-v/--verbose (stderr diagnostics)",
+    "api_url": "--api-url (env KRAKEN_SPOT_URL)",
+    "futures_url": "--futures-url (env KRAKEN_FUTURES_URL) -- demo-futures mechanism, no --sandbox/--demo flag exists",
+    "ws_urls": "--ws-public-url/--ws-auth-url/--ws-l3-url/--ws-futures-url",
+    "credentials": "--api-key/--api-secret/--api-secret-stdin/--api-secret-file, --spot-api-key/--spot-api-secret (env KRAKEN_API_KEY/KRAKEN_API_SECRET), --futures-api-key/--futures-api-secret (env KRAKEN_FUTURES_API_KEY/KRAKEN_FUTURES_API_SECRET), --otp (env KRAKEN_OTP)",
+    "workspace": "--workspace (env KRAKEN_WORKSPACE)",
+    "yes": "--yes (skip destructive confirmations)"
+  },
+  "exit_codes": { "0": "success", "1": "failure (render_error)", "2": "clap parse error" },
+  "error_contract": {
+    "json_mode": "stdout carries a JSON error envelope {error, message, ...} (src/output/json.rs render_error), exit 1",
+    "table_mode": "stderr 'Error: ...', exit 1",
+    "venue_strings_preserved": ["EOrder:", "EGeneral:", "EAPI:"],
+    "categories": ["api", "auth", "network", "rate_limit", "validation", "config", "websocket", "io", "timeout", "parse"]
+  },
+  "commands": {
+    "order": {
+      "buy": "kraken order buy <PAIR> <VOL> [--type <market|limit|...>] [--price P] [--price2 P2] [--leverage N] [--reduce-only] [--timeinforce GTC|IOC|GTD] [--userref I|--cl-ord-id ID] [--oflags FLAGS] [--close-ordertype T --close-price P [--close-price2 P2]] [--deadline RFC3339] [--validate] -o json",
+      "sell": "same shape as buy",
+      "batch": "kraken order batch <JSON_FILE> [--pair P] [--deadline RFC3339] [--validate] -o json  (2-15 orders)",
+      "amend": "kraken order amend (--txid T|--cl-ord-id ID) [--order-qty Q] [--limit-price P] [--trigger-price P] [--post-only] [--deadline D] -o json",
+      "edit": "kraken order edit <TXID> [--volume V] [--price P] [--pair P] -o json  (cancel+replace)",
+      "cancel": "kraken order cancel <TXID...> [--cl-ord-id ID] -o json",
+      "cancel_batch": "kraken order cancel-batch <TXID...> [--cl-ord-ids ID...] -o json  (max 50 total)",
+      "cancel_all": "kraken order cancel-all -o json",
+      "cancel_after": "kraken order cancel-after <SECS> -o json  (0 disables)"
+    },
+    "market_top_level": {
+      "server_time": "kraken server-time -o json  (Exchange-Clock via CLI, no REST exception needed)",
+      "ticker": "kraken ticker <PAIR...> -o json",
+      "ohlc": "kraken ohlc <PAIR> [--interval <1|5|15|30|60|240|1440|10080|21600>] [--since TS] -o json",
+      "orderbook": "kraken orderbook <PAIR> [--count N, default 25, max 500] -o json",
+      "orderbook_grouped": "kraken orderbook-grouped <PAIR> [--depth 10] [--grouping 1] -o json",
+      "trades": "kraken trades <PAIR> [--since TS] [--count N, default 1000] -o json",
+      "spreads": "kraken spreads <PAIR> [--since TS] -o json  (plural!)",
+      "misc": "kraken status | assets | pairs"
+    },
+    "account_top_level": {
+      "balance": "kraken balance -o json",
+      "extended_balance": "kraken extended-balance -o json",
+      "orderbook_l3": "kraken orderbook-l3 ...  (authenticated L3 book)",
+      "trade_balance": "kraken trade-balance -o json",
+      "open_orders": "kraken open-orders [--trades] [--userref I] [--cl-ord-id ID] -o json",
+      "closed_orders": "kraken closed-orders -o json",
+      "query_orders": "kraken query-orders ...",
+      "trades_history": "kraken trades-history -o json",
+      "positions": "kraken positions -o json",
+      "ledgers": "kraken ledgers [--asset A] [--type T] [pagination] -o json",
+      "volume": "kraken volume -o json"
+    },
+    "paper_spot": {
+      "init": "kraken paper init [NAME] [--capital/--balance 10000] [--currency USD] [--fee-rate F] [--slippage-rate S]",
+      "trade": "kraken paper buy|sell <PAIR> <VOL> [--type <market|limit>] [--price P] -o json",
+      "manage": "kraken paper orders | cancel <PAPER-ID> | cancel-all | history | balance [NAME] | status | reset"
+    },
+    "futures": {
+      "market": "kraken futures instruments|tickers|ticker <SYM>|orderbook|history|feeschedules|...",
+      "trade": "kraken futures order buy|sell <SYM> <SIZE> [--type limit] [--price P] [--stop-price P] [--trigger-signal mark|index|last] [--client-order-id ID] [--reduce-only] -o json",
+      "manage": "kraken futures edit-order|cancel|cancel-all|cancel-after|batch-order|positions|fills|leverage|set-leverage ...",
+      "paper": "kraken futures paper init|balance|status|buy|sell|orders|order-status|edit-order|cancel|cancel-all|batch-order|positions|fills|history|leverage|set-leverage (symbol e.g. PF_XBTUSD)",
+      "ws": "kraken futures ws ..."
+    },
+    "ws_spot": {
+      "channels": "kraken ws ticker|trades <PAIRS...> | book <PAIRS...> [--depth 10|25|100|500|1000] | ohlc <PAIRS...> [--interval M] | instrument [PAIRS...] | executions | balances | level3 <PAIRS...>  (auth channels use configured credentials; no --token flag exists)",
+      "methods": "kraken ws add-order|amend-order|cancel-order|cancel-all|cancel-after|batch-add|batch-cancel|ping  (auth, one-shot; REST order-path stays the NIO standard)"
+    },
+    "earn": {
+      "note": "NOT stake/unstake",
+      "cmds": "kraken earn allocate|deallocate <STRATEGY_ID> <AMOUNT> | allocate-status|deallocate-status <STRATEGY_ID> | strategies [--asset A] | allocations"
+    },
+    "misc": "kraken auth ... | mcp [-s services] [--allow-dangerous] | shell | setup | session ... | workspace ... | record/replay/streamd/tape/lab ..."
+  }
+}
