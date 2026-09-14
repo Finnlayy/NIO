@@ -53,7 +53,10 @@ function parseMcpBody(raw: string): any | null {
   }
 }
 
-async function rpc(method: string, params: Record<string, unknown>): Promise<any> {
+async function rpc(
+  method: string,
+  params: Record<string, unknown>,
+): Promise<any> {
   if (!API_KEY) {
     throw new McpError(503, "TVREMIX_API_KEY not configured");
   }
@@ -68,7 +71,12 @@ async function rpc(method: string, params: Record<string, unknown>): Promise<any
   const res = await fetch(MCP_URL, {
     method: "POST",
     headers,
-    body: JSON.stringify({ jsonrpc: "2.0", id: Math.floor(Math.random() * 1e9), method, params }),
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: Math.floor(Math.random() * 1e9),
+      method,
+      params,
+    }),
     cache: "no-store",
   });
 
@@ -81,10 +89,12 @@ async function rpc(method: string, params: Record<string, unknown>): Promise<any
   if (!res.ok || payload?.error) {
     const message = payload?.error?.message ?? `MCP ${res.status}`;
     if (res.status === 429) throw new McpError(429, `Rate limited: ${message}`);
-    if (res.status === 401 || res.status === 403) throw new McpError(res.status, `Auth failed: ${message}`);
+    if (res.status === 401 || res.status === 403)
+      throw new McpError(res.status, `Auth failed: ${message}`);
     throw new McpError(res.status || 502, message);
   }
-  if (!payload) throw new McpError(502, `Unparseable MCP response: ${raw.slice(0, 200)}`);
+  if (!payload)
+    throw new McpError(502, `Unparseable MCP response: ${raw.slice(0, 200)}`);
   return payload.result;
 }
 

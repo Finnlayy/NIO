@@ -15,7 +15,16 @@
  *
  * Usage: node scripts/ui-test.mjs
  */
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,7 +32,13 @@ import { fileURLToPath } from "node:url";
 const frontendRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const buildDir = path.join(frontendRoot, ".test-build");
 const srcDir = path.join(frontendRoot, "src");
-const tscBin = path.join(frontendRoot, "node_modules", "typescript", "bin", "tsc");
+const tscBin = path.join(
+  frontendRoot,
+  "node_modules",
+  "typescript",
+  "bin",
+  "tsc",
+);
 
 /* Entry points whose import closure gets compiled. Files that do not
    exist yet (new modules introduced by a cycle) are skipped. */
@@ -62,7 +77,13 @@ function resolveImport(baseDir, spec) {
       ? path.resolve(baseDir, spec)
       : null;
   if (!base) return null;
-  const candidates = [base, `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts"), path.join(base, "index.tsx")];
+  const candidates = [
+    base,
+    `${base}.ts`,
+    `${base}.tsx`,
+    path.join(base, "index.ts"),
+    path.join(base, "index.tsx"),
+  ];
   return candidates.find((c) => existsSync(c) && statSync(c).isFile()) ?? null;
 }
 
@@ -93,16 +114,22 @@ execFileSync(
   [
     tscBin,
     ...entries.map((rel) => path.join(buildDir, rel)),
-    "--outDir", buildDir,
-    "--module", "commonjs",
-    "--moduleResolution", "node",
-    "--target", "es2017",
-    "--jsx", "react-jsx",
+    "--outDir",
+    buildDir,
+    "--module",
+    "commonjs",
+    "--moduleResolution",
+    "node",
+    "--target",
+    "es2017",
+    "--jsx",
+    "react-jsx",
     "--esModuleInterop",
     "--skipLibCheck",
     "--strict",
     "--noEmitOnError",
-    "--types", "node,react,react-dom",
+    "--types",
+    "node,react,react-dom",
   ],
   { cwd: frontendRoot, stdio: "inherit" },
 );
@@ -119,8 +146,13 @@ for (const f of readdirSync(testSrc).sort()) {
   cpSync(path.join(testSrc, f), path.join(testDest, f));
   if (f.endsWith(".test.js")) testFiles.push(path.join(testDest, f));
 }
-if (testFiles.length === 0) throw new Error("no *.test.js files found in src/ops/__tests__/");
-execFileSync(process.execPath, ["--test", "--test-reporter=spec", ...testFiles], {
-  cwd: frontendRoot,
-  stdio: "inherit",
-});
+if (testFiles.length === 0)
+  throw new Error("no *.test.js files found in src/ops/__tests__/");
+execFileSync(
+  process.execPath,
+  ["--test", "--test-reporter=spec", ...testFiles],
+  {
+    cwd: frontendRoot,
+    stdio: "inherit",
+  },
+);

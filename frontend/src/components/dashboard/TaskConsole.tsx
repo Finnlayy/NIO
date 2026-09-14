@@ -1,4 +1,10 @@
-import { AlertTriangle, CheckCircle2, Loader2, Play, Terminal } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  Play,
+  Terminal,
+} from "lucide-react";
 import { ModuleHeader, StatusDot, Tile } from "./shared";
 import type { RunState } from "./types";
 
@@ -66,7 +72,8 @@ export function TaskConsole({
           onChange={(event) => onComplex(event.target.checked)}
           className="accent-cyan-400"
         />
-        Complex workflow <span className="text-slate-600">(urgency wrapping)</span>
+        Complex workflow{" "}
+        <span className="text-slate-600">(urgency wrapping)</span>
       </label>
 
       <button
@@ -74,8 +81,14 @@ export function TaskConsole({
         disabled={isRunning || !taskText.trim()}
         className="primary-button w-full mt-3 flex items-center justify-center gap-2"
       >
-        {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-        {isRunning ? "Routing through core …" : (
+        {isRunning ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <Play className="w-4 h-4" />
+        )}
+        {isRunning ? (
+          "Routing through core …"
+        ) : (
           <span className="flex items-center gap-2">
             Run through Neural Core
             <span className="hidden sm:inline-flex items-center gap-0.5 text-[9px] font-mono text-cyan-200/50 bg-cyan-950/30 border border-cyan-800/30 px-1 py-0.5 rounded shadow-sm leading-none ml-1">
@@ -121,7 +134,9 @@ export function TaskConsole({
         </p>
       </div>
 
-      <p className="mt-auto pt-3 text-[10px] text-slate-600 font-mono truncate">API · {apiUrl}</p>
+      <p className="mt-auto pt-3 text-[10px] text-slate-600 font-mono truncate">
+        API · {apiUrl}
+      </p>
     </Tile>
   );
 }

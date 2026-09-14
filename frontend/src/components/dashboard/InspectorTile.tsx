@@ -32,7 +32,10 @@ export function InspectorTile({
         {kindLabel[node.kind]}
       </p>
       <h4 className="text-base font-semibold text-white mt-1 flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color.line }} />
+        <span
+          className="w-2 h-2 rounded-full shrink-0"
+          style={{ background: color.line }}
+        />
         <span className="truncate">{node.label}</span>
       </h4>
 
@@ -49,18 +52,28 @@ export function InspectorTile({
         </div>
       )}
 
-      <p className="text-xs leading-relaxed text-slate-400 mt-3">{node.description}</p>
+      <p className="text-xs leading-relaxed text-slate-400 mt-3">
+        {node.description}
+      </p>
 
       <dl className="mt-3 grid grid-cols-2 gap-2">
         {node.sources !== undefined && (
           <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] px-2.5 py-2">
-            <dt className="text-[9px] uppercase tracking-[0.12em] text-slate-600">Sources</dt>
-            <dd className="text-sm font-semibold text-slate-200 tabular-nums">{node.sources}</dd>
+            <dt className="text-[9px] uppercase tracking-[0.12em] text-slate-600">
+              Sources
+            </dt>
+            <dd className="text-sm font-semibold text-slate-200 tabular-nums">
+              {node.sources}
+            </dd>
           </div>
         )}
         <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] px-2.5 py-2">
-          <dt className="text-[9px] uppercase tracking-[0.12em] text-slate-600">Task preset</dt>
-          <dd className={`text-xs font-medium mt-0.5 ${hasPreset ? "text-cyan-300" : "text-slate-500"}`}>
+          <dt className="text-[9px] uppercase tracking-[0.12em] text-slate-600">
+            Task preset
+          </dt>
+          <dd
+            className={`text-xs font-medium mt-0.5 ${hasPreset ? "text-cyan-300" : "text-slate-500"}`}
+          >
             {hasPreset ? "Loaded" : "Manual"}
           </dd>
         </div>

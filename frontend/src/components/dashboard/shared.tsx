@@ -28,7 +28,9 @@ export function StatusDot({
             className={`absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping ${dotColors[tone]}`}
           />
         )}
-        <span className={`relative inline-flex h-2 w-2 rounded-full ${dotColors[tone]}`} />
+        <span
+          className={`relative inline-flex h-2 w-2 rounded-full ${dotColors[tone]}`}
+        />
       </span>
       {label}
     </span>
@@ -55,7 +57,9 @@ export function ModuleHeader({
       <h3 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
         {title}
       </h3>
-      {meta && <span className="text-[10px] text-slate-600 truncate">{meta}</span>}
+      {meta && (
+        <span className="text-[10px] text-slate-600 truncate">{meta}</span>
+      )}
       <span className="ml-auto flex items-center gap-2 shrink-0">{status}</span>
     </div>
   );
@@ -89,7 +93,9 @@ export function Tile({
       } ${className}`}
       style={style}
     >
-      {accent && <span className="tile-accent" style={{ background: accent }} />}
+      {accent && (
+        <span className="tile-accent" style={{ background: accent }} />
+      )}
       {children}
     </div>
   );

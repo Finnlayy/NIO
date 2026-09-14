@@ -22,15 +22,23 @@ const { WidgetFrameContent } = require("../ops/widgets/WidgetFrame");
 const { DragSession } = require("../ops/dragSession");
 
 test("WidgetFrameContent is a memoized boundary", () => {
-  assert.equal(WidgetFrameContent.$$typeof, Symbol.for("react.memo"), "content must be React.memo-wrapped");
+  assert.equal(
+    WidgetFrameContent.$$typeof,
+    Symbol.for("react.memo"),
+    "content must be React.memo-wrapped",
+  );
 });
 
 test("live tick churns exactly 1 of 10 frames (the ticked widget)", () => {
   seedDefaultLayout();
   const m = mount();
   const before = collectFrames(m.render(GridCanvas));
-  const target = useGridStore.getState().widgets.find((w) => w.templateId === "TPL_02");
-  const spark = target.data.spark.map((v) => Math.min(0.98, Math.max(0.02, v + 0.01)));
+  const target = useGridStore
+    .getState()
+    .widgets.find((w) => w.templateId === "TPL_02");
+  const spark = target.data.spark.map((v) =>
+    Math.min(0.98, Math.max(0.02, v + 0.01)),
+  );
   useGridStore.getState().mergeData(target.id, { spark });
   const after = collectFrames(m.render(GridCanvas));
 
@@ -78,14 +86,25 @@ test("drag enter applies the swap; drag end clears the session", () => {
 
   const order = useGridStore.getState().widgets.map((w) => w.id);
   assert.equal(order[0], ids[3], "widget moved to front");
-  assert.deepEqual(order.slice(1, 4), ids.slice(0, 3), "preceding widgets shifted");
+  assert.deepEqual(
+    order.slice(1, 4),
+    ids.slice(0, 3),
+    "preceding widgets shifted",
+  );
   assert.deepEqual(order.slice(4), ids.slice(4), "trailing widgets untouched");
 
   const frames = collectFrames(m.render(GridCanvas));
-  assert.equal(frames.some((f) => f.props.dragging), true, "still dragging mid-session");
+  assert.equal(
+    frames.some((f) => f.props.dragging),
+    true,
+    "still dragging mid-session",
+  );
   frames[0].props.onDragEnd();
   const final = collectFrames(m.render(GridCanvas));
-  assert.ok(final.every((f) => f.props.dragging === false), "dragging cleared after drop");
+  assert.ok(
+    final.every((f) => f.props.dragging === false),
+    "dragging cleared after drop",
+  );
   resetStore();
 });
 
@@ -110,7 +129,11 @@ test("pinned widgets resist reordering (store contract)", () => {
   store.togglePin(store.widgets[1].id);
   const before = store.widgets.map((w) => w.id);
   store.reorder(1, 5);
-  assert.deepEqual(useGridStore.getState().widgets.map((w) => w.id), before, "pinned widget must not move");
+  assert.deepEqual(
+    useGridStore.getState().widgets.map((w) => w.id),
+    before,
+    "pinned widget must not move",
+  );
   store.reorder(0, 5);
   const after = useGridStore.getState().widgets.map((w) => w.id);
   assert.equal(after[5], before[0], "unpinned widget moves");
@@ -125,7 +148,11 @@ test("DragSession: begin/enter/end contract", () => {
   assert.equal(s.active, true);
   assert.equal(s.enter(2), null, "same slot — no swap");
   assert.deepEqual(s.enter(0), { from: 2, to: 0 });
-  assert.deepEqual(s.enter(1), { from: 0, to: 1 }, "session tracks the moving position");
+  assert.deepEqual(
+    s.enter(1),
+    { from: 0, to: 1 },
+    "session tracks the moving position",
+  );
   s.end();
   assert.equal(s.active, false);
   assert.equal(s.enter(3), null, "ended session is inert");

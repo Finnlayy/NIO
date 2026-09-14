@@ -45,8 +45,11 @@ export function DomainsGrid({
         {DOMAIN_CLUSTERS.map(({ filter, nodes, domainNode, topics, links }) => {
           const color = palette[filter.color] ?? palette.slate;
           const idle = nodes.length === 0;
-          const selected = domainNode?.id === selectedId || topics.some((t) => t.id === selectedId);
-          const dimmed = nodes.length > 0 && !nodes.some((node) => visibleIds.has(node.id));
+          const selected =
+            domainNode?.id === selectedId ||
+            topics.some((t) => t.id === selectedId);
+          const dimmed =
+            nodes.length > 0 && !nodes.some((node) => visibleIds.has(node.id));
 
           return (
             <Tile
@@ -55,9 +58,7 @@ export function DomainsGrid({
               selected={selected}
               dimmed={dimmed}
               onClick={
-                domainNode
-                  ? () => onSelectNode(domainNode.id)
-                  : undefined
+                domainNode ? () => onSelectNode(domainNode.id) : undefined
               }
               className="p-3.5"
             >
@@ -79,7 +80,8 @@ export function DomainsGrid({
               <p className="text-[11px] text-slate-500 mt-2 leading-relaxed min-h-[32px]">
                 {idle
                   ? "Standby — no knowledge nodes registered yet."
-                  : domainNode?.description ?? "Cluster node pending registration."}
+                  : (domainNode?.description ??
+                    "Cluster node pending registration.")}
               </p>
 
               {topics.length > 0 && (

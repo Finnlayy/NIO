@@ -16,17 +16,28 @@ const { renderToStaticMarkup } = require("react-dom/server");
 const { useGridStore } = require("../ops/store");
 const { widgetTemplates } = require("../ops/widgetRegistry");
 
-const internals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+const internals =
+  React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
 
 /** React.memo's default comparator (shallow equality). */
 function shallowEqual(a, b) {
   if (Object.is(a, b)) return true;
-  if (typeof a !== "object" || a === null || typeof b !== "object" || b === null) return false;
+  if (
+    typeof a !== "object" ||
+    a === null ||
+    typeof b !== "object" ||
+    b === null
+  )
+    return false;
   const keysA = Object.keys(a);
   const keysB = Object.keys(b);
   if (keysA.length !== keysB.length) return false;
   for (const key of keysA) {
-    if (!Object.prototype.hasOwnProperty.call(b, key) || !Object.is(a[key], b[key])) return false;
+    if (
+      !Object.prototype.hasOwnProperty.call(b, key) ||
+      !Object.is(a[key], b[key])
+    )
+      return false;
   }
   return true;
 }
@@ -47,7 +58,8 @@ function mount() {
   const dispatcher = {
     useState(initial) {
       const i = index++;
-      if (!(i in states)) states[i] = typeof initial === "function" ? initial() : initial;
+      if (!(i in states))
+        states[i] = typeof initial === "function" ? initial() : initial;
       return [
         states[i],
         (update) => {
@@ -62,13 +74,15 @@ function mount() {
     },
     useCallback(fn, deps) {
       const i = index++;
-      if (i in cbs && deps !== undefined && shallowEqual(deps, cbs[i].deps)) return cbs[i].fn;
+      if (i in cbs && deps !== undefined && shallowEqual(deps, cbs[i].deps))
+        return cbs[i].fn;
       cbs[i] = { deps, fn };
       return fn;
     },
     useMemo(fn, deps) {
       const i = index++;
-      if (i in memos && deps !== undefined && shallowEqual(deps, memos[i].deps)) return memos[i].value;
+      if (i in memos && deps !== undefined && shallowEqual(deps, memos[i].deps))
+        return memos[i].value;
       memos[i] = { deps, value: fn() };
       return memos[i].value;
     },
@@ -84,7 +98,9 @@ function mount() {
     },
     useContext(context) {
       index++;
-      return context && context._currentValue !== undefined ? context._currentValue : context && context.defaultValue;
+      return context && context._currentValue !== undefined
+        ? context._currentValue
+        : context && context.defaultValue;
     },
     useId() {
       index++;
@@ -127,7 +143,9 @@ function seedDefaultLayout() {
   const widgets = widgetTemplates.map((tpl, i) => ({
     id: `test-w-${i}`,
     templateId: tpl.id,
-    title: tpl.defaultSymbol ? `${tpl.title} · ${tpl.defaultSymbol}` : tpl.title,
+    title: tpl.defaultSymbol
+      ? `${tpl.title} · ${tpl.defaultSymbol}`
+      : tpl.title,
     symbol: tpl.defaultSymbol,
     span: tpl.defaultSpan,
     height: tpl.defaultHeight,
@@ -140,7 +158,12 @@ function seedDefaultLayout() {
 }
 
 function resetStore() {
-  useGridStore.setState({ widgets: [], mcpLog: [], consoleOpen: false, galleryOpen: false });
+  useGridStore.setState({
+    widgets: [],
+    mcpLog: [],
+    consoleOpen: false,
+    galleryOpen: false,
+  });
 }
 
 /** Count opening tags in an HTML string (elements + SVG nodes). */
@@ -153,7 +176,13 @@ function countOpenTags(html) {
  * so every tree walker must recurse into arrays, not just direct elements.
  */
 function forEachChild(children, fn) {
-  if (children === null || children === undefined || children === false || children === true) return;
+  if (
+    children === null ||
+    children === undefined ||
+    children === false ||
+    children === true
+  )
+    return;
   if (Array.isArray(children)) {
     children.forEach((c) => forEachChild(c, fn));
     return;
@@ -165,7 +194,9 @@ function forEachChild(children, fn) {
 function collectByType(node, type, out = []) {
   if (!React.isValidElement(node)) return out;
   if (node.type === type) out.push(node);
-  forEachChild(node.props && node.props.children, (c) => collectByType(c, type, out));
+  forEachChild(node.props && node.props.children, (c) =>
+    collectByType(c, type, out),
+  );
   return out;
 }
 
@@ -176,14 +207,16 @@ function collectByType(node, type, out = []) {
  */
 function collectFrames(node, out = []) {
   if (!React.isValidElement(node)) return out;
-  if (typeof node.type === "function" && node.type.name === "WidgetFrame") out.push(node);
+  if (typeof node.type === "function" && node.type.name === "WidgetFrame")
+    out.push(node);
   forEachChild(node.props && node.props.children, (c) => collectFrames(c, out));
   return out;
 }
 
 /** Recursively check whether an element tree contains a given text fragment. */
 function hasText(node, text) {
-  if (typeof node === "string" || typeof node === "number") return String(node).includes(text);
+  if (typeof node === "string" || typeof node === "number")
+    return String(node).includes(text);
   if (!React.isValidElement(node)) return false;
   let found = false;
   forEachChild(node.props && node.props.children, (c) => {

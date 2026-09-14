@@ -34,7 +34,11 @@ export function LimbMesh({ data }: { data: Record<string, unknown> }) {
   return (
     <div className="flex flex-col h-full">
       <div className="relative flex-1 min-h-[190px] rounded-lg bg-black/25 border border-white/[0.05] overflow-hidden">
-        <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+        <svg
+          viewBox="0 0 100 100"
+          className="absolute inset-0 w-full h-full"
+          preserveAspectRatio="none"
+        >
           {edges.map((e, i) => {
             const a = positions[e.from];
             const b = positions[e.to];
@@ -74,7 +78,10 @@ export function LimbMesh({ data }: { data: Record<string, unknown> }) {
                   background: color.fill,
                 }}
               >
-                <span className={`w-1.5 h-1.5 rounded-full ${isCore ? "w-2.5 h-2.5" : ""}`} style={{ background: color.line }} />
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${isCore ? "w-2.5 h-2.5" : ""}`}
+                  style={{ background: color.line }}
+                />
               </span>
               <p className="text-[8px] text-slate-400 mt-0.5 whitespace-nowrap max-w-[72px] truncate">
                 {n.label}
@@ -89,14 +96,21 @@ export function LimbMesh({ data }: { data: Record<string, unknown> }) {
       </div>
 
       <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-500">
-        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> core</span>
-        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-400" /> agents</span>
-        <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-slate-400" /> domains</span>
+        <span className="flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> core
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-purple-400" /> agents
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-slate-400" /> domains
+        </span>
       </div>
 
       <Insight>
-        NIO limb mesh hydrated from the orchestrator registry: {byId.size} nodes routed through
-        neural-core — MCP hydration keeps topology in sync with the Python limb registry.
+        NIO limb mesh hydrated from the orchestrator registry: {byId.size} nodes
+        routed through neural-core — MCP hydration keeps topology in sync with
+        the Python limb registry.
       </Insight>
     </div>
   );

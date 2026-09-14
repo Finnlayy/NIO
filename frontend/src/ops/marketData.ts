@@ -23,24 +23,111 @@ export interface Ticker {
 }
 
 export const tickers: Ticker[] = [
-  { symbol: "BTCUSDT", name: "Bitcoin", price: 77406, changePct: -0.05, decimals: 2 },
-  { symbol: "ETHUSDT", name: "Ethereum", price: 2394.2, changePct: -1.02, decimals: 2 },
-  { symbol: "XRPUSDT", name: "XRP", price: 1.3383, changePct: -1.0, decimals: 4 },
-  { symbol: "ZECUSDT", name: "Zcash", price: 813.9, changePct: -1.92, decimals: 2 },
-  { symbol: "MAGMAUSDT.P", name: "Magma", price: 0.5429, changePct: 24.17, decimals: 4 },
-  { symbol: "ACEUSDT", name: "MEXC:ACEUSDT", price: 0.1905, changePct: -11.73, decimals: 4 },
-  { symbol: "BNBUSDT", name: "BNB", price: 772.98, changePct: 7.43, decimals: 2 },
-  { symbol: "SOLUSDT", name: "Solana", price: 107.48, changePct: 1.4, decimals: 2 },
-  { symbol: "DOGEUSDT", name: "Dogecoin", price: 0.0876, changePct: 3.3, decimals: 4 },
-  { symbol: "ADAUSDT", name: "Cardano", price: 0.2178, changePct: 3.08, decimals: 4 },
-  { symbol: "AVAXUSDT", name: "Avalanche", price: 18.45, changePct: 2.45, decimals: 2 },
-  { symbol: "NEARUSDT", name: "Near Protocol", price: 13.2, changePct: 13.02, decimals: 2 },
-  { symbol: "LTCUSDT", name: "Litecoin", price: 82.13, changePct: 8.13, decimals: 2 },
-  { symbol: "DOTUSDT", name: "Polkadot", price: 6.84, changePct: 6.84, decimals: 2 },
+  {
+    symbol: "BTCUSDT",
+    name: "Bitcoin",
+    price: 77406,
+    changePct: -0.05,
+    decimals: 2,
+  },
+  {
+    symbol: "ETHUSDT",
+    name: "Ethereum",
+    price: 2394.2,
+    changePct: -1.02,
+    decimals: 2,
+  },
+  {
+    symbol: "XRPUSDT",
+    name: "XRP",
+    price: 1.3383,
+    changePct: -1.0,
+    decimals: 4,
+  },
+  {
+    symbol: "ZECUSDT",
+    name: "Zcash",
+    price: 813.9,
+    changePct: -1.92,
+    decimals: 2,
+  },
+  {
+    symbol: "MAGMAUSDT.P",
+    name: "Magma",
+    price: 0.5429,
+    changePct: 24.17,
+    decimals: 4,
+  },
+  {
+    symbol: "ACEUSDT",
+    name: "MEXC:ACEUSDT",
+    price: 0.1905,
+    changePct: -11.73,
+    decimals: 4,
+  },
+  {
+    symbol: "BNBUSDT",
+    name: "BNB",
+    price: 772.98,
+    changePct: 7.43,
+    decimals: 2,
+  },
+  {
+    symbol: "SOLUSDT",
+    name: "Solana",
+    price: 107.48,
+    changePct: 1.4,
+    decimals: 2,
+  },
+  {
+    symbol: "DOGEUSDT",
+    name: "Dogecoin",
+    price: 0.0876,
+    changePct: 3.3,
+    decimals: 4,
+  },
+  {
+    symbol: "ADAUSDT",
+    name: "Cardano",
+    price: 0.2178,
+    changePct: 3.08,
+    decimals: 4,
+  },
+  {
+    symbol: "AVAXUSDT",
+    name: "Avalanche",
+    price: 18.45,
+    changePct: 2.45,
+    decimals: 2,
+  },
+  {
+    symbol: "NEARUSDT",
+    name: "Near Protocol",
+    price: 13.2,
+    changePct: 13.02,
+    decimals: 2,
+  },
+  {
+    symbol: "LTCUSDT",
+    name: "Litecoin",
+    price: 82.13,
+    changePct: 8.13,
+    decimals: 2,
+  },
+  {
+    symbol: "DOTUSDT",
+    name: "Polkadot",
+    price: 6.84,
+    changePct: 6.84,
+    decimals: 2,
+  },
 ];
 
 export function fmt(price: number, decimals: number) {
-  return price.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  return price.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
 }
 
 /* Gauge verdicts — value in 0..100, lower = sell */
@@ -64,10 +151,21 @@ export interface GaugeData {
 }
 
 export function gaugeFor(symbol: string, seedOffset = 0): GaugeData {
-  const rnd = seededRandom(symbol.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) + seedOffset);
+  const rnd = seededRandom(
+    symbol.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) + seedOffset,
+  );
   const t = tickers.find((x) => x.symbol === symbol);
   const score = Math.round(15 + rnd() * 80);
-  const verdict = score < 25 ? "Strong Sell" : score < 42 ? "Sell" : score < 58 ? "Neutral" : score < 75 ? "Buy" : "Strong Buy";
+  const verdict =
+    score < 25
+      ? "Strong Sell"
+      : score < 42
+        ? "Sell"
+        : score < 58
+          ? "Neutral"
+          : score < 75
+            ? "Buy"
+            : "Strong Buy";
   const buy = Math.round(rnd() * 8);
   const sell = Math.round(rnd() * 18);
   const neutral = Math.max(1, 26 - buy - sell);
@@ -80,7 +178,14 @@ export function gaugeFor(symbol: string, seedOffset = 0): GaugeData {
     sell,
     neutral,
     buy,
-    oscillatorLabel: score < 30 ? "Strong sell" : score < 45 ? "Sell" : score > 70 ? "Buy" : "Neutral",
+    oscillatorLabel:
+      score < 30
+        ? "Strong sell"
+        : score < 45
+          ? "Sell"
+          : score > 70
+            ? "Buy"
+            : "Neutral",
     maLabel: score < 45 ? "Sell" : score > 65 ? "Buy" : "Neutral",
     rsi,
     rsiLabel: rsi < 35 ? "Oversold" : rsi > 65 ? "Overbought" : "Neutral",
@@ -88,7 +193,9 @@ export function gaugeFor(symbol: string, seedOffset = 0): GaugeData {
     macdLabel: rnd() > 0.5 ? "Buy" : "Sell",
     sma50: Math.round(price * (0.98 + rnd() * 0.03) * 100) / 100,
     sma50Label: rnd() > 0.5 ? "Buy" : "Sell",
-    sma200: Math.round(price * (0.95 + rnd() * 0.04) * 10 ** decimals) / 10 ** decimals,
+    sma200:
+      Math.round(price * (0.95 + rnd() * 0.04) * 10 ** decimals) /
+      10 ** decimals,
     sma200Label: rnd() > 0.5 ? "Buy" : "Sell",
     tf: "1h",
   };
@@ -190,10 +297,38 @@ export interface PatternSetup {
 
 export function patternSetups(): PatternSetup[] {
   return [
-    { symbol: "BTCUSDT", pattern: "Bull flag", trigger: 82300, atrStatus: "1 ATR", bullish: true, decimals: 2 },
-    { symbol: "ETHUSDT", pattern: "Bull flag", trigger: 2546.66, atrStatus: "0.9 ATR", bullish: true, decimals: 2 },
-    { symbol: "SOLUSDT", pattern: "Bull flag", trigger: 107.48, atrStatus: "0.8 ATR", bullish: true, decimals: 2 },
-    { symbol: "XRPUSDT", pattern: "Bear flag", trigger: 1.31, atrStatus: "1.3 ATR", bullish: false, decimals: 2 },
+    {
+      symbol: "BTCUSDT",
+      pattern: "Bull flag",
+      trigger: 82300,
+      atrStatus: "1 ATR",
+      bullish: true,
+      decimals: 2,
+    },
+    {
+      symbol: "ETHUSDT",
+      pattern: "Bull flag",
+      trigger: 2546.66,
+      atrStatus: "0.9 ATR",
+      bullish: true,
+      decimals: 2,
+    },
+    {
+      symbol: "SOLUSDT",
+      pattern: "Bull flag",
+      trigger: 107.48,
+      atrStatus: "0.8 ATR",
+      bullish: true,
+      decimals: 2,
+    },
+    {
+      symbol: "XRPUSDT",
+      pattern: "Bear flag",
+      trigger: 1.31,
+      atrStatus: "1.3 ATR",
+      bullish: false,
+      decimals: 2,
+    },
   ];
 }
 
@@ -205,39 +340,99 @@ export interface NewsItem {
   highImpact: boolean;
 }
 
-const headlinePool: Record<string, Array<[string, string, NewsItem["sentiment"], boolean]>> = {
+const headlinePool: Record<
+  string,
+  Array<[string, string, NewsItem["sentiment"], boolean]>
+> = {
   BTCUSDT: [
-    ["Bitcoin ETF inflows hit record as spot demand climbs", "Binance News", "POS", true],
-    ["Whale exchange deposits rise; short-term leverage flushed", "Santiment", "NEU", false],
-    ["BTC options skew turns neutral ahead of CPI print", "CoinDesk", "NEG", true],
+    [
+      "Bitcoin ETF inflows hit record as spot demand climbs",
+      "Binance News",
+      "POS",
+      true,
+    ],
+    [
+      "Whale exchange deposits rise; short-term leverage flushed",
+      "Santiment",
+      "NEU",
+      false,
+    ],
+    [
+      "BTC options skew turns neutral ahead of CPI print",
+      "CoinDesk",
+      "NEG",
+      true,
+    ],
   ],
   ETHUSDT: [
-    ["Ethereum staking ratio reaches new all-time high", "TradingView", "POS", true],
-    ["Gas fees slide to multi-month lows as activity cools", "Glassnode", "NEU", false],
-    ["ETH/BTC downtrend persists despite spot inflows", "Etherscan", "NEG", false],
+    [
+      "Ethereum staking ratio reaches new all-time high",
+      "TradingView",
+      "POS",
+      true,
+    ],
+    [
+      "Gas fees slide to multi-month lows as activity cools",
+      "Glassnode",
+      "NEU",
+      false,
+    ],
+    [
+      "ETH/BTC downtrend persists despite spot inflows",
+      "Etherscan",
+      "NEG",
+      false,
+    ],
   ],
   XRPUSDT: [
-    ["Appeal ruling timeline narrows; volume compresses", "XRPL Monitor", "NEU", true],
-    ["Cross-border corridor volume prints monthly high", "Ripple Insights", "POS", false],
+    [
+      "Appeal ruling timeline narrows; volume compresses",
+      "XRPL Monitor",
+      "NEU",
+      true,
+    ],
+    [
+      "Cross-border corridor volume prints monthly high",
+      "Ripple Insights",
+      "POS",
+      false,
+    ],
   ],
   default: [
     ["Funding rates flip positive across majors", "Coinglass", "POS", false],
-    ["Liquidity map thins above Asian session highs", "Binance News", "NEG", true],
-    ["Stablecoin supply ratio ticks up — sideline cash building", "Santiment", "POS", false],
-    ["Large limit walls appear near round-number levels", "TradingView", "NEU", false],
+    [
+      "Liquidity map thins above Asian session highs",
+      "Binance News",
+      "NEG",
+      true,
+    ],
+    [
+      "Stablecoin supply ratio ticks up — sideline cash building",
+      "Santiment",
+      "POS",
+      false,
+    ],
+    [
+      "Large limit walls appear near round-number levels",
+      "TradingView",
+      "NEU",
+      false,
+    ],
   ],
 };
 
 export function newsFor(symbol: string): NewsItem[] {
   const pool = [...(headlinePool[symbol] ?? []), ...headlinePool.default];
   const ages = ["9h", "13h", "15h", "2h", "21h", "1h"];
-  return pool.slice(0, 6).map(([headline, source, sentiment, highImpact], i) => ({
-    headline,
-    source,
-    age: ages[i % ages.length],
-    sentiment,
-    highImpact,
-  }));
+  return pool
+    .slice(0, 6)
+    .map(([headline, source, sentiment, highImpact], i) => ({
+      headline,
+      source,
+      age: ages[i % ages.length],
+      sentiment,
+      highImpact,
+    }));
 }
 
 export interface RankRow {
@@ -252,28 +447,31 @@ export interface RankRow {
 }
 
 export function compositeRanks(): RankRow[] {
-  const base: Array<[string, string, number, number, number, number, string]> = [
-    ["GTUSD", "GateToken", 74, 0.6, 14.4, 38.4, "5/20"],
-    ["BNBUSDT", "BNB", 73, 0.6, 11.2, 29.6, "5/20"],
-    ["LTCUSDT", "Litecoin", 73, 0.6, 10.2, 20.0, "5/20"],
-    ["ASTERUSDT", "Aster", 71, 0.6, 17.4, 35.3, "5/20"],
-    ["PONS2USDT", "Pons", 70, 1.0, 479.6, 643.5, "5/20"],
-    ["ICPUSDT", "Internet Computer", 70, 0.6, 9.0, 24.8, "5/20"],
-    ["BTCUSDT", "Bitcoin", 69, 0.35, 2.4, 23.4, "5/20"],
-    ["CAKEUSDT", "PancakeSwap", 67, 0.6, 29.7, 58.0, "5/20"],
-    ["PYTHUSDT", "Pyth Network", 66, 0.44, 14.4, 39.1, "5/20"],
-    ["MNTUSDT", "Mantle", 66, 0.41, 14.5, 43.0, "5/20"],
-  ];
-  return base.map(([symbol, name, score, technicals, wkChange, moChange, volume], i) => ({
-    rank: i + 1,
-    symbol,
-    name,
-    score,
-    technicals,
-    wkChange,
-    moChange,
-    volume,
-  }));
+  const base: Array<[string, string, number, number, number, number, string]> =
+    [
+      ["GTUSD", "GateToken", 74, 0.6, 14.4, 38.4, "5/20"],
+      ["BNBUSDT", "BNB", 73, 0.6, 11.2, 29.6, "5/20"],
+      ["LTCUSDT", "Litecoin", 73, 0.6, 10.2, 20.0, "5/20"],
+      ["ASTERUSDT", "Aster", 71, 0.6, 17.4, 35.3, "5/20"],
+      ["PONS2USDT", "Pons", 70, 1.0, 479.6, 643.5, "5/20"],
+      ["ICPUSDT", "Internet Computer", 70, 0.6, 9.0, 24.8, "5/20"],
+      ["BTCUSDT", "Bitcoin", 69, 0.35, 2.4, 23.4, "5/20"],
+      ["CAKEUSDT", "PancakeSwap", 67, 0.6, 29.7, 58.0, "5/20"],
+      ["PYTHUSDT", "Pyth Network", 66, 0.44, 14.4, 39.1, "5/20"],
+      ["MNTUSDT", "Mantle", 66, 0.41, 14.5, 43.0, "5/20"],
+    ];
+  return base.map(
+    ([symbol, name, score, technicals, wkChange, moChange, volume], i) => ({
+      rank: i + 1,
+      symbol,
+      name,
+      score,
+      technicals,
+      wkChange,
+      moChange,
+      volume,
+    }),
+  );
 }
 
 export interface CvdCell {
@@ -281,15 +479,36 @@ export interface CvdCell {
   label: string;
 }
 
-export function cvdGrid(): { bins: CvdCell[]; buyPct: number; sellPct: number } {
+export function cvdGrid(): {
+  bins: CvdCell[];
+  buyPct: number;
+  sellPct: number;
+} {
   const rnd = seededRandom(20260905);
-  const labels = ["08", "10", "12", "14", "16", "18", "20", "22", "00", "02", "04", "06"];
+  const labels = [
+    "08",
+    "10",
+    "12",
+    "14",
+    "16",
+    "18",
+    "20",
+    "22",
+    "00",
+    "02",
+    "04",
+    "06",
+  ];
   const bins = labels.map((label) => ({
     delta: Math.round((rnd() * 2 - 1) * 100) / 100,
     label,
   }));
   const buys = bins.filter((b) => b.delta > 0).length;
-  return { bins, buyPct: Math.round((buys / bins.length) * 100), sellPct: 100 - Math.round((buys / bins.length) * 100) };
+  return {
+    bins,
+    buyPct: Math.round((buys / bins.length) * 100),
+    sellPct: 100 - Math.round((buys / bins.length) * 100),
+  };
 }
 
 /* Master-Twin orchestration suggestions (the "geopolitical shock" style reads) */

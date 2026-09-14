@@ -42,9 +42,12 @@ export function GridCanvas() {
       {widgets.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-white/[0.12] bg-white/[0.015] py-20 text-center">
           <LayoutGrid className="w-8 h-8 text-slate-700 mx-auto mb-3" />
-          <p className="text-sm text-slate-400">Canvas empty — open the Template Gallery to hydrate widgets,</p>
+          <p className="text-sm text-slate-400">
+            Canvas empty — open the Template Gallery to hydrate widgets,
+          </p>
           <p className="text-xs text-slate-600 mt-1">
-            or wait for the NIO Master Twin to dispatch <code className="text-slate-500">ui/hydrate_widget_template</code>.
+            or wait for the NIO Master Twin to dispatch{" "}
+            <code className="text-slate-500">ui/hydrate_widget_template</code>.
           </p>
         </div>
       ) : (

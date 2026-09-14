@@ -27,7 +27,10 @@ export function useMarketData<T>(
   fallback: T,
   refreshMs = 120_000,
 ): MarketState<T> {
-  const [state, setState] = useState<MarketState<T>>({ data: fallback, source: "loading" });
+  const [state, setState] = useState<MarketState<T>>({
+    data: fallback,
+    source: "loading",
+  });
   const fallbackRef = useRef(fallback);
   fallbackRef.current = fallback;
 
@@ -46,7 +49,10 @@ export function useMarketData<T>(
         const json = await res.json();
         if (cancelled) return;
         if (json?.ok && json?.data) {
-          setState({ data: mergeDeep(fallbackRef.current, json.data) as T, source: "live" });
+          setState({
+            data: mergeDeep(fallbackRef.current, json.data) as T,
+            source: "live",
+          });
         } else {
           setState({ data: fallbackRef.current, source: "sim" });
         }
@@ -72,8 +78,17 @@ export function useMarketData<T>(
 /** Shallow-merge live fields over the simulated baseline (keeps sim-only fields). */
 function mergeDeep<T>(base: T, live: unknown): T {
   if (Array.isArray(live)) return live as T;
-  if (live && typeof live === "object" && base && typeof base === "object" && !Array.isArray(base)) {
-    return { ...(base as Record<string, unknown>), ...(live as Record<string, unknown>) } as T;
+  if (
+    live &&
+    typeof live === "object" &&
+    base &&
+    typeof base === "object" &&
+    !Array.isArray(base)
+  ) {
+    return {
+      ...(base as Record<string, unknown>),
+      ...(live as Record<string, unknown>),
+    } as T;
   }
   return live as T;
 }
@@ -88,7 +103,10 @@ function mergeDeep<T>(base: T, live: unknown): T {
 /* TELEMETRY_PAYLOAD_FIELDS in Architect/core/events.py — keep the two in sync.*/
 
 /** Feed connection states — named after `FeedConnectionState` in `Architect/core/state_machine.py`. */
-export type FeedConnectionState = "CONNECTED_LIVE" | "STALE_CACHE_DEGRADED" | "DISCONNECTED";
+export type FeedConnectionState =
+  | "CONNECTED_LIVE"
+  | "STALE_CACHE_DEGRADED"
+  | "DISCONNECTED";
 
 export interface MicrostructurePayload {
   imbalance_ratio: number;
@@ -110,7 +128,10 @@ export interface RegimePayload {
   is_forbidden_zone: number;
 }
 
-export type TelemetryKind = "microstructure_tick" | "gravity_tick" | "regime_tick";
+export type TelemetryKind =
+  | "microstructure_tick"
+  | "gravity_tick"
+  | "regime_tick";
 
 export interface TelemetryRecord {
   kind: TelemetryKind;
@@ -148,7 +169,11 @@ export function parseTelemetryRecord(input: unknown): TelemetryRecord | null {
   if (!input || typeof input !== "object") return null;
   const event = input as Record<string, unknown>;
   const kind = event.kind;
-  if (kind !== "microstructure_tick" && kind !== "gravity_tick" && kind !== "regime_tick") {
+  if (
+    kind !== "microstructure_tick" &&
+    kind !== "gravity_tick" &&
+    kind !== "regime_tick"
+  ) {
     return null;
   }
   const payload = event.payload;
@@ -157,14 +182,32 @@ export function parseTelemetryRecord(input: unknown): TelemetryRecord | null {
 
   if (kind === "microstructure_tick") {
     const vector = fields.footprint_delta;
-    if (!Array.isArray(vector) || vector.length === 0 || !vector.every(isFiniteNumber)) return null;
-    if (!isFiniteNumber(fields.imbalance_ratio) || !isFiniteNumber(fields.depth_2pct)) return null;
+    if (
+      !Array.isArray(vector) ||
+      vector.length === 0 ||
+      !vector.every(isFiniteNumber)
+    )
+      return null;
+    if (
+      !isFiniteNumber(fields.imbalance_ratio) ||
+      !isFiniteNumber(fields.depth_2pct)
+    )
+      return null;
   } else if (kind === "gravity_tick") {
-    for (const key of ["l2_depth", "l3_iceberg", "polymarket_prob", "v_total"] as const) {
+    for (const key of [
+      "l2_depth",
+      "l3_iceberg",
+      "polymarket_prob",
+      "v_total",
+    ] as const) {
       if (!isFiniteNumber(fields[key])) return null;
     }
   } else {
-    for (const key of ["cluster_id", "confidence", "is_forbidden_zone"] as const) {
+    for (const key of [
+      "cluster_id",
+      "confidence",
+      "is_forbidden_zone",
+    ] as const) {
       if (!isFiniteNumber(fields[key])) return null;
     }
   }
@@ -179,14 +222,30 @@ export function parseTelemetryRecord(input: unknown): TelemetryRecord | null {
 }
 
 /** Pure state fold — kept free of hooks so the fail-closed rule is unit-testable. */
-export function nextTelemetry(snapshot: TelemetrySnapshot, record: TelemetryRecord, now: number): TelemetrySnapshot {
+export function nextTelemetry(
+  snapshot: TelemetrySnapshot,
+  record: TelemetryRecord,
+  now: number,
+): TelemetrySnapshot {
   if (record.kind === "microstructure_tick") {
-    return { ...snapshot, microstructure: record.payload as MicrostructurePayload, receivedAt: now };
+    return {
+      ...snapshot,
+      microstructure: record.payload as MicrostructurePayload,
+      receivedAt: now,
+    };
   }
   if (record.kind === "gravity_tick") {
-    return { ...snapshot, gravity: record.payload as GravityPayload, receivedAt: now };
+    return {
+      ...snapshot,
+      gravity: record.payload as GravityPayload,
+      receivedAt: now,
+    };
   }
-  return { ...snapshot, regime: record.payload as RegimePayload, receivedAt: now };
+  return {
+    ...snapshot,
+    regime: record.payload as RegimePayload,
+    receivedAt: now,
+  };
 }
 
 /**
@@ -204,7 +263,9 @@ export function nextFeedConnection(
 ): FeedConnectionState {
   if (!info.transportOpen) return "DISCONNECTED";
   if (info.lastTickAt === 0) return current; // connected, nothing received yet
-  return now - info.lastTickAt <= staleAfterMs ? "CONNECTED_LIVE" : "STALE_CACHE_DEGRADED";
+  return now - info.lastTickAt <= staleAfterMs
+    ? "CONNECTED_LIVE"
+    : "STALE_CACHE_DEGRADED";
 }
 
 /** Exponential backoff with a ceiling: 1s, 2s, 4s … capped at MAX_BACKOFF_MS. */
@@ -239,8 +300,10 @@ export function useEngineTelemetry(
   const staleAfterMs = options.staleAfterMs ?? STALE_AFTER_MS;
   const maxAttempts = options.maxAttempts ?? Number.POSITIVE_INFINITY;
 
-  const [telemetry, setTelemetry] = useState<TelemetrySnapshot>(EMPTY_TELEMETRY);
-  const [connection, setConnection] = useState<FeedConnectionState>("DISCONNECTED");
+  const [telemetry, setTelemetry] =
+    useState<TelemetrySnapshot>(EMPTY_TELEMETRY);
+  const [connection, setConnection] =
+    useState<FeedConnectionState>("DISCONNECTED");
   const [attempts, setAttempts] = useState(0);
   const [lastError, setLastError] = useState<string | null>(null);
 
@@ -280,7 +343,8 @@ export function useEngineTelemetry(
         opened = new EventSource(url);
       } catch (err) {
         applyConnection("DISCONNECTED");
-        if (!stale) setLastError(err instanceof Error ? err.message : String(err));
+        if (!stale)
+          setLastError(err instanceof Error ? err.message : String(err));
         scheduleReconnect();
         return;
       }
@@ -296,7 +360,9 @@ export function useEngineTelemetry(
         // not flip the badge to live on their own — only a real tick does that.
         applyConnection(lastTickAt === 0 ? "DISCONNECTED" : "CONNECTED_LIVE");
       };
-      opened.addEventListener("telemetry", (event) => onTelemetry((event as MessageEvent).data));
+      opened.addEventListener("telemetry", (event) =>
+        onTelemetry((event as MessageEvent).data),
+      );
       opened.onerror = () => {
         if (stale) return;
         transportOpen = false;
@@ -327,7 +393,12 @@ export function useEngineTelemetry(
     stalenessTimer = setInterval(() => {
       if (stale) return;
       applyConnection(
-        nextFeedConnection(current, { transportOpen, lastTickAt }, Date.now(), staleAfterMs),
+        nextFeedConnection(
+          current,
+          { transportOpen, lastTickAt },
+          Date.now(),
+          staleAfterMs,
+        ),
       );
     }, 1000);
 
@@ -366,7 +437,9 @@ export function useDataSourceStatus(): DataSource {
     let cancelled = false;
     async function check() {
       try {
-        const res = await fetch("/api/market/quote?symbol=BINANCE:BTCUSDT", { cache: "no-store" });
+        const res = await fetch("/api/market/quote?symbol=BINANCE:BTCUSDT", {
+          cache: "no-store",
+        });
         const json = await res.json();
         if (!cancelled) setStatus(json?.ok ? "live" : "sim");
       } catch {

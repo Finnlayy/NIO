@@ -1,10 +1,14 @@
 import type { CvdCell } from "../marketData";
-import { useEngineTelemetry, type MicrostructurePayload } from "../hooks/useMarketData";
+import {
+  useEngineTelemetry,
+  type MicrostructurePayload,
+} from "../hooks/useMarketData";
 import { FeedBadge, Insight } from "./bits";
 
 function cellStyle(delta: number) {
   const intensity = Math.min(1, Math.abs(delta));
-  if (delta > 0) return { background: `rgba(52,211,153,${0.12 + intensity * 0.5})` };
+  if (delta > 0)
+    return { background: `rgba(52,211,153,${0.12 + intensity * 0.5})` };
   return { background: `rgba(248,113,113,${0.12 + intensity * 0.5})` };
 }
 
@@ -16,7 +20,10 @@ function cellStyle(delta: number) {
  * `Architect/limbs/telemetry_feed.py`) — the same quantity this widget draws,
  * so no re-interpretation happens here.
  */
-export function cvdFromTelemetry(payload: MicrostructurePayload, labels?: string[]): {
+export function cvdFromTelemetry(
+  payload: MicrostructurePayload,
+  labels?: string[],
+): {
   bins: CvdCell[];
   buyPct: number;
   sellPct: number;
@@ -40,28 +47,49 @@ export function cvdFromTelemetry(payload: MicrostructurePayload, labels?: string
 
 export function CvdHeatmap({ data }: { data: Record<string, unknown> }) {
   const { telemetry, connection } = useEngineTelemetry();
-  const live = connection === "CONNECTED_LIVE" && telemetry.microstructure !== null;
+  const live =
+    connection === "CONNECTED_LIVE" && telemetry.microstructure !== null;
 
   // Fail-closed: the engine's footprint replaces the template mock only while a
   // tick arrived inside the staleness window. On STALE/DISCONNECTED the grid
   // keeps the last shape it was hydrated with and the badge says so — no value
   // here is presented as live that the bus did not just deliver.
   const fromFeed = live ? cvdFromTelemetry(telemetry.microstructure!) : null;
-  const bins = (fromFeed?.bins ?? (data.bins as CvdCell[])) ?? [];
+  const bins = fromFeed?.bins ?? (data.bins as CvdCell[]) ?? [];
   const buyPct = fromFeed?.buyPct ?? (data.buyPct as number);
   const sellPct = fromFeed?.sellPct ?? (data.sellPct as number);
 
-  const imbalance = buyPct > sellPct ? "buy-side pressure dominant" : "sell-side pressure dominant";
+  const imbalance =
+    buyPct > sellPct
+      ? "buy-side pressure dominant"
+      : "sell-side pressure dominant";
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-3 mb-2.5">
         <span className="text-[11px] text-slate-400">
-          Buy pressure <b className="text-emerald-400 tabular-nums">{buyPct}%</b>
+          Buy pressure{" "}
+          <b className="text-emerald-400 tabular-nums">{buyPct}%</b>
         </span>
         <div className="flex-1 h-1.5 rounded-full overflow-hidden flex relative">
-          <div className="absolute inset-y-0 left-0 h-full" style={{ width: "100%", background: "#34d399", transform: `scaleX(${buyPct / 100})`, transformOrigin: "left" }} />
-          <div className="absolute inset-y-0 right-0 h-full" style={{ width: "100%", background: "#f87171", transform: `scaleX(${sellPct / 100})`, transformOrigin: "right" }} />
+          <div
+            className="absolute inset-y-0 left-0 h-full"
+            style={{
+              width: "100%",
+              background: "#34d399",
+              transform: `scaleX(${buyPct / 100})`,
+              transformOrigin: "left",
+            }}
+          />
+          <div
+            className="absolute inset-y-0 right-0 h-full"
+            style={{
+              width: "100%",
+              background: "#f87171",
+              transform: `scaleX(${sellPct / 100})`,
+              transformOrigin: "right",
+            }}
+          />
         </div>
         <span className="text-[11px] text-slate-400">
           <b className="text-rose-400 tabular-nums">{sellPct}%</b> Sell
@@ -81,7 +109,9 @@ export function CvdHeatmap({ data }: { data: Record<string, unknown> }) {
                 {bin.delta > 0 ? "▲" : "▼"}
               </span>
             </div>
-            <span className="text-[8px] text-slate-600 font-mono">{bin.label}</span>
+            <span className="text-[8px] text-slate-600 font-mono">
+              {bin.label}
+            </span>
           </div>
         ))}
       </div>
@@ -89,14 +119,19 @@ export function CvdHeatmap({ data }: { data: Record<string, unknown> }) {
       <Insight>
         {live ? (
           <>
-            Engine-Orderflow: {imbalance} (Imbalance {fromFeed!.imbalanceRatio.toFixed(3)} bei{" "}
+            Engine-Orderflow: {imbalance} (Imbalance{" "}
+            {fromFeed!.imbalanceRatio.toFixed(3)} bei{" "}
             {(fromFeed!.depthPct * 100).toFixed(1)} % Buchtiefe). Quelle:{" "}
-            <code>MicrostructureEngine.calculate_footprint_map</code> über den UDS-Event-Bus.
+            <code>MicrostructureEngine.calculate_footprint_map</code> über den
+            UDS-Event-Bus.
           </>
         ) : (
           <>
-            Kein Live-Orderflow ({connection === "STALE_CACHE_DEGRADED" ? "Cache veraltet" : "Bus getrennt"}) —
-            gezeigt wird die Vorlagen-Hydratation, nicht der Markt.
+            Kein Live-Orderflow (
+            {connection === "STALE_CACHE_DEGRADED"
+              ? "Cache veraltet"
+              : "Bus getrennt"}
+            ) — gezeigt wird die Vorlagen-Hydratation, nicht der Markt.
           </>
         )}
       </Insight>

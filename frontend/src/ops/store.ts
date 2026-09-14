@@ -5,7 +5,8 @@ import type { McpEvent, McpHydrateParams, WidgetInstance } from "./types";
 import { templateById, templateByKey } from "./widgetRegistry";
 
 let seq = 0;
-const nextId = () => `w-${(++seq).toString(36)}-${Date.now().toString(36).slice(-4)}`;
+const nextId = () =>
+  `w-${(++seq).toString(36)}-${Date.now().toString(36).slice(-4)}`;
 
 /* ------------------------------------------------------------------ */
 /* MCP event bus                                                       */
@@ -50,7 +51,10 @@ function applyEvent(event: McpEvent) {
     if (!instance) return;
     store.upsert(instance);
   } else if (event.method === "ui/update_widget_state") {
-    const p = event.params as { instanceId?: string; data?: Record<string, unknown> };
+    const p = event.params as {
+      instanceId?: string;
+      data?: Record<string, unknown>;
+    };
     if (p.instanceId && p.data) store.mergeData(p.instanceId, p.data);
   } else if (event.method === "ui/remove_widget") {
     const p = event.params as { instanceId?: string };
@@ -104,8 +108,7 @@ export const useGridStore = create<GridState>((set) => ({
   consoleOpen: false,
   galleryOpen: false,
 
-  pushLog: (event) =>
-    set((s) => ({ mcpLog: [...s.mcpLog.slice(-59), event] })),
+  pushLog: (event) => set((s) => ({ mcpLog: [...s.mcpLog.slice(-59), event] })),
 
   upsert: (instance) =>
     set((s) => {
@@ -114,7 +117,12 @@ export const useGridStore = create<GridState>((set) => ({
         widgets: existing
           ? s.widgets.map((w) =>
               w.id === instance.id
-                ? { ...w, data: instance.data, title: instance.title, symbol: instance.symbol }
+                ? {
+                    ...w,
+                    data: instance.data,
+                    title: instance.title,
+                    symbol: instance.symbol,
+                  }
                 : w,
             )
           : [...s.widgets, instance],
@@ -133,7 +141,14 @@ export const useGridStore = create<GridState>((set) => ({
 
   reorder: (from, to) =>
     set((s) => {
-      if (from === to || from < 0 || to < 0 || from >= s.widgets.length || to >= s.widgets.length) return s;
+      if (
+        from === to ||
+        from < 0 ||
+        to < 0 ||
+        from >= s.widgets.length ||
+        to >= s.widgets.length
+      )
+        return s;
       const widgets = [...s.widgets];
       const [moved] = widgets.splice(from, 1);
       if (moved.pinned) return s; // pinned widgets resist reordering
@@ -143,12 +158,16 @@ export const useGridStore = create<GridState>((set) => ({
 
   toggleMinimize: (id) =>
     set((s) => ({
-      widgets: s.widgets.map((w) => (w.id === id ? { ...w, minimized: !w.minimized } : w)),
+      widgets: s.widgets.map((w) =>
+        w.id === id ? { ...w, minimized: !w.minimized } : w,
+      ),
     })),
 
   togglePin: (id) =>
     set((s) => ({
-      widgets: s.widgets.map((w) => (w.id === id ? { ...w, pinned: !w.pinned } : w)),
+      widgets: s.widgets.map((w) =>
+        w.id === id ? { ...w, pinned: !w.pinned } : w,
+      ),
     })),
 
   cycleSpan: (id) =>
@@ -164,7 +183,9 @@ export const useGridStore = create<GridState>((set) => ({
   cycleHeight: (id) =>
     set((s) => ({
       widgets: s.widgets.map((w) =>
-        w.id === id ? { ...w, height: w.height === "compact" ? "tall" : "compact" } : w,
+        w.id === id
+          ? { ...w, height: w.height === "compact" ? "tall" : "compact" }
+          : w,
       ),
     })),
 
@@ -182,7 +203,9 @@ export function dispatchHydrateTemplate(templateId: `TPL_${string}`) {
   if (!tpl) return;
   emitMcp("ui/hydrate_widget_template", "gallery", {
     templateKey: tpl.key,
-    title: tpl.defaultSymbol ? `${tpl.title} · ${tpl.defaultSymbol}` : tpl.title,
+    title: tpl.defaultSymbol
+      ? `${tpl.title} · ${tpl.defaultSymbol}`
+      : tpl.title,
     symbol: tpl.defaultSymbol,
     span: tpl.defaultSpan,
   });

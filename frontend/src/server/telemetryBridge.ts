@@ -43,7 +43,10 @@ export interface RegimePayload {
   is_forbidden_zone: number;
 }
 
-export type TelemetryKind = "microstructure_tick" | "gravity_tick" | "regime_tick";
+export type TelemetryKind =
+  | "microstructure_tick"
+  | "gravity_tick"
+  | "regime_tick";
 
 export interface TelemetryRecord {
   kind: TelemetryKind;
@@ -75,7 +78,11 @@ export function parseTelemetryLine(line: string): TelemetryRecord | null {
   if (!raw || typeof raw !== "object") return null;
   const event = raw as Record<string, unknown>;
   const kind = event.event_kind;
-  if (kind !== "microstructure_tick" && kind !== "gravity_tick" && kind !== "regime_tick") {
+  if (
+    kind !== "microstructure_tick" &&
+    kind !== "gravity_tick" &&
+    kind !== "regime_tick"
+  ) {
     return null;
   }
   const payload = event.payload;
@@ -84,14 +91,32 @@ export function parseTelemetryLine(line: string): TelemetryRecord | null {
 
   if (kind === "microstructure_tick") {
     const vector = fields.footprint_delta;
-    if (!Array.isArray(vector) || vector.length === 0 || !vector.every(isFiniteNumber)) return null;
-    if (!isFiniteNumber(fields.imbalance_ratio) || !isFiniteNumber(fields.depth_2pct)) return null;
+    if (
+      !Array.isArray(vector) ||
+      vector.length === 0 ||
+      !vector.every(isFiniteNumber)
+    )
+      return null;
+    if (
+      !isFiniteNumber(fields.imbalance_ratio) ||
+      !isFiniteNumber(fields.depth_2pct)
+    )
+      return null;
   } else if (kind === "gravity_tick") {
-    for (const key of ["l2_depth", "l3_iceberg", "polymarket_prob", "v_total"] as const) {
+    for (const key of [
+      "l2_depth",
+      "l3_iceberg",
+      "polymarket_prob",
+      "v_total",
+    ] as const) {
       if (!isFiniteNumber(fields[key])) return null;
     }
   } else {
-    for (const key of ["cluster_id", "confidence", "is_forbidden_zone"] as const) {
+    for (const key of [
+      "cluster_id",
+      "confidence",
+      "is_forbidden_zone",
+    ] as const) {
       if (!isFiniteNumber(fields[key])) return null;
     }
   }
@@ -121,9 +146,13 @@ export function resolvePaths() {
   const root = (process.env.NIO_REPO_ROOT ?? "").replace(/\/+$/, "");
   return {
     root,
-    feed: process.env.NIO_TELEMETRY_FEED ?? `${root}/Architect/limbs/telemetry_feed.py`,
-    consumer: process.env.NIO_TELEMETRY_CONSUMER ?? `${root}/scripts/uds_to_stdout.py`,
-    socketPath: process.env.NIO_TELEMETRY_SOCKET ?? `${root}/runtime/telemetry.sock`,
+    feed:
+      process.env.NIO_TELEMETRY_FEED ??
+      `${root}/Architect/limbs/telemetry_feed.py`,
+    consumer:
+      process.env.NIO_TELEMETRY_CONSUMER ?? `${root}/scripts/uds_to_stdout.py`,
+    socketPath:
+      process.env.NIO_TELEMETRY_SOCKET ?? `${root}/runtime/telemetry.sock`,
   };
 }
 
@@ -155,7 +184,9 @@ class TelemetryHub {
   }
 
   get lastAgeMs(): number {
-    return this.lastRecordAt === 0 ? Number.POSITIVE_INFINITY : Date.now() - this.lastRecordAt;
+    return this.lastRecordAt === 0
+      ? Number.POSITIVE_INFINITY
+      : Date.now() - this.lastRecordAt;
   }
 
   get buffer(): readonly TelemetryRecord[] {
@@ -223,7 +254,8 @@ class TelemetryHub {
     this.lastRecordAt = Date.now();
     this.respawnAttempts = 0;
     this.ring.push(record);
-    if (this.ring.length > RING_SIZE) this.ring.splice(0, this.ring.length - RING_SIZE);
+    if (this.ring.length > RING_SIZE)
+      this.ring.splice(0, this.ring.length - RING_SIZE);
     for (const listener of [...this.listeners]) {
       try {
         listener(record);
@@ -235,7 +267,11 @@ class TelemetryHub {
 
   private spawnConsumer(): void {
     if (this.stopping || alive(this.consumer)) return;
-    const child = launch(process.env.NIO_PYTHON ?? "python3", [this.consumerScript, "--socket", this.socketPath]);
+    const child = launch(process.env.NIO_PYTHON ?? "python3", [
+      this.consumerScript,
+      "--socket",
+      this.socketPath,
+    ]);
     if (!child) {
       this.log("consumer", `spawn failed for ${this.consumerScript}`);
       this.scheduleRespawn();
@@ -260,7 +296,10 @@ class TelemetryHub {
       this.scheduleRespawn();
     });
     child.on("exit", () => {
-      this.log("consumer", `exit code ${child.exitCode ?? "?"} signal ${child.signalCode ?? "-"}`);
+      this.log(
+        "consumer",
+        `exit code ${child.exitCode ?? "?"} signal ${child.signalCode ?? "-"}`,
+      );
       this.consumer = null;
       this.scheduleRespawn();
     });
@@ -289,7 +328,10 @@ class TelemetryHub {
       this.scheduleRespawn();
     });
     child.on("exit", () => {
-      this.log("producer", `exit code ${child.exitCode ?? "?"} signal ${child.signalCode ?? "-"}`);
+      this.log(
+        "producer",
+        `exit code ${child.exitCode ?? "?"} signal ${child.signalCode ?? "-"}`,
+      );
       this.producer = null;
       this.scheduleRespawn();
     });
@@ -335,7 +377,10 @@ const HUB_KEY = Symbol.for("nio.telemetry.hub");
 
 /** Singleton across hot reloads — two consumers would fight over the socket. */
 export function getTelemetryHub(): TelemetryHub {
-  const holder = globalThis as unknown as Record<symbol, { hub?: TelemetryHub }>;
+  const holder = globalThis as unknown as Record<
+    symbol,
+    { hub?: TelemetryHub }
+  >;
   if (!holder[HUB_KEY]) holder[HUB_KEY] = {};
   const slot = holder[HUB_KEY];
   if (!slot.hub) slot.hub = new TelemetryHub(resolvePaths());

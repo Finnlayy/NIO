@@ -110,7 +110,9 @@ export const LogRow = memo(function LogRow({ event }: { event: McpEvent }) {
     <div className="flex gap-3 items-start hover:bg-white/[0.03] rounded px-1.5 py-0.5">
       <span className="text-slate-600 shrink-0">{event.timestamp}</span>
       <span className="text-violet-300/80 shrink-0">{event.source}</span>
-      <span className={`shrink-0 ${toneClass(event.method)}`}>{event.method}</span>
+      <span className={`shrink-0 ${toneClass(event.method)}`}>
+        {event.method}
+      </span>
       <span className="text-slate-500 break-all">
         {JSON.stringify(event.params)}
       </span>

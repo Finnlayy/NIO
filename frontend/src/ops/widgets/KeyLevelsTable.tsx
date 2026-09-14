@@ -10,7 +10,13 @@ const kindColor: Record<KeyLevel["kind"], string> = {
   now: "#818cf8",
 };
 
-export function KeyLevelsTable({ data, symbol }: { data: Record<string, unknown>; symbol?: string }) {
+export function KeyLevelsTable({
+  data,
+  symbol,
+}: {
+  data: Record<string, unknown>;
+  symbol?: string;
+}) {
   const levels = (data.levels as KeyLevel[]) ?? [];
 
   return (
@@ -20,12 +26,19 @@ export function KeyLevelsTable({ data, symbol }: { data: Record<string, unknown>
           const color = kindColor[lvl.kind];
           const isNow = lvl.kind === "now";
           return (
-            <div key={`${lvl.label}-${i}`} className="flex items-center gap-2 text-[11px]">
+            <div
+              key={`${lvl.label}-${i}`}
+              className="flex items-center gap-2 text-[11px]"
+            >
               <span
                 className="w-24 shrink-0 truncate font-medium flex items-center gap-1.5"
                 style={{ color: isNow ? "#818cf8" : color }}
               >
-                {lvl.kind === "user" && <span className="text-[8px] px-1 rounded bg-blue-500/20 text-blue-300">YOURS</span>}
+                {lvl.kind === "user" && (
+                  <span className="text-[8px] px-1 rounded bg-blue-500/20 text-blue-300">
+                    YOURS
+                  </span>
+                )}
                 {lvl.label}
               </span>
               <span className="flex-1 h-[6px] relative">
@@ -36,7 +49,10 @@ export function KeyLevelsTable({ data, symbol }: { data: Record<string, unknown>
                     className="absolute top-1/2 -translate-y-1/2 rounded-[2px] border"
                     style={{
                       width: `${Math.max(10, lvl.width * 100)}%`,
-                      marginLeft: lvl.distancePct < 0 ? `${Math.max(0, (1 - lvl.width) * 100 - 40)}%` : "0",
+                      marginLeft:
+                        lvl.distancePct < 0
+                          ? `${Math.max(0, (1 - lvl.width) * 100 - 40)}%`
+                          : "0",
                       borderColor: color,
                       background: `${color}22`,
                       height: "8px",
@@ -61,8 +77,8 @@ export function KeyLevelsTable({ data, symbol }: { data: Record<string, unknown>
 
       <Insight>
         {symbol ? `${symbol} trades at the Now line. ` : ""}
-        Nearest resistance above / support below frame the invalidation and first target —
-        levels flagged YOURS are pinned from the task preset.
+        Nearest resistance above / support below frame the invalidation and
+        first target — levels flagged YOURS are pinned from the task preset.
       </Insight>
     </div>
   );

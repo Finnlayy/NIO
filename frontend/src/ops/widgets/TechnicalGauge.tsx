@@ -13,7 +13,13 @@ function labelColor(v: string) {
   return "text-amber-300";
 }
 
-export function TechnicalGauge({ data, symbol }: { data: Record<string, unknown>; symbol?: string }) {
+export function TechnicalGauge({
+  data,
+  symbol,
+}: {
+  data: Record<string, unknown>;
+  symbol?: string;
+}) {
   const sim = (data.gauge as GaugeData) ?? null;
   const { data: live, source } = useMarketData(
     "technicals",
@@ -33,9 +39,18 @@ export function TechnicalGauge({ data, symbol }: { data: Record<string, unknown>
   return (
     <div className="flex flex-col h-full">
       <div className="relative">
-        <svg viewBox="0 0 100 58" className="w-full max-w-[260px] mx-auto block">
+        <svg
+          viewBox="0 0 100 58"
+          className="w-full max-w-[260px] mx-auto block"
+        >
           {/* track */}
-          <path d="M 14 50 A 36 36 0 0 1 86 50" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="7" strokeLinecap="round" />
+          <path
+            d="M 14 50 A 36 36 0 0 1 86 50"
+            fill="none"
+            stroke="rgba(255,255,255,0.08)"
+            strokeWidth="7"
+            strokeLinecap="round"
+          />
           {/* value arc: from strong-sell (180°) up to needle */}
           <path
             d="M 14 50 A 36 36 0 0 1 86 50"
@@ -47,13 +62,31 @@ export function TechnicalGauge({ data, symbol }: { data: Record<string, unknown>
             strokeDashoffset={113 * (1 - g.score / 100)}
             opacity="0.9"
           />
-          <line x1="50" y1="50" x2={needleX} y2={needleY} stroke="#e2e8f0" strokeWidth="1.6" strokeLinecap="round" />
+          <line
+            x1="50"
+            y1="50"
+            x2={needleX}
+            y2={needleY}
+            stroke="#e2e8f0"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
           <circle cx="50" cy="50" r="2.4" fill="#e2e8f0" />
-          <text x="14" y="58" fontSize="6" fill="#64748b" textAnchor="middle">Strong sell</text>
-          <text x="32" y="26" fontSize="6" fill="#64748b" textAnchor="middle">Sell</text>
-          <text x="50" y="13" fontSize="6" fill="#64748b" textAnchor="middle">Neutral</text>
-          <text x="68" y="26" fontSize="6" fill="#64748b" textAnchor="middle">Buy</text>
-          <text x="86" y="58" fontSize="6" fill="#64748b" textAnchor="middle">Strong buy</text>
+          <text x="14" y="58" fontSize="6" fill="#64748b" textAnchor="middle">
+            Strong sell
+          </text>
+          <text x="32" y="26" fontSize="6" fill="#64748b" textAnchor="middle">
+            Sell
+          </text>
+          <text x="50" y="13" fontSize="6" fill="#64748b" textAnchor="middle">
+            Neutral
+          </text>
+          <text x="68" y="26" fontSize="6" fill="#64748b" textAnchor="middle">
+            Buy
+          </text>
+          <text x="86" y="58" fontSize="6" fill="#64748b" textAnchor="middle">
+            Strong buy
+          </text>
         </svg>
         <p className="flex items-center justify-center gap-2 text-sm font-bold -mt-2">
           <span className={labelColor(g.verdict)}>{g.verdict}</span>
@@ -69,15 +102,35 @@ export function TechnicalGauge({ data, symbol }: { data: Record<string, unknown>
 
       {/* Summary bars */}
       <div className="mt-3 space-y-2">
-        <BarLine label="Oscillators" value={g.oscillatorLabel} score={g.score} />
+        <BarLine
+          label="Oscillators"
+          value={g.oscillatorLabel}
+          score={g.score}
+        />
         <BarLine label="Moving averages" value={g.maLabel} score={g.score} />
       </div>
 
       <dl className="mt-3 space-y-2 text-[11px]">
-        <IndicatorRow name="RSI (14)" value={g.rsi.toFixed(2)} verdict={g.rsiLabel} />
-        <IndicatorRow name="MACD Level (12,26)" value={g.macd.toFixed(2)} verdict={g.macdLabel} />
-        <IndicatorRow name="SMA (50)" value={g.sma50.toLocaleString()} verdict={g.sma50Label} />
-        <IndicatorRow name="SMA (200)" value={g.sma200.toLocaleString()} verdict={g.sma200Label} />
+        <IndicatorRow
+          name="RSI (14)"
+          value={g.rsi.toFixed(2)}
+          verdict={g.rsiLabel}
+        />
+        <IndicatorRow
+          name="MACD Level (12,26)"
+          value={g.macd.toFixed(2)}
+          verdict={g.macdLabel}
+        />
+        <IndicatorRow
+          name="SMA (50)"
+          value={g.sma50.toLocaleString()}
+          verdict={g.sma50Label}
+        />
+        <IndicatorRow
+          name="SMA (200)"
+          value={g.sma200.toLocaleString()}
+          verdict={g.sma200Label}
+        />
       </dl>
 
       <div className="mt-auto pt-3 grid grid-cols-3 gap-1.5 text-center">
@@ -98,17 +151,40 @@ export function TechnicalGauge({ data, symbol }: { data: Record<string, unknown>
   );
 }
 
-function Score({ n, label, tone }: { n: number; label: string; tone: "sell" | "neutral" | "buy" }) {
-  const cls = tone === "sell" ? "text-rose-400" : tone === "buy" ? "text-emerald-400" : "text-slate-200";
+function Score({
+  n,
+  label,
+  tone,
+}: {
+  n: number;
+  label: string;
+  tone: "sell" | "neutral" | "buy";
+}) {
+  const cls =
+    tone === "sell"
+      ? "text-rose-400"
+      : tone === "buy"
+        ? "text-emerald-400"
+        : "text-slate-200";
   return (
     <div>
       <p className={`text-xl font-bold tabular-nums ${cls}`}>{n}</p>
-      <p className="text-[9px] uppercase tracking-wide text-slate-600">{label}</p>
+      <p className="text-[9px] uppercase tracking-wide text-slate-600">
+        {label}
+      </p>
     </div>
   );
 }
 
-function BarLine({ label, value, score }: { label: string; value: string; score: number }) {
+function BarLine({
+  label,
+  value,
+  score,
+}: {
+  label: string;
+  value: string;
+  score: number;
+}) {
   const pct = score;
   const vCls = labelColor(value);
   return (
@@ -130,13 +206,23 @@ function BarLine({ label, value, score }: { label: string; value: string; score:
   );
 }
 
-function IndicatorRow({ name, value, verdict }: { name: string; value: string; verdict: string }) {
+function IndicatorRow({
+  name,
+  value,
+  verdict,
+}: {
+  name: string;
+  value: string;
+  verdict: string;
+}) {
   return (
     <div className="flex items-center justify-between border-b border-white/[0.05] pb-1.5">
       <dt className="text-slate-500">{name}</dt>
       <dd className="flex items-center gap-3">
         <span className="text-slate-300 font-mono tabular-nums">{value}</span>
-        <span className={`w-12 text-right ${labelColor(verdict)}`}>{verdict}</span>
+        <span className={`w-12 text-right ${labelColor(verdict)}`}>
+          {verdict}
+        </span>
       </dd>
     </div>
   );

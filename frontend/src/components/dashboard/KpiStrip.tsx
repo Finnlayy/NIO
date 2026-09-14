@@ -45,10 +45,30 @@ export function KpiStrip({
 }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
-      <Kpi icon={<Boxes className="w-4 h-4" />} value={nodeCount} label="Nodes Online" sub="graph registered" />
-      <Kpi icon={<Waypoints className="w-4 h-4" />} value={domainCount} label="Active Domains" sub="knowledge clusters" />
-      <Kpi icon={<Bot className="w-4 h-4" />} value={agentCount} label="Agents Routed" sub="specialist roles" />
-      <Kpi icon={<Share2 className="w-4 h-4" />} value={edgeCount} label="Links Active" sub="mesh connections" />
+      <Kpi
+        icon={<Boxes className="w-4 h-4" />}
+        value={nodeCount}
+        label="Nodes Online"
+        sub="graph registered"
+      />
+      <Kpi
+        icon={<Waypoints className="w-4 h-4" />}
+        value={domainCount}
+        label="Active Domains"
+        sub="knowledge clusters"
+      />
+      <Kpi
+        icon={<Bot className="w-4 h-4" />}
+        value={agentCount}
+        label="Agents Routed"
+        sub="specialist roles"
+      />
+      <Kpi
+        icon={<Share2 className="w-4 h-4" />}
+        value={edgeCount}
+        label="Links Active"
+        sub="mesh connections"
+      />
       <Kpi
         icon={<Gauge className="w-4 h-4" />}
         value={latencyMs === null ? "—" : `${latencyMs}ms`}

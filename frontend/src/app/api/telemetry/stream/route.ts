@@ -55,7 +55,9 @@ export async function GET(_req: NextRequest) {
       // Keeps intermediaries from closing an idle stream and tells the client
       // the transport is alive even when the producer is silent.
       const keepalive = setInterval(() => {
-        safe(`event: ping\ndata: ${JSON.stringify({ state: hub.state, at: Date.now() })}\n\n`);
+        safe(
+          `event: ping\ndata: ${JSON.stringify({ state: hub.state, at: Date.now() })}\n\n`,
+        );
       }, KEEPALIVE_MS);
       keepalive.unref?.();
 
