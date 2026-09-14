@@ -5,7 +5,13 @@
  *
  *   node .test-build/__tests__/measure-report.js
  */
-const { React, renderToStaticMarkup, seedDefaultLayout, resetStore, countOpenTags } = require("./helpers");
+const {
+  React,
+  renderToStaticMarkup,
+  seedDefaultLayout,
+  resetStore,
+  countOpenTags,
+} = require("./helpers");
 const { useGridStore } = require("../ops/store");
 const { WidgetFrame } = require("../ops/widgets/WidgetFrame");
 const { renderWidget } = require("../ops/widgets");

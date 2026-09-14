@@ -31,7 +31,9 @@ export const widgetTemplates: WidgetTemplate[] = [
       tickers,
       advancers: tickers.filter((t) => t.changePct > 0).length,
       decliners: tickers.filter((t) => t.changePct < 0).length,
-      leaders: [...tickers].sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct)).slice(0, 6),
+      leaders: [...tickers]
+        .sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct))
+        .slice(0, 6),
       insight:
         "Risk-on tone across crypto: breadth tiles mostly green, led by NEAR Protocol (+13.02%) and Litecoin (+8.13%). MAGMA is the standout (+24%) while ACE is the drag (-11.73%).",
     }),
@@ -115,7 +117,12 @@ export const widgetTemplates: WidgetTemplate[] = [
     defaultSpan: 3,
     defaultHeight: "tall",
     dataFactory: () => ({
-      nodes: networkNodes.map((n) => ({ id: n.id, label: n.label, kind: n.kind, color: n.color })),
+      nodes: networkNodes.map((n) => ({
+        id: n.id,
+        label: n.label,
+        kind: n.kind,
+        color: n.color,
+      })),
       edges: networkEdges,
     }),
   },

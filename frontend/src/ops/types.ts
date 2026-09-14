@@ -48,7 +48,10 @@ export interface McpHydrateParams {
 export interface McpEvent {
   id: number;
   timestamp: string;
-  method: "ui/hydrate_widget_template" | "ui/update_widget_state" | "ui/remove_widget";
+  method:
+    | "ui/hydrate_widget_template"
+    | "ui/update_widget_state"
+    | "ui/remove_widget";
   source: string;
   params: Record<string, unknown>;
 }

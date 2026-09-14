@@ -19,12 +19,21 @@ const {
   collectByType,
   hasText,
 } = require("./helpers");
-const { McpConsole, McpConsoleLog, ConsoleEventCount, LogRow } = require("../ops/McpConsole");
+const {
+  McpConsole,
+  McpConsoleLog,
+  ConsoleEventCount,
+  LogRow,
+} = require("../ops/McpConsole");
 const { emitMcp } = require("../ops/store");
 const { LogScroller } = require("../ops/consoleScroll");
 
 test("LogRow is a memoized boundary", () => {
-  assert.equal(LogRow.$$typeof, Symbol.for("react.memo"), "rows must be React.memo-wrapped");
+  assert.equal(
+    LogRow.$$typeof,
+    Symbol.for("react.memo"),
+    "rows must be React.memo-wrapped",
+  );
 });
 
 test("closed console subscribes to nothing log-related", () => {
@@ -36,7 +45,10 @@ test("closed console subscribes to nothing log-related", () => {
     "no mcpLog subscription while closed",
   );
 
-  emitMcp("ui/update_widget_state", "test", { instanceId: "x", data: { a: 1 } });
+  emitMcp("ui/update_widget_state", "test", {
+    instanceId: "x",
+    data: { a: 1 },
+  });
   const tree = m.render(McpConsole);
   assert.ok(
     !m.lastSnapshots.includes(useGridStore.getState().mcpLog),
@@ -48,8 +60,12 @@ test("closed console subscribes to nothing log-related", () => {
 
 test("open console renders one row per event, keyed and identity-stable", () => {
   resetStore();
-  emitMcp("ui/hydrate_widget_template", "master-twin", { templateKey: "quantum-envelope-chart" });
-  emitMcp("ui/hydrate_widget_template", "master-twin", { templateKey: "orderflow-cvd-heatmap" });
+  emitMcp("ui/hydrate_widget_template", "master-twin", {
+    templateKey: "quantum-envelope-chart",
+  });
+  emitMcp("ui/hydrate_widget_template", "master-twin", {
+    templateKey: "orderflow-cvd-heatmap",
+  });
   emitMcp("ui/remove_widget", "ui-canvas", { instanceId: "ghost" });
   const log = useGridStore.getState().mcpLog;
   useGridStore.getState().setConsoleOpen(true);
@@ -61,12 +77,26 @@ test("open console renders one row per event, keyed and identity-stable", () => 
   const rows = collectByType(m.render(McpConsoleLog), LogRow);
   assert.equal(rows.length, 3);
   // React coerces numeric keys to strings.
-  assert.deepEqual(rows.map((r) => r.key), log.map((e) => String(e.id)));
-  rows.forEach((row, i) => assert.equal(row.props.event, log[i], "row gets the immutable event object"));
+  assert.deepEqual(
+    rows.map((r) => r.key),
+    log.map((e) => String(e.id)),
+  );
+  rows.forEach((row, i) =>
+    assert.equal(
+      row.props.event,
+      log[i],
+      "row gets the immutable event object",
+    ),
+  );
 
   const countEl = mount().render(ConsoleEventCount);
-  const countChildren = Array.isArray(countEl.props.children) ? countEl.props.children : [countEl.props.children];
-  assert.ok(countChildren.some((c) => c === 3), "event count shows 3");
+  const countChildren = Array.isArray(countEl.props.children)
+    ? countEl.props.children
+    : [countEl.props.children];
+  assert.ok(
+    countChildren.some((c) => c === 3),
+    "event count shows 3",
+  );
   resetStore();
 });
 
@@ -85,22 +115,36 @@ test("appending one event churns exactly one row", () => {
   for (let i = 0; i < before.length; i++) {
     if (!shallowEqual(before[i].props, after[i].props)) changed.push(i);
   }
-  assert.deepEqual(changed, [], "existing rows keep identical props (memo skip)");
+  assert.deepEqual(
+    changed,
+    [],
+    "existing rows keep identical props (memo skip)",
+  );
   const last = useGridStore.getState().mcpLog.at(-1);
-  assert.equal(after[after.length - 1].props.event, last, "new row carries the new event");
+  assert.equal(
+    after[after.length - 1].props.event,
+    last,
+    "new row carries the new event",
+  );
   resetStore();
 });
 
 test("log row renders timestamp, source, method and params JSON with tone class", () => {
   resetStore();
-  emitMcp("ui/hydrate_widget_template", "master-twin", { templateKey: "vault-earn-arbitrage", span: 6 });
+  emitMcp("ui/hydrate_widget_template", "master-twin", {
+    templateKey: "vault-earn-arbitrage",
+    span: 6,
+  });
   const event = useGridStore.getState().mcpLog.at(-1);
   const html = renderToStaticMarkup(React.createElement(LogRow, { event }));
   assert.ok(html.includes(event.timestamp), "timestamp");
   assert.ok(html.includes("master-twin"), "source");
   assert.ok(html.includes("ui/hydrate_widget_template"), "method");
   // React escapes quotes in text nodes.
-  assert.ok(html.includes("&quot;templateKey&quot;:&quot;vault-earn-arbitrage&quot;"), "params JSON");
+  assert.ok(
+    html.includes("&quot;templateKey&quot;:&quot;vault-earn-arbitrage&quot;"),
+    "params JSON",
+  );
   assert.ok(html.includes("text-cyan-300"), "hydrate tone");
   resetStore();
 });

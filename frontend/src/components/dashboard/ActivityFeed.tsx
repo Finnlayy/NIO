@@ -1,5 +1,12 @@
 import React, { useEffect, useRef } from "react";
-import { Activity, AlertTriangle, ArrowRight, CheckCircle2, Info, Radio } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  Info,
+  Radio,
+} from "lucide-react";
 import { ModuleHeader, Tile } from "./shared";
 import type { FeedEvent, FeedStatus } from "./types";
 
@@ -11,7 +18,11 @@ const statusIcon: Record<FeedStatus, React.ReactNode> = {
   trace: <ArrowRight className="w-3 h-3 text-slate-500" />,
 };
 
-export const ActivityFeed = React.memo(function ActivityFeed({ events }: { events: FeedEvent[] }) {
+export const ActivityFeed = React.memo(function ActivityFeed({
+  events,
+}: {
+  events: FeedEvent[];
+}) {
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,7 +52,9 @@ export const ActivityFeed = React.memo(function ActivityFeed({ events }: { event
             <span className="mt-0.5 shrink-0">{statusIcon[event.status]}</span>
             <div className="min-w-0 flex-1">
               <p className="text-[11px] text-slate-300 leading-snug">
-                <span className="text-slate-500 font-mono mr-1.5">{event.timestamp}</span>
+                <span className="text-slate-500 font-mono mr-1.5">
+                  {event.timestamp}
+                </span>
                 <span className="font-medium">{event.label}</span>
                 {event.detail && (
                   <span className="text-slate-500"> · {event.detail}</span>

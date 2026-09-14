@@ -11,7 +11,8 @@ type FrameAnchor = { scrollIntoView: (options: ScrollIntoViewOptions) => void };
 type ScheduleFrame = (callback: () => void) => void;
 
 const defaultScheduleFrame: ScheduleFrame = (callback) => {
-  if (typeof requestAnimationFrame === "function") requestAnimationFrame(callback);
+  if (typeof requestAnimationFrame === "function")
+    requestAnimationFrame(callback);
   else setTimeout(callback, 16);
 };
 

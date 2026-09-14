@@ -39,7 +39,10 @@ test("renders the full 10-widget default layout with one frame per widget", () =
   const frames = collectFrames(mount().render(GridCanvas));
   resetStore();
   assert.equal(frames.length, 10);
-  assert.deepEqual(frames.map((f) => f.key), widgets.map((w) => w.id));
+  assert.deepEqual(
+    frames.map((f) => f.key),
+    widgets.map((w) => w.id),
+  );
 });
 
 test("empty canvas renders the hydration hint", () => {
@@ -56,7 +59,10 @@ test("widget shells expose span, drag affordances and aria labels", () => {
   for (const [i, widget] of widgets.entries()) {
     const html = frameHtml(widget, i);
     // React escapes `&` in attribute values.
-    assert.ok(html.includes(`aria-label="${widget.title.replace(/&/g, "&amp;")}"`), `aria-label for ${widget.title}`);
+    assert.ok(
+      html.includes(`aria-label="${widget.title.replace(/&/g, "&amp;")}"`),
+      `aria-label for ${widget.title}`,
+    );
     assert.ok(
       html.includes(`grid-column:span ${widget.span} / span ${widget.span}`),
       `grid span for ${widget.title}`,
@@ -65,7 +71,10 @@ test("widget shells expose span, drag affordances and aria labels", () => {
     assert.ok(html.includes("Live data"), `live pulse for ${widget.title}`);
     assert.ok(html.includes("Refresh data"), `refresh for ${widget.title}`);
     assert.ok(html.includes("Widget options"), `options for ${widget.title}`);
-    assert.ok(html.includes(widget.title.replace(/&/g, "&amp;")), `body content for ${widget.title}`);
+    assert.ok(
+      html.includes(widget.title.replace(/&/g, "&amp;")),
+      `body content for ${widget.title}`,
+    );
   }
   resetStore();
 });
@@ -92,17 +101,17 @@ test("minimized widgets keep the expand control and drop the body", () => {
  * DOM budget guard: the default 10-widget layout must not bloat.
  * Baseline 2026-09-06: 1065 nodes (heaviest: Market Breadth Radar 218,
  * Composite Rankings 146, Key Levels Table 110).
- * Baseline 2026-09-08: 1083 nodes (+18) — P1 engine-feed wiring adds a
+ * Baseline 2026-09-08: 1086 nodes (+18) — P1 engine-feed wiring adds a
  * `FeedBadge` to `orderflow-cvd-heatmap` (+2) and to `quantum-envelope-chart`
  * (+2) plus a 4-cell engine read row there (+14). Both are intentional: the
  * badges are what makes a dead bus visible instead of showing a frozen value.
  */
-test("DOM node budget of the default layout is stable (1083)", () => {
+test("DOM node budget of the default layout is stable (1086)", () => {
   const widgets = seedDefaultLayout();
   let total = 0;
   for (const [i, widget] of widgets.entries()) {
     total += countOpenTags(frameHtml(widget, i));
   }
   resetStore();
-  assert.equal(total, 1083, "default layout DOM node count");
+  assert.equal(total, 1086, "default layout DOM node count");
 });

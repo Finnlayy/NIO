@@ -12,7 +12,10 @@ import { KeyLevelsTable } from "./KeyLevelsTable";
 import { TechnicalGauge } from "./TechnicalGauge";
 import { CompositeRankings } from "./CompositeRankings";
 
-type Renderer = ComponentType<{ data: Record<string, unknown>; symbol?: string }>;
+type Renderer = ComponentType<{
+  data: Record<string, unknown>;
+  symbol?: string;
+}>;
 
 const renderers: Record<string, Renderer> = {
   "market-breadth-radar": MarketBreadthRadar,
@@ -34,7 +37,8 @@ export function renderWidget(widget: WidgetInstance) {
   if (!Cmp) {
     return (
       <p className="text-[12px] text-slate-500 p-2">
-        Unknown template <code>{widget.templateId}</code> — awaiting renderer registration.
+        Unknown template <code>{widget.templateId}</code> — awaiting renderer
+        registration.
       </p>
     );
   }

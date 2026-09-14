@@ -1,12 +1,22 @@
 import { Sparkline, Pct, LiveBadge, FeedBadge } from "./bits";
-import { toTvSymbol, useMarketData, useEngineTelemetry } from "../hooks/useMarketData";
+import {
+  toTvSymbol,
+  useMarketData,
+  useEngineTelemetry,
+} from "../hooks/useMarketData";
 
 interface TfStat {
   tf: string;
   pct: number;
 }
 
-export function EnvelopeChart({ data, symbol }: { data: Record<string, unknown>; symbol?: string }) {
+export function EnvelopeChart({
+  data,
+  symbol,
+}: {
+  data: Record<string, unknown>;
+  symbol?: string;
+}) {
   const simSpark = (data.spark as number[]) ?? [];
   const simPrice = (data.price as number) ?? 0;
   const simChange = (data.changePct as number) ?? 0;
@@ -45,7 +55,10 @@ export function EnvelopeChart({ data, symbol }: { data: Record<string, unknown>;
             {String(data.symbol ?? symbol ?? "—")} · {venue}
           </p>
           <p className="text-2xl font-bold text-white tabular-nums mt-0.5">
-            {price.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}{" "}
+            {price.toLocaleString("en-US", {
+              minimumFractionDigits: decimals,
+              maximumFractionDigits: decimals,
+            })}{" "}
             <span className="text-sm font-normal text-slate-400">USD</span>
           </p>
         </div>
@@ -59,14 +72,25 @@ export function EnvelopeChart({ data, symbol }: { data: Record<string, unknown>;
       </div>
 
       <div className="flex-1 min-h-[150px] -mx-1">
-        <Sparkline values={spark} color={downTrend ? "#e5484d" : "#2fae87"} height={170} />
+        <Sparkline
+          values={spark}
+          color={downTrend ? "#e5484d" : "#2fae87"}
+          height={170}
+        />
       </div>
 
       <div className="grid grid-cols-6 gap-1 text-center">
         {tfStats.map((s) => (
-          <div key={s.tf} className="rounded-md bg-white/[0.03] border border-white/[0.05] py-1.5">
-            <p className="text-[9px] uppercase tracking-wide text-slate-600">{s.tf}</p>
-            <p className={`text-[10px] font-mono ${s.pct >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+          <div
+            key={s.tf}
+            className="rounded-md bg-white/[0.03] border border-white/[0.05] py-1.5"
+          >
+            <p className="text-[9px] uppercase tracking-wide text-slate-600">
+              {s.tf}
+            </p>
+            <p
+              className={`text-[10px] font-mono ${s.pct >= 0 ? "text-emerald-400" : "text-rose-400"}`}
+            >
               {s.pct >= 0 ? "+" : ""}
               {s.pct.toFixed(1)}%
             </p>
@@ -79,14 +103,33 @@ export function EnvelopeChart({ data, symbol }: { data: Record<string, unknown>;
           fail-closed means no frozen number is shown as if it were current. */}
       <div className="grid grid-cols-4 gap-1 text-center border-t border-white/[0.06] pt-2.5 mt-1">
         {[
-          { label: "V total", value: gravity ? gravity.v_total.toFixed(3) : "—" },
-          { label: "L2 depth", value: gravity ? gravity.l2_depth.toFixed(2) : "—" },
-          { label: "Imbalance", value: micro ? micro.imbalance_ratio.toFixed(3) : "—" },
-          { label: "Confidence", value: regime ? `${(regime.confidence * 100).toFixed(0)}%` : "—" },
+          {
+            label: "V total",
+            value: gravity ? gravity.v_total.toFixed(3) : "—",
+          },
+          {
+            label: "L2 depth",
+            value: gravity ? gravity.l2_depth.toFixed(2) : "—",
+          },
+          {
+            label: "Imbalance",
+            value: micro ? micro.imbalance_ratio.toFixed(3) : "—",
+          },
+          {
+            label: "Confidence",
+            value: regime ? `${(regime.confidence * 100).toFixed(0)}%` : "—",
+          },
         ].map((cell) => (
-          <div key={cell.label} className="rounded-md bg-white/[0.03] border border-white/[0.05] py-1.5">
-            <p className="text-[9px] uppercase tracking-wide text-slate-600">{cell.label}</p>
-            <p className={`text-[10px] font-mono ${feedLive ? "text-white" : "text-slate-600"}`}>
+          <div
+            key={cell.label}
+            className="rounded-md bg-white/[0.03] border border-white/[0.05] py-1.5"
+          >
+            <p className="text-[9px] uppercase tracking-wide text-slate-600">
+              {cell.label}
+            </p>
+            <p
+              className={`text-[10px] font-mono ${feedLive ? "text-white" : "text-slate-600"}`}
+            >
               {cell.value}
             </p>
           </div>
@@ -101,12 +144,20 @@ export function EnvelopeChart({ data, symbol }: { data: Record<string, unknown>;
 
       <div className="grid grid-cols-2 gap-2 border-t border-white/[0.06] pt-2.5 mt-1">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.12em] text-slate-600">Market cap</p>
-          <p className="text-sm font-semibold text-white tabular-nums">{marketCap}</p>
+          <p className="text-[10px] uppercase tracking-[0.12em] text-slate-600">
+            Market cap
+          </p>
+          <p className="text-sm font-semibold text-white tabular-nums">
+            {marketCap}
+          </p>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-[0.12em] text-slate-600">Volume</p>
-          <p className="text-sm font-semibold text-white tabular-nums">{volume}</p>
+          <p className="text-[10px] uppercase tracking-[0.12em] text-slate-600">
+            Volume
+          </p>
+          <p className="text-sm font-semibold text-white tabular-nums">
+            {volume}
+          </p>
         </div>
       </div>
     </div>

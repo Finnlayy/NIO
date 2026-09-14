@@ -10,7 +10,11 @@ import { useDataSourceStatus } from "@/ops/hooks/useMarketData";
 import { widgetTemplates } from "@/ops/widgetRegistry";
 
 /* Boot layout the Master Twin hydrates on session start */
-const BOOT_LAYOUT: Array<{ key: string; span?: 2 | 3 | 4 | 6; title?: string }> = [
+const BOOT_LAYOUT: Array<{
+  key: string;
+  span?: 2 | 3 | 4 | 6;
+  title?: string;
+}> = [
   { key: "market-breadth-radar", span: 6 },
   { key: "technical-signal-gauge", span: 2 },
   { key: "custom-dynamic-table", span: 2 },
@@ -43,7 +47,11 @@ export default function OpsGridPage() {
       setTimeout(() => {
         emitMcp("ui/hydrate_widget_template", "master-twin/boot", {
           templateKey: entry.key,
-          title: entry.title ?? (tpl.defaultSymbol ? `${tpl.title} · ${tpl.defaultSymbol}` : tpl.title),
+          title:
+            entry.title ??
+            (tpl.defaultSymbol
+              ? `${tpl.title} · ${tpl.defaultSymbol}`
+              : tpl.title),
           symbol: tpl.defaultSymbol,
           span: entry.span ?? tpl.defaultSpan,
         });
@@ -60,8 +68,13 @@ export default function OpsGridPage() {
         if (w.templateId === "TPL_02" && Array.isArray(w.data.spark)) {
           const spark = w.data.spark as number[];
           const last = spark[spark.length - 1] ?? 0.5;
-          const next = Math.min(0.98, Math.max(0.02, last + (Math.random() - 0.48) * 0.08));
-          useGridStore.getState().mergeData(w.id, { spark: [...spark.slice(1), next] });
+          const next = Math.min(
+            0.98,
+            Math.max(0.02, last + (Math.random() - 0.48) * 0.08),
+          );
+          useGridStore
+            .getState()
+            .mergeData(w.id, { spark: [...spark.slice(1), next] });
         }
       });
     }, 2200);
@@ -81,7 +94,9 @@ export default function OpsGridPage() {
         pinned: w.pinned,
       })),
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -125,10 +140,18 @@ export default function OpsGridPage() {
           >
             <span
               className={`w-1.5 h-1.5 rounded-full ${
-                dataSource === "live" ? "bg-emerald-400 pulse-dot" : dataSource === "sim" ? "bg-amber-400" : "bg-slate-500 animate-pulse"
+                dataSource === "live"
+                  ? "bg-emerald-400 pulse-dot"
+                  : dataSource === "sim"
+                    ? "bg-amber-400"
+                    : "bg-slate-500 animate-pulse"
               }`}
             />
-            {dataSource === "live" ? "tvremix · Live" : dataSource === "sim" ? "Simulated" : "Connecting"}
+            {dataSource === "live"
+              ? "tvremix · Live"
+              : dataSource === "sim"
+                ? "Simulated"
+                : "Connecting"}
           </span>
           <button
             onClick={() => setConsoleOpen(!consoleOpen)}
@@ -164,8 +187,9 @@ export default function OpsGridPage() {
         <GridCanvas />
 
         <p className="text-center text-[10px] text-slate-700 mt-6">
-          AI can make mistakes. Not financial advice — simulated telemetry for orchestration demos.
-          Drag widgets by their grip to reorder · pin to lock · resize from the options menu.
+          AI can make mistakes. Not financial advice — simulated telemetry for
+          orchestration demos. Drag widgets by their grip to reorder · pin to
+          lock · resize from the options menu.
         </p>
       </div>
 

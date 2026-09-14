@@ -20,10 +20,16 @@ export function CompositeRankings({ data }: { data: Record<string, unknown> }) {
       <div className="space-y-1">
         {rows.map((row) => (
           <div key={row.symbol} className="flex items-center gap-3 py-1 group">
-            <span className="w-5 text-[11px] text-slate-600 text-right tabular-nums shrink-0">{row.rank}</span>
+            <span className="w-5 text-[11px] text-slate-600 text-right tabular-nums shrink-0">
+              {row.rank}
+            </span>
             <div className="w-24 shrink-0">
-              <p className="text-[12px] font-semibold text-slate-100 font-mono leading-tight">{row.symbol}</p>
-              <p className="text-[10px] text-slate-500 leading-tight truncate">{row.name}</p>
+              <p className="text-[12px] font-semibold text-slate-100 font-mono leading-tight">
+                {row.symbol}
+              </p>
+              <p className="text-[10px] text-slate-500 leading-tight truncate">
+                {row.name}
+              </p>
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[10px] text-slate-500 truncate">
@@ -34,9 +40,13 @@ export function CompositeRankings({ data }: { data: Record<string, unknown> }) {
                     : row.technicals > 0
                       ? "Buy technicals"
                       : "Setup"}
-                {row.wkChange ? ` · ${row.wkChange > 0 ? "+" : ""}${row.wkChange.toFixed(1)}% wk, ${row.moChange > 0 ? "+" : ""}${row.moChange.toFixed(1)}% mo` : ""}
+                {row.wkChange
+                  ? ` · ${row.wkChange > 0 ? "+" : ""}${row.wkChange.toFixed(1)}% wk, ${row.moChange > 0 ? "+" : ""}${row.moChange.toFixed(1)}% mo`
+                  : ""}
               </p>
-              <p className="text-[9px] text-slate-600">Weakest: Volume {row.volume}</p>
+              <p className="text-[9px] text-slate-600">
+                Weakest: Volume {row.volume}
+              </p>
               <div className="h-1 rounded-full bg-white/[0.06] mt-0.5 overflow-hidden">
                 <div
                   className="h-full rounded-full"
@@ -47,13 +57,16 @@ export function CompositeRankings({ data }: { data: Record<string, unknown> }) {
                 />
               </div>
             </div>
-            <span className="w-8 text-right text-[13px] font-bold text-slate-100 tabular-nums shrink-0">{row.score}</span>
+            <span className="w-8 text-right text-[13px] font-bold text-slate-100 tabular-nums shrink-0">
+              {row.score}
+            </span>
           </div>
         ))}
       </div>
       <Insight>
-        From a scan of the top 100 coins by market rank: every top name shares the same volume drag
-        (0.0–0.3x average participation). Momentum carries the score; volume is the weak axis.
+        From a scan of the top 100 coins by market rank: every top name shares
+        the same volume drag (0.0–0.3x average participation). Momentum carries
+        the score; volume is the weak axis.
       </Insight>
     </div>
   );

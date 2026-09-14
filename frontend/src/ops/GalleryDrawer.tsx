@@ -4,7 +4,11 @@ import { useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Library, Plus, X, Zap } from "lucide-react";
 import { widgetTemplates } from "./widgetRegistry";
-import { dispatchHydrateTemplate, dispatchOrchestratorScenario, useGridStore } from "./store";
+import {
+  dispatchHydrateTemplate,
+  dispatchOrchestratorScenario,
+  useGridStore,
+} from "./store";
 
 const categoryColor: Record<string, string> = {
   Market: "text-emerald-300 bg-emerald-400/10 border-emerald-400/20",
@@ -48,8 +52,12 @@ export function GalleryDrawer() {
           >
             <div className="flex items-center gap-2.5 px-5 h-14 border-b border-white/[0.07]">
               <Library className="w-4 h-4 text-cyan-300" />
-              <h2 className="text-sm font-semibold text-white">Widget Template Gallery</h2>
-              <span className="text-[10px] text-slate-500">{widgetTemplates.length} blueprints</span>
+              <h2 className="text-sm font-semibold text-white">
+                Widget Template Gallery
+              </h2>
+              <span className="text-[10px] text-slate-500">
+                {widgetTemplates.length} blueprints
+              </span>
               <button
                 onClick={() => setOpen(false)}
                 className="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/[0.07]"
@@ -69,8 +77,11 @@ export function GalleryDrawer() {
                   Simulate Master-Twin scenario
                 </p>
                 <p className="text-[11px] text-amber-200/60 mt-1 leading-relaxed">
-                  “Geopolitical shock detected → needs Liquidity Radar” — dispatches
-                  <code className="mx-1 text-amber-300/80">ui/hydrate_widget_template</code>
+                  “Geopolitical shock detected → needs Liquidity Radar” —
+                  dispatches
+                  <code className="mx-1 text-amber-300/80">
+                    ui/hydrate_widget_template
+                  </code>
                   from the orchestrator.
                 </p>
               </button>
@@ -82,15 +93,24 @@ export function GalleryDrawer() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] font-mono text-cyan-300/80">{tpl.id}</span>
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${categoryColor[tpl.category]}`}>
+                      <span className="text-[10px] font-mono text-cyan-300/80">
+                        {tpl.id}
+                      </span>
+                      <span
+                        className={`text-[9px] px-1.5 py-0.5 rounded-full border ${categoryColor[tpl.category]}`}
+                      >
                         {tpl.category}
                       </span>
                     </div>
-                    <p className="text-[13px] font-semibold text-slate-100 mt-1">{tpl.title}</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{tpl.tagline}</p>
+                    <p className="text-[13px] font-semibold text-slate-100 mt-1">
+                      {tpl.title}
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+                      {tpl.tagline}
+                    </p>
                     <p className="text-[10px] text-slate-600 font-mono mt-1.5 truncate">
-                      key: {tpl.key} · span {tpl.defaultSpan}/6 · {tpl.defaultHeight}
+                      key: {tpl.key} · span {tpl.defaultSpan}/6 ·{" "}
+                      {tpl.defaultHeight}
                     </p>
                   </div>
                   <button
@@ -106,8 +126,9 @@ export function GalleryDrawer() {
             </div>
 
             <p className="px-5 py-3 border-t border-white/[0.07] text-[10px] text-slate-600 leading-relaxed">
-              Templates are declarative blueprints. Hydration sends a JSON-RPC payload with the
-              template key + live state; the canvas materializes the widget with a spring animation.
+              Templates are declarative blueprints. Hydration sends a JSON-RPC
+              payload with the template key + live state; the canvas
+              materializes the widget with a spring animation.
             </p>
           </motion.aside>
         </>

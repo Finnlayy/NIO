@@ -18,15 +18,24 @@ export function LiveBadge({ source }: { source: DataSource }) {
           ? "text-emerald-300 border-emerald-400/30 bg-emerald-400/10"
           : "text-slate-500 border-white/10 bg-white/[0.04]"
       }`}
-      title={live ? "Live data via tvremix MCP" : "Simulated data (live feed unavailable)"}
+      title={
+        live
+          ? "Live data via tvremix MCP"
+          : "Simulated data (live feed unavailable)"
+      }
     >
-      <span className={`w-1 h-1 rounded-full ${live ? "bg-emerald-400 pulse-dot" : "bg-slate-600"}`} />
+      <span
+        className={`w-1 h-1 rounded-full ${live ? "bg-emerald-400 pulse-dot" : "bg-slate-600"}`}
+      />
       {live ? "Live" : "Sim"}
     </span>
   );
 }
 
-const FEED_BADGE_STYLE: Record<FeedConnectionState, { label: string; className: string; dot: string; title: string }> = {
+const FEED_BADGE_STYLE: Record<
+  FeedConnectionState,
+  { label: string; className: string; dot: string; title: string }
+> = {
   CONNECTED_LIVE: {
     label: "Feed live",
     className: "text-emerald-300 border-emerald-400/30 bg-emerald-400/10",
@@ -37,13 +46,15 @@ const FEED_BADGE_STYLE: Record<FeedConnectionState, { label: string; className: 
     label: "Stale cache",
     className: "text-amber-300 border-amber-400/30 bg-amber-400/10",
     dot: "bg-amber-400",
-    title: "Transport steht, aber seit über 3 s kein Tick — Werte sind eingefroren",
+    title:
+      "Transport steht, aber seit über 3 s kein Tick — Werte sind eingefroren",
   },
   DISCONNECTED: {
     label: "Disconnected",
     className: "text-rose-300 border-rose-400/30 bg-rose-400/10",
     dot: "bg-rose-400",
-    title: "Kein Event-Bus — die Werte darunter sind der letzte Stand, nicht der Markt",
+    title:
+      "Kein Event-Bus — die Werte darunter sind der letzte Stand, nicht der Markt",
   },
 };
 
@@ -66,7 +77,13 @@ export function FeedBadge({ connection }: { connection: FeedConnectionState }) {
   );
 }
 
-export function Pct({ value, signed = true }: { value: number; signed?: boolean }) {
+export function Pct({
+  value,
+  signed = true,
+}: {
+  value: number;
+  signed?: boolean;
+}) {
   const cls = value >= 0 ? up : down;
   const text = `${signed && value > 0 ? "+" : ""}${value.toFixed(2)}%`;
   return <span className={`font-mono font-medium ${cls}`}>{text}</span>;
@@ -101,9 +118,16 @@ export function Sparkline({
   const w = 320;
   const h = 100;
   const step = w / Math.max(1, values.length - 1);
-  const pts = values.map((v, i) => `${(i * step).toFixed(1)},${(h - v * h).toFixed(1)}`).join(" ");
+  const pts = values
+    .map((v, i) => `${(i * step).toFixed(1)},${(h - v * h).toFixed(1)}`)
+    .join(" ");
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ width: "100%", height }} className="block">
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
+      style={{ width: "100%", height }}
+      className="block"
+    >
       {fill && (
         <>
           <defs>
@@ -112,10 +136,19 @@ export function Sparkline({
               <stop offset="100%" stopColor={color} stopOpacity="0" />
             </linearGradient>
           </defs>
-          <polygon points={`0,${h} ${pts} ${w},${h}`} fill={`url(#${gradientId})`} />
+          <polygon
+            points={`0,${h} ${pts} ${w},${h}`}
+            fill={`url(#${gradientId})`}
+          />
         </>
       )}
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+      <polyline
+        points={pts}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.6"
+        vectorEffect="non-scaling-stroke"
+      />
     </svg>
   );
 }

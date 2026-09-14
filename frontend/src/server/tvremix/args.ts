@@ -25,7 +25,9 @@ async function findTool(name: string): Promise<any | null> {
     const tail = name.replace(/^get_|^fetch_/, "");
     return (
       tools.find((t: any) => t.name?.includes(tail)) ??
-      tools.find((t: any) => tail.includes(t.name?.replace(/^get_|^fetch_/, ""))) ??
+      tools.find((t: any) =>
+        tail.includes(t.name?.replace(/^get_|^fetch_/, "")),
+      ) ??
       null
     );
   } catch {
@@ -58,7 +60,8 @@ export async function smartCall(
       if (req in args) continue;
       const type = props[req]?.type;
       if (type === "string") args[req] = provided.symbol ?? "";
-      else if (type === "number" || type === "integer") args[req] = Number(provided.limit ?? 100);
+      else if (type === "number" || type === "integer")
+        args[req] = Number(provided.limit ?? 100);
       else if (type === "boolean") args[req] = false;
     }
     const toolName = tool.name as string;
@@ -66,6 +69,8 @@ export async function smartCall(
   }
 
   // No schema available (tools/list failed) — call with the canonical name.
-  const clean = Object.fromEntries(Object.entries(provided).filter(([, v]) => v !== undefined));
+  const clean = Object.fromEntries(
+    Object.entries(provided).filter(([, v]) => v !== undefined),
+  );
   return callTool(canonicalName, clean as Record<string, unknown>, ttlMs);
 }

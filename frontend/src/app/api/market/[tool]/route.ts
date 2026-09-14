@@ -49,8 +49,13 @@ async function handle(tool: string, req: NextRequest) {
       const symbolsParam = params.get("symbols");
       const { tickers: watchlist } = await import("@/ops/marketData");
       const symbols = symbolsParam
-        ? symbolsParam.split(",").map((s) => s.trim()).filter(Boolean)
-        : watchlist.slice(0, 12).map((t) => `BINANCE:${t.symbol.replace(".P", "")}`);
+        ? symbolsParam
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : watchlist
+            .slice(0, 12)
+            .map((t) => `BINANCE:${t.symbol.replace(".P", "")}`);
 
       const results = await Promise.all(
         symbols.map(async (sym) => {
@@ -72,10 +77,18 @@ async function handle(tool: string, req: NextRequest) {
       if (!live.length) throw new McpError(502, "No live quotes returned");
       const byBase: Record<string, { price: number; changePct: number }> = {};
       for (const q of live) {
-        const base = q.symbol.split(":").pop()!.replace(/USDT$/, "").replace(/\.P$/, "");
+        const base = q.symbol
+          .split(":")
+          .pop()!
+          .replace(/USDT$/, "")
+          .replace(/\.P$/, "");
         byBase[base] = { price: q.price, changePct: q.changePct };
       }
-      return NextResponse.json({ ok: true, source: "tvremix", data: { byBase } });
+      return NextResponse.json({
+        ok: true,
+        source: "tvremix",
+        data: { byBase },
+      });
     }
 
     case "ohlcv": {
@@ -101,11 +114,7 @@ async function handle(tool: string, req: NextRequest) {
     }
 
     case "news": {
-      const raw = await smartCall(
-        "get_news",
-        { symbol, limit: 8 },
-        TTL.news,
-      );
+      const raw = await smartCall("get_news", { symbol, limit: 8 }, TTL.news);
       const data = adaptNews(raw);
       if (!data) throw new McpError(502, "News shape not recognized");
       return NextResponse.json({ ok: true, source: "tvremix", data });
@@ -133,7 +142,10 @@ async function handle(tool: string, req: NextRequest) {
   }
 }
 
-export async function GET(req: NextRequest, ctx: { params: Promise<{ tool: string }> }) {
+export async function GET(
+  req: NextRequest,
+  ctx: { params: Promise<{ tool: string }> },
+) {
   const { tool } = await ctx.params;
   try {
     return await handle(tool, req);

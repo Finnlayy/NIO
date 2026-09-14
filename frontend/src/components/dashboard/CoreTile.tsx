@@ -38,15 +38,24 @@ export function CoreTile({
           <BrainCircuit className="w-5 h-5" style={{ color: color.text }} />
         </span>
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-white truncate">{node.label}</p>
-          <p className="text-[11px] text-slate-500">Cross-domain routing · middleware pipeline</p>
+          <p className="text-sm font-semibold text-white truncate">
+            {node.label}
+          </p>
+          <p className="text-[11px] text-slate-500">
+            Cross-domain routing · middleware pipeline
+          </p>
         </div>
       </div>
 
-      <p className="text-xs leading-relaxed text-slate-400 mt-3">{node.description}</p>
+      <p className="text-xs leading-relaxed text-slate-400 mt-3">
+        {node.description}
+      </p>
 
       <div className="mt-auto pt-3 grid grid-cols-3 gap-2 text-center">
-        <Stat value={networkNodes.filter((n) => n.kind !== "core").length} label="linked nodes" />
+        <Stat
+          value={networkNodes.filter((n) => n.kind !== "core").length}
+          label="linked nodes"
+        />
         <Stat value={node.sources ?? 0} label="sources" />
         <Stat value={node.tags?.length ?? 0} label="capabilities" />
       </div>
@@ -63,7 +72,9 @@ function Stat({ value, label }: { value: number; label: string }) {
   return (
     <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] py-2">
       <p className="text-sm font-semibold text-white tabular-nums">{value}</p>
-      <p className="text-[9px] uppercase tracking-[0.12em] text-slate-600">{label}</p>
+      <p className="text-[9px] uppercase tracking-[0.12em] text-slate-600">
+        {label}
+      </p>
     </div>
   );
 }
