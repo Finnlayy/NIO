@@ -22,6 +22,7 @@
  */
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type { Readable } from "node:stream";
+import { backoffDelayMs } from "../ops/backoff";
 
 /** Wire contract — mirrors `TELEMETRY_PAYLOAD_FIELDS` in `Architect/core/events.py`. */
 export interface MicrostructurePayload {
