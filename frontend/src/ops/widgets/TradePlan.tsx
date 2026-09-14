@@ -9,7 +9,7 @@ export function TradePlan({ data, symbol }: { data: Record<string, unknown>; sym
 
   return (
     <div className="flex flex-col h-full">
-      <button className="self-start px-3 py-1.5 rounded-lg border border-indigo-400/40 text-indigo-300 text-[11px] font-medium hover:bg-indigo-400/10 transition-colors">
+      <button className="self-start px-3 py-1.5 rounded-lg border border-indigo-400/40 text-indigo-300 text-[11px] font-medium hover:bg-indigo-400/10 ">
         I took this trade
       </button>
 

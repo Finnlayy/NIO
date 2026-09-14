@@ -149,9 +149,9 @@ export const WidgetFrameContent = memo(function WidgetFrameContent({ widget }: {
       <AnimatePresence initial={false}>
         {!widget.minimized && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.22, ease: "easeInOut" }}
             className="overflow-hidden"
           >
@@ -181,7 +181,7 @@ function IconBtn({
         e.stopPropagation();
         onClick();
       }}
-      className="p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-white/[0.07] transition-colors"
+      className="p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-white/[0.07] "
     >
       {children}
     </button>
@@ -203,7 +203,7 @@ function MenuItem({
     <button
       type="button"
       onClick={onClick}
-      className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-left transition-colors ${
+      className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-left  ${
         danger
           ? "text-rose-300 hover:bg-rose-500/10"
           : "text-slate-300 hover:bg-white/[0.06]"

@@ -84,7 +84,7 @@ export function TechnicalGauge({ data, symbol }: { data: Record<string, unknown>
         {(["1D", "4h", "1h"] as const).map((tf) => (
           <button
             key={tf}
-            className={`rounded-md py-1.5 text-[10px] font-medium border transition-colors ${
+            className={`rounded-md py-1.5 text-[10px] font-medium border ${
               g.tf === tf
                 ? "bg-white/[0.09] border-white/20 text-white"
                 : "border-white/[0.07] text-slate-500 hover:text-slate-300"
@@ -121,7 +121,7 @@ function BarLine({ label, value, score }: { label: string; value: string; score:
         <div
           className="absolute inset-y-0 left-0 rounded-full"
           style={{
-            width: `${pct}%`,
+            width: "100%", transform: `scaleX(${pct / 100})`, transformOrigin: "left",
             background: "linear-gradient(90deg, #f59e0b, #34d399)",
           }}
         />
