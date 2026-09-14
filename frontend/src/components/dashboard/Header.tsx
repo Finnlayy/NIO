@@ -15,10 +15,18 @@ export function Header({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeTagName = document.activeElement?.tagName.toLowerCase();
-      if (activeTagName === "input" || activeTagName === "textarea" || (document.activeElement as HTMLElement)?.isContentEditable) {
-        if (e.key === "Escape" && document.activeElement === searchInputRef.current) {
-          searchInputRef.current?.blur();
+      const isInputFocused = activeTagName === "input" || activeTagName === "textarea" || (document.activeElement as HTMLElement)?.isContentEditable;
+
+      if (e.key === "Escape") {
+        if (isInputFocused) {
+          (document.activeElement as HTMLElement)?.blur();
+        } else {
+          onMasterSummary();
         }
+        return;
+      }
+
+      if (isInputFocused) {
         return;
       }
 
@@ -62,6 +70,14 @@ export function Header({
           <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-mono text-slate-400 bg-slate-800/50 border border-slate-700 rounded shadow-sm">
             /
           </kbd>
+          <span className="hidden sm:inline-block text-[9px] text-slate-500 mx-0.5">or</span>
+          <span className="hidden sm:inline-flex items-center gap-0.5 text-[9px] font-mono text-slate-400 bg-slate-800/50 border border-slate-700 px-1 py-0.5 rounded shadow-sm leading-none">
+            <kbd>⌘</kbd>
+            <span>/</span>
+            <kbd>Ctrl</kbd>
+            <span>+</span>
+            <kbd>K</kbd>
+          </span>
         </div>
       </div>
 
@@ -71,6 +87,9 @@ export function Header({
       >
         <Sparkles className="w-3.5 h-3.5" />
         Master Summary
+        <kbd className="hidden sm:inline-block ml-1 px-1.5 py-0.5 text-[9px] font-mono text-amber-200/50 bg-amber-950/30 border border-amber-800/30 rounded shadow-sm">
+          Esc
+        </kbd>
       </button>
     </header>
   );
