@@ -2,6 +2,8 @@ import { BrainCircuit, ScanEye } from "lucide-react";
 import { palette, networkNodes, type NetworkNode } from "@/data/network";
 import { ModuleHeader, StatusDot, Tile } from "./shared";
 
+const LINKED_NODES_COUNT = networkNodes.filter((n) => n.kind !== "core").length;
+
 export function CoreTile({
   node,
   selected,
@@ -46,7 +48,7 @@ export function CoreTile({
       <p className="text-xs leading-relaxed text-slate-400 mt-3">{node.description}</p>
 
       <div className="mt-auto pt-3 grid grid-cols-3 gap-2 text-center">
-        <Stat value={networkNodes.filter((n) => n.kind !== "core").length} label="linked nodes" />
+        <Stat value={LINKED_NODES_COUNT} label="linked nodes" />
         <Stat value={node.sources ?? 0} label="sources" />
         <Stat value={node.tags?.length ?? 0} label="capabilities" />
       </div>
