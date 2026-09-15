@@ -6,6 +6,7 @@ import { Radio, Terminal, X } from "lucide-react";
 import { useGridStore } from "./store";
 import type { McpEvent } from "./types";
 import { LogScroller } from "./consoleScroll";
+import { isTypingTarget } from "./hotkeys";
 
 function toneClass(method: string) {
   if (method.includes("hydrate")) return "text-cyan-300";
@@ -25,6 +26,7 @@ export function McpConsole() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
       if (e.key === "Escape" && open) {
         setOpen(false);
       }
