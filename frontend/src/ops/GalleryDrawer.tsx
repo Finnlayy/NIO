@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Library, Plus, X, Zap } from "lucide-react";
 import { widgetTemplates } from "./widgetRegistry";
 import { dispatchHydrateTemplate, dispatchOrchestratorScenario, useGridStore } from "./store";
+import { isTypingTarget } from "./hotkeys";
 
 const categoryColor: Record<string, string> = {
   Market: "text-emerald-300 bg-emerald-400/10 border-emerald-400/20",
@@ -20,6 +21,7 @@ export function GalleryDrawer() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
       if (e.key === "Escape" && open) {
         setOpen(false);
       }
