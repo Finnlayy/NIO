@@ -39,7 +39,7 @@ export function CoreTile({
         </span>
         <div className="min-w-0">
           <p className="text-sm font-semibold text-white truncate">{node.label}</p>
-          <p className="text-[11px] text-slate-500">Cross-domain routing · middleware pipeline</p>
+          <p className="text-[11px] text-slate-400">Cross-domain routing · middleware pipeline</p>
         </div>
       </div>
 
@@ -51,7 +51,7 @@ export function CoreTile({
         <Stat value={node.tags?.length ?? 0} label="capabilities" />
       </div>
 
-      <p className="flex items-center gap-1.5 text-[10px] text-slate-600 mt-3">
+      <p className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-3">
         <ScanEye className="w-3 h-3" />
         Click to inspect and load the master task
       </p>
@@ -62,8 +62,8 @@ export function CoreTile({
 function Stat({ value, label }: { value: number; label: string }) {
   return (
     <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] py-2">
-      <p className="text-sm font-semibold text-white tabular-nums">{value}</p>
-      <p className="text-[9px] uppercase tracking-[0.12em] text-slate-600">{label}</p>
+      <p className="text-sm font-semibold text-white font-mono tabular-nums">{value}</p>
+      <p className="text-[9px] uppercase tracking-[0.12em] text-slate-400">{label}</p>
     </div>
   );
 }

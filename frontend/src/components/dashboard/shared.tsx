@@ -21,7 +21,7 @@ export function StatusDot({
   label?: string;
 }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-slate-500">
+    <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-slate-400">
       <span className="relative flex h-2 w-2">
         {pulse && (
           <span
@@ -51,11 +51,11 @@ export function ModuleHeader({
 }) {
   return (
     <div className="flex items-center gap-2.5 mb-3">
-      <span className="text-slate-500">{icon}</span>
+      <span className="text-slate-400">{icon}</span>
       <h3 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
         {title}
       </h3>
-      {meta && <span className="text-[10px] text-slate-600 truncate">{meta}</span>}
+      {meta && <span className="text-[10px] text-slate-400 truncate">{meta}</span>}
       <span className="ml-auto flex items-center gap-2 shrink-0">{status}</span>
     </div>
   );
