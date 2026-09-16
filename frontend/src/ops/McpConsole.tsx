@@ -6,6 +6,7 @@ import { Radio, Terminal, X } from "lucide-react";
 import { useGridStore } from "./store";
 import type { McpEvent } from "./types";
 import { LogScroller } from "./consoleScroll";
+import { FocusTrap } from "@/components/FocusTrap";
 
 function toneClass(method: string) {
   if (method.includes("hydrate")) return "text-cyan-300";
@@ -23,26 +24,20 @@ export function McpConsole() {
   const open = useGridStore((s) => s.consoleOpen);
   const setOpen = useGridStore((s) => s.setConsoleOpen);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && open) {
-        setOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, setOpen]);
-
   return (
     <AnimatePresence>
       {open && (
         <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-label="MCP Event Bus"
           initial={{ y: 320, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 320, opacity: 0 }}
           transition={{ type: "spring", stiffness: 260, damping: 30 }}
           className="fixed bottom-0 inset-x-0 z-40 h-80 bg-[#0a0d16]/95 backdrop-blur-xl border-t border-white/[0.08] flex flex-col"
         >
+          <FocusTrap active={open}>
           <div className="flex items-center gap-2 px-4 h-10 border-b border-white/[0.06] shrink-0">
             <Terminal className="w-3.5 h-3.5 text-cyan-300" />
             <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
@@ -62,6 +57,7 @@ export function McpConsole() {
           </div>
 
           <McpConsoleLog />
+          </FocusTrap>
         </motion.div>
       )}
     </AnimatePresence>

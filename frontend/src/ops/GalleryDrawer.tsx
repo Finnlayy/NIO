@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Library, Plus, X, Zap } from "lucide-react";
 import { widgetTemplates } from "./widgetRegistry";
 import { dispatchHydrateTemplate, dispatchOrchestratorScenario, useGridStore } from "./store";
+import { FocusTrap } from "@/components/FocusTrap";
 
 const categoryColor: Record<string, string> = {
   Market: "text-emerald-300 bg-emerald-400/10 border-emerald-400/20",
@@ -18,16 +19,6 @@ export function GalleryDrawer() {
   const setOpen = useGridStore((s) => s.setGalleryOpen);
   const widgetCount = useGridStore((s) => s.widgets.length);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && open) {
-        setOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, setOpen]);
-
   return (
     <AnimatePresence>
       {open && (
@@ -40,12 +31,16 @@ export function GalleryDrawer() {
             onClick={() => setOpen(false)}
           />
           <motion.aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="Widget Template Gallery"
             initial={{ x: 380 }}
             animate={{ x: 0 }}
             exit={{ x: 380 }}
             transition={{ type: "spring", stiffness: 300, damping: 32 }}
             className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md bg-[#0c0f18] border-l border-white/[0.08] flex flex-col"
           >
+            <FocusTrap active={open}>
             <div className="flex items-center gap-2.5 px-5 h-14 border-b border-white/[0.07]">
               <Library className="w-4 h-4 text-cyan-300" />
               <h2 className="text-sm font-semibold text-white">Widget Template Gallery</h2>
@@ -109,6 +104,7 @@ export function GalleryDrawer() {
               Templates are declarative blueprints. Hydration sends a JSON-RPC payload with the
               template key + live state; the canvas materializes the widget with a spring animation.
             </p>
+            </FocusTrap>
           </motion.aside>
         </>
       )}
