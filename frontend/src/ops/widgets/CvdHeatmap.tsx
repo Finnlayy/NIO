@@ -54,7 +54,7 @@ export function CvdHeatmap({ data }: { data: Record<string, unknown> }) {
   const imbalance = buyPct > sellPct ? "buy-side pressure dominant" : "sell-side pressure dominant";
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full transition-colors">
       <div className="flex items-center gap-3 mb-2.5">
         <span className="text-[11px] text-slate-400">
           Buy pressure <b className="text-emerald-400 tabular-nums">{buyPct}%</b>
