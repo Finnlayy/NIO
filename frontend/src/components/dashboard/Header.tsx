@@ -59,6 +59,11 @@ export function Header({
           aria-label="Search network nodes"
         />
         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-1">
+          <span className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-mono text-slate-400 bg-slate-800/50 border border-slate-700 rounded shadow-sm">
+            <kbd>⌘</kbd>
+            <span>K</span>
+          </span>
+          <span className="hidden sm:inline-block px-1 text-[9px] text-slate-500">or</span>
           <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-mono text-slate-400 bg-slate-800/50 border border-slate-700 rounded shadow-sm">
             /
           </kbd>
