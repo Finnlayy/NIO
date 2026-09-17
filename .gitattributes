@@ -1,0 +1,3 @@
+# Normalize line endings: LF in repo, native on checkout.
+# Makes behavior consistent regardless of core.autocrlf setting.
+* text=auto
