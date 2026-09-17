@@ -1,0 +1,3 @@
+## 2023-10-27 - [Modal Dialog Keyboard Collision Pattern]
+**Learning:** Adding redundant `keydown` event listeners for the `Escape` key inside modal dialog components (like `McpConsole` and `GalleryDrawer`) bypasses the global `isTypingTarget` guard in `ops/page.tsx`. This causes global keyboard shortcuts to conflict and steal keystrokes indiscriminately.
+**Action:** Remove local `keydown` event listeners for `Escape` inside modal components and rely on the centralized `opsHotkey` global handler with `isTypingTarget` protection. Additionally, always provide `role="dialog"`, `aria-modal="true"`, and an `autoFocus` target within the modal to guarantee immediate keyboard traversability without mouse clicks.
