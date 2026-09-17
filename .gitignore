@@ -31,6 +31,7 @@ __pycache__/
 venv/
 Architect/venv/
 Architect/.env
+frontend/.env.local
 
 # Fremdartefakt: Applet-Verlauf eines externen Tools (enthaelt Chat-Transkripte
 # und persoenliche Daten). Gehoert nicht ins Repo -- wurde 2026-09-08 entfernt,
