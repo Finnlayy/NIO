@@ -166,4 +166,6 @@ test("CvdHeatmap renders every engine bin when mounted through the hook", () => 
   // 12 template bins ⇒ 12 cells; the badge must be present exactly once.
   assert.equal((html.match(/data-feed-state=/g) || []).length, 1);
   assert.equal((html.match(/CVD /g) || []).length, 12);
+  assert.match(html, /transition-colors/);
+  assert.doesNotMatch(html, /transition-all/);
 });

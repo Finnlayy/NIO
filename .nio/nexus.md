@@ -794,3 +794,11 @@ new plane removes the disk from the hot path when a live consumer exists.
 → https://github.com/Finnlayy/NIO/pull/10 (`main` <- `arena/01a07962-nio`,
 12 files, +2545/-189, `MERGEABLE`). commit `bb47077`.
 Der fertige PR-Text liegt als `.nio/pr_triad2_body.md` im Branch.
+
+---
+
+## 2026-09-08 - Telemetry hub respawn must share the SSE backoff ladder
+
+**Learning:** `frontend/src/server/telemetryBridge.ts` respawned producer/consumer children on a fixed 2s timer. A crashed Python feed therefore hammered `spawn()` at a constant rate. The browser SSE client already had the 1s → 30s ladder in `backoffDelayMs`.
+
+**Action:** Same `backoffDelayMs` (extracted to `frontend/src/ops/backoff.ts`) now drives hub `scheduleRespawn()`. Attempts increment per schedule, reset to 0 on a verified record. Do not loosen pinned `@types/*` to `^` ranges while doing this.
