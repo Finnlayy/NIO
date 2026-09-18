@@ -117,12 +117,14 @@ function BarLine({ label, value, score }: { label: string; value: string; score:
         <span className="text-slate-500">{label}</span>
         <span className={vCls}>{value}</span>
       </div>
-      <div className="h-1 rounded-full bg-white/[0.06] relative">
+      <div className="h-1 rounded-full bg-white/[0.06] relative overflow-hidden">
+        {/* ⚡ Bolt: Use transform: scaleX for performance, avoids layout thrashing on updates */}
         <div
-          className="absolute inset-y-0 left-0 rounded-full"
+          className="absolute inset-y-0 left-0 h-full w-full rounded-full"
           style={{
-            width: `${pct}%`,
             background: "linear-gradient(90deg, #f59e0b, #34d399)",
+            transform: `scaleX(${pct / 100})`,
+            transformOrigin: "left"
           }}
         />
       </div>

@@ -32,9 +32,10 @@ export function PatternScanner({ data }: { data: Record<string, unknown> }) {
       <p className="text-lg font-bold text-white">{patterns.length} forming, none broken yet</p>
 
       {/* bull/bear progress */}
-      <div className="flex h-1.5 rounded-full overflow-hidden mt-2.5">
-        <div style={{ width: `${(bullish / total) * 100}%`, background: upBar }} />
-        <div style={{ width: `${(bearish / total) * 100}%`, background: downBar }} />
+      {/* ⚡ Bolt: Use transform: scaleX for performance, avoids layout thrashing on updates */}
+      <div className="flex h-1.5 w-full rounded-full overflow-hidden mt-2.5 relative">
+        <div className="absolute inset-y-0 left-0 h-full" style={{ width: "100%", transform: `scaleX(${bullish / total})`, transformOrigin: "left", background: upBar }} />
+        <div className="absolute inset-y-0 right-0 h-full" style={{ width: "100%", transform: `scaleX(${bearish / total})`, transformOrigin: "right", background: downBar }} />
       </div>
       <p className="flex items-center gap-3 mt-1.5 text-[10px]">
         <span className="flex items-center gap-1 text-slate-500">
