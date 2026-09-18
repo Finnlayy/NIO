@@ -45,10 +45,11 @@ export function NewsSentiment({ data, symbol }: { data: Record<string, unknown>;
         <LiveBadge source={source} />
       </p>
 
-      <div className="flex h-1.5 rounded-full overflow-hidden mt-2.5">
-        <div className="bg-rose-400" style={{ width: `${negative}%` }} />
-        <div className="bg-slate-500" style={{ width: `${neutral}%` }} />
-        <div className="bg-emerald-400" style={{ width: `${positive}%` }} />
+      {/* ⚡ Bolt: Use transform: scaleX for performance, avoids layout thrashing on updates */}
+      <div className="flex h-1.5 w-full rounded-full overflow-hidden mt-2 relative">
+        <div className="absolute inset-y-0 left-0 bg-rose-400 h-full" style={{ width: "100%", transform: `scaleX(${negative / 100})`, transformOrigin: "left" }} />
+        <div className="absolute inset-y-0 left-0 bg-slate-500 h-full" style={{ width: "100%", transform: `scaleX(${neutral / 100})`, transformOrigin: "left", left: `${negative}%` }} />
+        <div className="absolute inset-y-0 right-0 bg-emerald-400 h-full" style={{ width: "100%", transform: `scaleX(${positive / 100})`, transformOrigin: "right" }} />
       </div>
       <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5 text-[10px] text-slate-500">
         <span className="flex items-center gap-1 font-mono tabular-nums">

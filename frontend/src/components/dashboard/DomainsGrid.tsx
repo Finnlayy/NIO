@@ -23,6 +23,8 @@ const DOMAIN_CLUSTERS = domainFilters
     return { filter, nodes, domainNode, topics, links };
   });
 
+const ACTIVE_DOMAIN_CLUSTERS_COUNT = DOMAIN_CLUSTERS.filter((d) => d.nodes.length > 0).length;
+
 export function DomainsGrid({
   visibleIds,
   selectedId,
@@ -37,7 +39,7 @@ export function DomainsGrid({
       <ModuleHeader
         icon={<Layers className="w-4 h-4" />}
         title="Domain Clusters"
-        meta={`${DOMAIN_CLUSTERS.filter((d) => d.nodes.length > 0).length} active`}
+        meta={`${ACTIVE_DOMAIN_CLUSTERS_COUNT} active`}
         status={<StatusDot tone="active" label="Mesh" />}
       />
 
