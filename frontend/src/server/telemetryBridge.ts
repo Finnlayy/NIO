@@ -339,6 +339,22 @@ export function getTelemetryHub(): TelemetryHub {
   const holder = globalThis as unknown as Record<symbol, { hub?: TelemetryHub }>;
   if (!holder[HUB_KEY]) holder[HUB_KEY] = {};
   const slot = holder[HUB_KEY];
-  if (!slot.hub) slot.hub = new TelemetryHub(resolvePaths());
+  if (!slot.hub) {
+    slot.hub = new TelemetryHub(resolvePaths());
+
+    process.on("exit", () => {
+      slot.hub?.stop();
+    });
+
+    process.on("SIGINT", () => {
+      slot.hub?.stop();
+      process.exit(130);
+    });
+
+    process.on("SIGTERM", () => {
+      slot.hub?.stop();
+      process.exit(143);
+    });
+  }
   return slot.hub;
 }
