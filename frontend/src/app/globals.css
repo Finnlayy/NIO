@@ -114,6 +114,7 @@ body {
   min-width: 0;
   contain: layout paint;
   transition: border-color 160ms ease, box-shadow 160ms ease;
+  contain: layout paint;
 }
 
 @media (max-width: 720px) {
