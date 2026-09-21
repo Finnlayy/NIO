@@ -1,0 +1,3 @@
+## 2026-09-15 - Accessibility Contrast and Typography Consistency
+**Learning:** We discovered an accessibility contrast failure on subtle muted secondary labels (e.g., `text-slate-500` and `text-slate-600`) across several dashboard components. Additionally, numerical data in `KpiStrip` and `CoreTile` were missing `font-mono` styling, leading to inconsistent typographical alignment.
+**Action:** Always enforce WCAG AAA compliant contrast by upgrading muted secondary texts to `text-slate-400`. Furthermore, ensure all numerical, price, and timestamp data fields use the `font-mono` class for monospace rendering and layout stability.
