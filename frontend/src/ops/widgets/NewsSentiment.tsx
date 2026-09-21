@@ -46,9 +46,9 @@ export function NewsSentiment({ data, symbol }: { data: Record<string, unknown>;
       </p>
 
       <div className="flex h-1.5 rounded-full overflow-hidden mt-2.5">
-        <div className="bg-rose-400" style={{ width: `${negative}%` }} />
-        <div className="bg-slate-500" style={{ width: `${neutral}%` }} />
-        <div className="bg-emerald-400" style={{ width: `${positive}%` }} />
+        <div className="bg-rose-400" style={{ width: "100%", transform: `scaleX(${negative / 100})`, transformOrigin: "left" }} />
+        <div className="bg-slate-500" style={{ width: "100%", transform: `scaleX(${neutral / 100})`, transformOrigin: "left" }} />
+        <div className="bg-emerald-400" style={{ width: "100%", transform: `scaleX(${positive / 100})`, transformOrigin: "left" }} />
       </div>
       <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5 text-[10px] text-slate-500">
         <span className="flex items-center gap-1 font-mono tabular-nums">

@@ -33,8 +33,8 @@ export function PatternScanner({ data }: { data: Record<string, unknown> }) {
 
       {/* bull/bear progress */}
       <div className="flex h-1.5 rounded-full overflow-hidden mt-2.5">
-        <div style={{ width: `${(bullish / total) * 100}%`, background: upBar }} />
-        <div style={{ width: `${(bearish / total) * 100}%`, background: downBar }} />
+        <div style={{ width: "100%", background: upBar, transform: `scaleX(${bullish / total})`, transformOrigin: "left" }} />
+        <div style={{ width: "100%", background: downBar, transform: `scaleX(${bearish / total})`, transformOrigin: "left" }} />
       </div>
       <p className="flex items-center gap-3 mt-1.5 text-[10px]">
         <span className="flex items-center gap-1 text-slate-500">
