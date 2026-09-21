@@ -32,3 +32,7 @@ Runtime-Persistenz fragen: Was ist durabler Zustand vs. abgeleitete Metrik?
 ## 2026-09-09 - React Render Loop Write-Amplification
 **Learning:** Computing heavy nested filters and object derivations directly inside a React component (like DomainsGrid computing nodes, topics, and links per domain) triggers an expensive O(N*M) execution on every re-render, creating CPU spikes even when underlying static data hasn't changed.
 **Action:** When component properties are derived from static configurations, extract the calculation into a module-level constant instead of keeping it in the render loop or relying on useMemo.
+
+## 2026-09-20 - Centralized modal hotkeys and modal dialog accessibility
+**Learning:** Adding redundant local `keydown` event listeners for 'Escape' inside modal components bypasses input focus guards (like `isTypingTarget`), causing them to indiscriminately steal keystrokes and break the typing experience in input fields. Furthermore, modals were missing proper ARIA properties and `autoFocus` hooks which broke keyboard navigability.
+**Action:** Always delegate global hotkeys (like Escape) to a centralized handler that respects `isTypingTarget` to prevent input focus conflicts. Additionally, enforce standard accessibility properties on modals by adding `role="dialog"`, `aria-modal="true"`, and an `autoFocus` target within the modal to guarantee immediate keyboard traversability without breaking forms.
