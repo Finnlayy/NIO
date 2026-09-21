@@ -19,6 +19,14 @@ import { AgentsTile } from "./dashboard/AgentsTile";
 import { ActivityFeed } from "./dashboard/ActivityFeed";
 import type { FeedEvent, FeedStatus, RunState } from "./dashboard/types";
 
+// ⚡ Bolt Optimization:
+// Extracted static derivations out of the React render loop (`useMemo`).
+// Since `networkNodes` is static configuration data, calculating these values once
+// at the module level avoids unnecessary Hook overhead and recalculation on mount.
+const nodeById = Object.fromEntries(networkNodes.map((node) => [node.id, node]));
+const activeDomainCount = new Set(networkNodes.map((node) => node.domain).filter(Boolean)).size;
+const agentCount = networkNodes.filter((node) => node.kind === "agent").length;
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 type TaskResponse = {
@@ -66,10 +74,6 @@ export default function NetworkDashboard() {
     });
   }, [log]);
 
-  const nodeById = useMemo(
-    () => Object.fromEntries(networkNodes.map((node) => [node.id, node])),
-    [],
-  );
   const selectedNode = nodeById[selectedId] ?? nodeById["neural-core"];
   const selectedPreset = taskPresets[selectedId];
 
@@ -160,15 +164,6 @@ export default function NetworkDashboard() {
       setIsRunning(false);
     }
   }
-
-  const activeDomainCount = useMemo(
-    () => new Set(networkNodes.map((node) => node.domain).filter(Boolean)).size,
-    [],
-  );
-  const agentCount = useMemo(
-    () => networkNodes.filter((node) => node.kind === "agent").length,
-    [],
-  );
 
   return (
     <main className="min-h-screen bg-[#090b12]">
