@@ -18,7 +18,7 @@ function Kpi({
         {icon}
       </span>
       <span className="min-w-0">
-        <span className="block text-lg font-semibold text-white leading-tight tabular-nums">
+        <span className="block text-lg font-semibold font-mono text-white leading-tight tabular-nums">
           {value}
         </span>
         <span className="block text-[10px] uppercase tracking-[0.12em] text-slate-500 truncate">
