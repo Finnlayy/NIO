@@ -57,14 +57,14 @@ export function CvdHeatmap({ data }: { data: Record<string, unknown> }) {
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-3 mb-2.5">
         <span className="text-[11px] text-slate-400">
-          Buy pressure <b className="text-emerald-400 tabular-nums">{buyPct}%</b>
+          Buy pressure <b className="text-emerald-400 font-mono tabular-nums">{buyPct}%</b>
         </span>
         <div className="flex-1 h-1.5 rounded-full overflow-hidden flex relative">
           <div className="absolute inset-y-0 left-0 h-full" style={{ width: "100%", background: "#34d399", transform: `scaleX(${buyPct / 100})`, transformOrigin: "left" }} />
           <div className="absolute inset-y-0 right-0 h-full" style={{ width: "100%", background: "#f87171", transform: `scaleX(${sellPct / 100})`, transformOrigin: "right" }} />
         </div>
         <span className="text-[11px] text-slate-400">
-          <b className="text-rose-400 tabular-nums">{sellPct}%</b> Sell
+          <b className="text-rose-400 font-mono tabular-nums">{sellPct}%</b> Sell
         </span>
         <FeedBadge connection={connection} />
       </div>
