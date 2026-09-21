@@ -337,7 +337,17 @@ const HUB_KEY = Symbol.for("nio.telemetry.hub");
 /** Singleton across hot reloads — two consumers would fight over the socket. */
 export function getTelemetryHub(): TelemetryHub {
   const holder = globalThis as unknown as Record<symbol, { hub?: TelemetryHub }>;
-  if (!holder[HUB_KEY]) holder[HUB_KEY] = {};
+  if (!holder[HUB_KEY]) {
+    holder[HUB_KEY] = {};
+    const cleanup = () => {
+      if (holder[HUB_KEY].hub) {
+        holder[HUB_KEY].hub.stop();
+      }
+    };
+    process.on("exit", cleanup);
+    process.on("SIGINT", () => { cleanup(); process.exit(0); });
+    process.on("SIGTERM", () => { cleanup(); process.exit(0); });
+  }
   const slot = holder[HUB_KEY];
   if (!slot.hub) slot.hub = new TelemetryHub(resolvePaths());
   return slot.hub;
