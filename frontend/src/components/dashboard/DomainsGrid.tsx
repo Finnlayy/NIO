@@ -68,7 +68,7 @@ export function DomainsGrid({
                     <p className="text-[13px] font-medium text-slate-100 truncate">
                       {filter.label}
                     </p>
-                    <p className="text-[10px] text-slate-600 font-mono truncate">
+                    <p className="text-[10px] text-slate-400 font-mono truncate">
                       {filter.id}
                     </p>
                   </div>
@@ -96,9 +96,9 @@ export function DomainsGrid({
                 </div>
               )}
 
-              <div className="flex items-center gap-3 mt-3 pt-2.5 border-t border-white/[0.05] text-[10px] text-slate-600">
-                <span>{nodes.length} nodes</span>
-                <span>{links} links</span>
+              <div className="flex items-center gap-3 mt-3 pt-2.5 border-t border-white/[0.05] text-[10px] text-slate-400">
+                <span className="font-mono tabular-nums">{nodes.length} nodes</span>
+                <span className="font-mono tabular-nums">{links} links</span>
               </div>
             </Tile>
           );
@@ -126,12 +126,10 @@ function TopicChip({
         event.stopPropagation();
         onSelect(topic.id);
       }}
-      className={`px-2 py-1 rounded-md text-[10px] font-medium border transition-colors ${
+      className={`px-2 py-1 rounded-md text-[10px] font-medium border border-white/[0.08] bg-white/[0.03] transition-colors ${
         dimmed ? "opacity-40" : "hover:border-current"
       }`}
       style={{
-        borderColor: "rgba(255,255,255,0.08)",
-        background: "rgba(255,255,255,0.03)",
         color,
       }}
     >
