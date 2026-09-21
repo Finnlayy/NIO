@@ -21,6 +21,15 @@ import type { FeedEvent, FeedStatus, RunState } from "./dashboard/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
+// ⚡ Bolt Optimization:
+// Moved derivation of static lookup objects and counters out of the React render loop.
+// Previously, these used `useMemo` with empty dependency arrays.
+// Because `networkNodes` is statically imported, we can calculate these once at module load,
+// saving hook initialization overhead and eliminating O(N) operations across multiple mounts.
+const nodeById = Object.fromEntries(networkNodes.map((node) => [node.id, node]));
+const activeDomainCount = new Set(networkNodes.map((node) => node.domain).filter(Boolean)).size;
+const agentCount = networkNodes.filter((node) => node.kind === "agent").length;
+
 type TaskResponse = {
   coreNodeId: string;
   output: string;
@@ -66,10 +75,6 @@ export default function NetworkDashboard() {
     });
   }, [log]);
 
-  const nodeById = useMemo(
-    () => Object.fromEntries(networkNodes.map((node) => [node.id, node])),
-    [],
-  );
   const selectedNode = nodeById[selectedId] ?? nodeById["neural-core"];
   const selectedPreset = taskPresets[selectedId];
 
@@ -160,15 +165,6 @@ export default function NetworkDashboard() {
       setIsRunning(false);
     }
   }
-
-  const activeDomainCount = useMemo(
-    () => new Set(networkNodes.map((node) => node.domain).filter(Boolean)).size,
-    [],
-  );
-  const agentCount = useMemo(
-    () => networkNodes.filter((node) => node.kind === "agent").length,
-    [],
-  );
 
   return (
     <main className="min-h-screen bg-[#090b12]">
