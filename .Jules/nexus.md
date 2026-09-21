@@ -1,3 +1,3 @@
-## 2026-09-08 - [IPC/API Integration Insight]
-**Learning:** UDS telemetry bridge node process lacked exponential backoff, causing too fast respawns on failure.
-**Action:** Enforce exponential backoff bounded at 30 seconds for spawn loops next time.
+## 2026-09-08 - [IPC/API Integration Insight]\n**Learning:** UDS telemetry bridge node process lacked exponential backoff, causing too fast respawns on failure.\n**Action:** Enforce exponential backoff bounded at 30 seconds for spawn loops next time.\n\n## 2026-09-16 - [IPC/API Integration Insight]
+**Learning:** When spawning Python UDS telemetry child processes from Node.js, explicit process event listeners (`exit`, `SIGINT`, `SIGTERM`) must be registered to explicitly terminate the child processes (e.g., via `hub.stop()`), ensuring socket cleanup and preventing orphaned `.sock` files that block the event loop.
+**Action:** Always attach process signal handlers to gracefully shut down the telemetry hub when the parent Node.js process exits.
