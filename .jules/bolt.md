@@ -32,3 +32,7 @@ Runtime-Persistenz fragen: Was ist durabler Zustand vs. abgeleitete Metrik?
 ## 2026-09-09 - React Render Loop Write-Amplification
 **Learning:** Computing heavy nested filters and object derivations directly inside a React component (like DomainsGrid computing nodes, topics, and links per domain) triggers an expensive O(N*M) execution on every re-render, creating CPU spikes even when underlying static data hasn't changed.
 **Action:** When component properties are derived from static configurations, extract the calculation into a module-level constant instead of keeping it in the render loop or relying on useMemo.
+
+## 2024-05-24 - Task Console Routing Shortcut Ergonomics
+**Learning:** Found a shortcut pattern where executing complex workflows require manual clicks or using a shortcut (Cmd/Ctrl+Enter) that only functions within the textarea, missing a global operational trigger. In addition, there is no global shortcut to clear the current node selection to return to the Master Summary, requiring unnecessary mouse travel.
+**Action:** Implement global `keydown` event listeners for `Cmd/Ctrl + Enter` (to click the run button directly if not disabled) and `Escape` (to clear selection), guarded by `isTypingTarget` to prevent interrupting text input. This saves clicks and prevents operational bottleneck while keeping the shortcut layouts deterministic.

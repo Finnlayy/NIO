@@ -45,14 +45,6 @@ export function TaskConsole({
       <textarea
         value={taskText}
         onChange={(event) => onTaskText(event.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            if (!isRunning && taskText.trim()) {
-              onRun();
-            }
-          }
-        }}
         rows={3}
         className="console-input resize-none text-[12.5px] leading-relaxed"
         placeholder="Describe a task for the Neural Core …"
@@ -70,6 +62,7 @@ export function TaskConsole({
       </label>
 
       <button
+        id="run-task-btn"
         onClick={onRun}
         disabled={isRunning || !taskText.trim()}
         className="primary-button w-full mt-3 flex items-center justify-center gap-2"
