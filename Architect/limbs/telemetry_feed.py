@@ -32,6 +32,12 @@ import argparse
 import sys
 import time
 from pathlib import Path
+
+# Remove the script's directory from sys.path to prevent local 'math' directory from shadowing stdlib math
+if sys.path and sys.path[0] == str(Path(__file__).resolve().parent):
+    sys.path.pop(0)
+if "math" in sys.modules:
+    del sys.modules["math"]
 from typing import Any, Callable, Iterable, Sequence
 
 # Paketwurzel ist Architect/ (core.*, limbs.*) -- genau wie in Architect/tests.
