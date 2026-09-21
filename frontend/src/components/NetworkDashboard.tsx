@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isTypingTarget } from "@/ops/hotkeys";
 import {
   domainFilters,
   networkEdges,
@@ -102,6 +103,28 @@ export default function NetworkDashboard() {
     },
     [],
   );
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        const runBtn = document.getElementById("run-task-btn");
+        if (runBtn) {
+          runBtn.click();
+        }
+      }
+
+      if (isTypingTarget(e.target)) return;
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        selectNode("neural-core");
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectNode]);
 
   function changeFilter(id: DomainId | "all") {
     setActiveFilter(id);

@@ -1,5 +1,6 @@
 import { BrainCircuit, Search, Sparkles } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { isTypingTarget } from "@/ops/hotkeys";
 
 export function Header({
   search,
@@ -14,8 +15,7 @@ export function Header({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const activeTagName = document.activeElement?.tagName.toLowerCase();
-      if (activeTagName === "input" || activeTagName === "textarea" || (document.activeElement as HTMLElement)?.isContentEditable) {
+      if (isTypingTarget(e.target)) {
         if (e.key === "Escape" && document.activeElement === searchInputRef.current) {
           searchInputRef.current?.blur();
         }
@@ -59,8 +59,8 @@ export function Header({
           aria-label="Search network nodes"
         />
         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-1">
-          <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-mono text-slate-400 bg-slate-800/50 border border-slate-700 rounded shadow-sm">
-            /
+          <kbd className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-mono text-slate-400 bg-slate-800/50 border border-slate-700 rounded shadow-sm leading-none">
+            ⌘<span className="mx-0.5">+</span>K
           </kbd>
         </div>
       </div>
@@ -71,6 +71,9 @@ export function Header({
       >
         <Sparkles className="w-3.5 h-3.5" />
         Master Summary
+        <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[9px] font-mono text-amber-400/60 bg-amber-950/30 border border-amber-900/30 rounded shadow-sm leading-none">
+          Esc
+        </kbd>
       </button>
     </header>
   );
