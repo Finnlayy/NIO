@@ -46,7 +46,7 @@ export function ModuleHeader({
 }: {
   icon: ReactNode;
   title: string;
-  meta?: string;
+  meta?: ReactNode;
   status?: ReactNode;
 }) {
   return (

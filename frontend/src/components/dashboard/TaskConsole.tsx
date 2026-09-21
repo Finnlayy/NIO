@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2, Loader2, Play, Terminal } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { ModuleHeader, StatusDot, Tile } from "./shared";
 import type { RunState } from "./types";
 
@@ -23,12 +24,45 @@ export function TaskConsole({
   apiUrl: string;
   onRun: () => void;
 }) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTagName = document.activeElement?.tagName.toLowerCase();
+      if (
+        activeTagName === "input" ||
+        activeTagName === "textarea" ||
+        (document.activeElement as HTMLElement)?.isContentEditable
+      ) {
+        if (e.key === "Escape" && document.activeElement === textareaRef.current) {
+          textareaRef.current?.blur();
+        }
+        return;
+      }
+
+      if (e.key.toLowerCase() === "c" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        textareaRef.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <Tile className="p-4 h-full flex flex-col">
       <ModuleHeader
         icon={<Terminal className="w-4 h-4" />}
         title="Task Console"
-        meta="dispatch via /api/task"
+        meta={
+          <span className="flex items-center gap-1.5">
+            dispatch via /api/task
+            <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-mono text-slate-400 bg-slate-800/50 border border-slate-700 rounded shadow-sm">
+              C
+            </kbd>
+          </span>
+        }
         status={
           runState === "running" ? (
             <StatusDot tone="busy" label="Routing" />
@@ -43,6 +77,7 @@ export function TaskConsole({
       />
 
       <textarea
+        ref={textareaRef}
         value={taskText}
         onChange={(event) => onTaskText(event.target.value)}
         onKeyDown={(e) => {
