@@ -84,7 +84,8 @@ export function TechnicalGauge({ data, symbol }: { data: Record<string, unknown>
         {(["1D", "4h", "1h"] as const).map((tf) => (
           <button
             key={tf}
-            className={`rounded-md py-1.5 text-[10px] font-medium border transition-colors ${
+            aria-pressed={g.tf === tf}
+            className={`rounded-md py-1.5 text-[10px] font-medium border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${
               g.tf === tf
                 ? "bg-white/[0.09] border-white/20 text-white"
                 : "border-white/[0.07] text-slate-500 hover:text-slate-300"
