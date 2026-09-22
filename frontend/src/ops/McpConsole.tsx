@@ -23,20 +23,12 @@ export function McpConsole() {
   const open = useGridStore((s) => s.consoleOpen);
   const setOpen = useGridStore((s) => s.setConsoleOpen);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && open) {
-        setOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, setOpen]);
-
   return (
     <AnimatePresence>
       {open && (
         <motion.div
+          role="dialog"
+          aria-modal="true"
           initial={{ y: 320, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 320, opacity: 0 }}
@@ -53,6 +45,7 @@ export function McpConsole() {
               <ConsoleEventCount />
             </span>
             <button
+              autoFocus
               onClick={() => setOpen(false)}
               className="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/[0.07]"
               aria-label="Close console"

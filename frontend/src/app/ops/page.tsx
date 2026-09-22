@@ -47,7 +47,7 @@ export default function OpsGridPage() {
         s.setGalleryOpen(!s.galleryOpen);
         return;
       }
-      if (s.consoleOpen || s.galleryOpen) {
+      if (action === "close-panels" && (s.consoleOpen || s.galleryOpen)) {
         e.preventDefault();
         s.setConsoleOpen(false);
         s.setGalleryOpen(false);
