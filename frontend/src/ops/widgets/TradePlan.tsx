@@ -64,8 +64,8 @@ function Ladder({
   return (
     <div className="absolute inset-x-0 flex items-center" style={{ top: y }}>
       <span
-        className="px-1.5 py-0.5 rounded text-[9px] font-bold border shrink-0 z-10"
-        style={{ color, borderColor: `${color}66`, background: "rgba(9,11,18,0.9)" }}
+        className="px-1.5 py-0.5 rounded text-[9px] font-bold border shrink-0 z-10 bg-[#0a0a0c]/80 backdrop-blur-md"
+        style={{ color, borderColor: `${color}66` }}
       >
         {label}
       </span>
@@ -75,8 +75,8 @@ function Ladder({
       />
       {dot && <span className="w-2 h-2 rounded-full mr-1" style={{ background: color }} />}
       <span
-        className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold shrink-0 z-10"
-        style={{ color, border: `1px solid ${color}55`, background: "rgba(9,11,18,0.9)" }}
+        className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold shrink-0 z-10 bg-[#0a0a0c]/80 backdrop-blur-md"
+        style={{ color, border: `1px solid ${color}55` }}
       >
         {fmt(price, plan.decimals)}
       </span>
@@ -124,7 +124,7 @@ function Stat({
   return (
     <div>
       <p className="text-[9px] uppercase tracking-wide text-slate-600">{label}</p>
-      <p className={`font-bold mt-0.5 ${small ? "text-[11px]" : "text-[13px]"} ${valueClass ?? "text-slate-100"}`}>
+      <p className={`font-bold mt-0.5 font-mono tabular-nums ${small ? "text-[11px]" : "text-[13px]"} ${valueClass ?? "text-slate-100"}`}>
         {value}
       </p>
     </div>
