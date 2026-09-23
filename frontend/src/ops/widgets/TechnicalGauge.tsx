@@ -121,7 +121,9 @@ function BarLine({ label, value, score }: { label: string; value: string; score:
         <div
           className="absolute inset-y-0 left-0 rounded-full"
           style={{
-            width: `${pct}%`,
+            width: "100%",
+            transform: `scaleX(${pct / 100})`,
+            transformOrigin: "left",
             background: "linear-gradient(90deg, #f59e0b, #34d399)",
           }}
         />

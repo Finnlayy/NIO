@@ -33,10 +33,11 @@ export function KeyLevelsTable({ data, symbol }: { data: Record<string, unknown>
                   <span className="absolute inset-x-0 top-1/2 border-t border-dashed border-indigo-400/70" />
                 ) : (
                   <span
-                    className="absolute top-1/2 -translate-y-1/2 rounded-[2px] border"
+                    className="absolute top-1/2 rounded-[2px] border"
                     style={{
-                      width: `${Math.max(10, lvl.width * 100)}%`,
-                      marginLeft: lvl.distancePct < 0 ? `${Math.max(0, (1 - lvl.width) * 100 - 40)}%` : "0",
+                      width: "100%",
+                      transformOrigin: "left",
+                      transform: `translateY(-50%) translateX(${lvl.distancePct < 0 ? Math.max(0, (1 - lvl.width) * 100 - 40) : 0}%) scaleX(${Math.max(0.1, lvl.width)})`,
                       borderColor: color,
                       background: `${color}22`,
                       height: "8px",
