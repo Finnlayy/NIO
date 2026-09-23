@@ -1,0 +1,3 @@
+## 2025-02-14 - Progress Bar & Inline Styles Refactor
+**Learning:** Found inline background styling (`rgba`) and flex progress bars that trigger layout thrashing through inline `width` modifications in `PatternScanner.tsx`. Missing `FeedBadge` meant the empty/error state wasn't explicitly captured, and standard typography `font-mono tabular-nums` was missing for analytical numbers.
+**Action:** Removed inline styles in favor of specific Tailwind classes (`bg-emerald-400/12`), added the missing `FeedBadge`, enforced `font-mono tabular-nums`, and refactored progress bars with absolute positioning (`absolute inset-y-0`) and `transform: scaleX(...)` to avoid layout thrashing.
