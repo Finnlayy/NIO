@@ -1,11 +1,13 @@
 import type { PatternSetup } from "../marketData";
-import { Insight, upBar, downBar } from "./bits";
+import { useEngineTelemetry } from "../hooks/useMarketData";
+import { Insight, FeedBadge, upBar, downBar } from "./bits";
 
 function FlagIcon({ bullish }: { bullish: boolean }) {
   return (
     <span
-      className="w-9 h-7 rounded-md grid place-items-center shrink-0"
-      style={{ background: bullish ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)" }}
+      className={`w-9 h-7 rounded-md grid place-items-center shrink-0 ${
+        bullish ? "bg-emerald-400/12" : "bg-rose-400/12"
+      }`}
     >
       <svg viewBox="0 0 24 16" className="w-6 h-4">
         <path
@@ -21,6 +23,7 @@ function FlagIcon({ bullish }: { bullish: boolean }) {
 }
 
 export function PatternScanner({ data }: { data: Record<string, unknown> }) {
+  const { connection } = useEngineTelemetry();
   const patterns = (data.patterns as PatternSetup[]) ?? [];
   const bullish = data.bullish as number;
   const bearish = data.bearish as number;
@@ -29,19 +32,22 @@ export function PatternScanner({ data }: { data: Record<string, unknown> }) {
 
   return (
     <div className="flex flex-col h-full">
-      <p className="text-lg font-bold text-white">{patterns.length} forming, none broken yet</p>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-lg font-bold text-white">{patterns.length} forming, none broken yet</p>
+        <FeedBadge connection={connection} />
+      </div>
 
       {/* bull/bear progress */}
-      <div className="flex h-1.5 rounded-full overflow-hidden mt-2.5">
-        <div style={{ width: "100%", background: upBar, transform: `scaleX(${bullish / total})`, transformOrigin: "left" }} />
-        <div style={{ width: "100%", background: downBar, transform: `scaleX(${bearish / total})`, transformOrigin: "left" }} />
+      <div className="flex h-1.5 rounded-full overflow-hidden mt-2.5 relative">
+        <div className="absolute inset-y-0 left-0 w-full" style={{ background: upBar, transform: `scaleX(${bullish / total})`, transformOrigin: "left" }} />
+        <div className="absolute inset-y-0 right-0 w-full" style={{ background: downBar, transform: `scaleX(${bearish / total})`, transformOrigin: "right" }} />
       </div>
       <p className="flex items-center gap-3 mt-1.5 text-[10px]">
-        <span className="flex items-center gap-1 text-slate-500">
+        <span className="flex items-center gap-1 text-slate-500 font-mono tabular-nums">
           <span className="w-1.5 h-1.5 rounded-full" style={{ background: upBar }} />
           Bullish {bullish}
         </span>
-        <span className="flex items-center gap-1 text-slate-500">
+        <span className="flex items-center gap-1 text-slate-500 font-mono tabular-nums">
           <span className="w-1.5 h-1.5 rounded-full" style={{ background: downBar }} />
           Bearish {bearish}
         </span>
