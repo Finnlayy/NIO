@@ -18,16 +18,6 @@ export function GalleryDrawer() {
   const setOpen = useGridStore((s) => s.setGalleryOpen);
   const widgetCount = useGridStore((s) => s.widgets.length);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && open) {
-        setOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, setOpen]);
-
   return (
     <AnimatePresence>
       {open && (
@@ -45,12 +35,15 @@ export function GalleryDrawer() {
             exit={{ x: 380 }}
             transition={{ type: "spring", stiffness: 300, damping: 32 }}
             className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md bg-[#0c0f18] border-l border-white/[0.08] flex flex-col"
+            role="dialog"
+            aria-modal="true"
           >
             <div className="flex items-center gap-2.5 px-5 h-14 border-b border-white/[0.07]">
               <Library className="w-4 h-4 text-cyan-300" />
               <h2 className="text-sm font-semibold text-white">Widget Template Gallery</h2>
               <span className="text-[10px] text-slate-500">{widgetTemplates.length} blueprints</span>
               <button
+                autoFocus
                 onClick={() => setOpen(false)}
                 className="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/[0.07]"
                 aria-label="Close gallery"
