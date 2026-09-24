@@ -31,3 +31,6 @@
 ## 2026-09-08 - NewsSentiment visual inconsistencies and missing monospace typography
 **Learning:** `NewsSentiment.tsx` used raw hex colors in inline styles (`#34d399`, `#f87171`, `#94a3b8`, `#fbbf24`) instead of Tailwind semantic tokens, which violates the MP-17 Dark-Glassmorphism standard. Percentages and timestamps also lacked monospace tabular figures, so they would not align under live updates.
 **Action:** Enforce Tailwind semantic color tokens (`text-emerald-400`, `text-rose-400`, `text-amber-400`, `bg-rose-400` / `bg-slate-500` / `bg-emerald-400`) and `font-mono tabular-nums` on numerical values. Guard in `news-hotkeys.test.js`.
+## 2026-09-21 - TradePlan visual inconsistencies and missing empty state
+**Learning:** `TradePlan.tsx` used raw hex colors in inline styles (`#34d399`, `#60a5fa`, `#f87171`) and lacked proper backdrop blur wrappers, violating the MP-17 Dark-Glassmorphism standard. Additionally, the component had no explicit empty/error badge to signal when data feeds are simulated or disconnected.
+**Action:** Enforce Tailwind semantic color tokens via a `tones` map (emerald, blue, rose) and apply `bg-[#0a0a0c]/80 backdrop-blur-md` wrapper utility classes. Added `FeedBadge` to explicitly display the connection state. Updated DOM budget baseline to 1086 nodes in tests.
