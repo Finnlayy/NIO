@@ -96,6 +96,7 @@ test("minimized widgets keep the expand control and drop the body", () => {
  * `FeedBadge` to `orderflow-cvd-heatmap` (+2) and to `quantum-envelope-chart`
  * (+2) plus a 4-cell engine read row there (+14). Both are intentional: the
  * badges are what makes a dead bus visible instead of showing a frozen value.
+ * Baseline 2026-09-21: 1086 nodes (+3) — Added FeedBadge to TradePlan.
  */
 test("DOM node budget of the default layout is stable (1083)", () => {
   const widgets = seedDefaultLayout();
@@ -104,5 +105,5 @@ test("DOM node budget of the default layout is stable (1083)", () => {
     total += countOpenTags(frameHtml(widget, i));
   }
   resetStore();
-  assert.equal(total, 1083, "default layout DOM node count");
+  assert.equal(total, 1086, "default layout DOM node count");
 });
