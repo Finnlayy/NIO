@@ -47,10 +47,12 @@ export default function OpsGridPage() {
         s.setGalleryOpen(!s.galleryOpen);
         return;
       }
-      if (s.consoleOpen || s.galleryOpen) {
-        e.preventDefault();
-        s.setConsoleOpen(false);
-        s.setGalleryOpen(false);
+      if (action === "close-panels") {
+        if (s.consoleOpen || s.galleryOpen) {
+          e.preventDefault();
+          s.setConsoleOpen(false);
+          s.setGalleryOpen(false);
+        }
       }
     }
     window.addEventListener("keydown", onKey);
