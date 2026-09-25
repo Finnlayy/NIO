@@ -1,5 +1,6 @@
 import { BrainCircuit, Search, Sparkles } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { isTypingTarget } from "@/ops/hotkeys";
 
 export function Header({
   search,
@@ -14,8 +15,7 @@ export function Header({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const activeTagName = document.activeElement?.tagName.toLowerCase();
-      if (activeTagName === "input" || activeTagName === "textarea" || (document.activeElement as HTMLElement)?.isContentEditable) {
+      if (isTypingTarget(document.activeElement)) {
         if (e.key === "Escape" && document.activeElement === searchInputRef.current) {
           searchInputRef.current?.blur();
         }
