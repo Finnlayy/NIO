@@ -69,13 +69,33 @@ export function TaskConsole({
         Complex workflow <span className="text-slate-600">(urgency wrapping)</span>
       </label>
 
-      <button
-        onClick={onRun}
-        disabled={isRunning || !taskText.trim()}
-        className="primary-button w-full mt-3 flex items-center justify-center gap-2"
-      >
-        {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-        {isRunning ? "Routing through core …" : (
+      {isRunning || !taskText.trim() ? (
+        <div tabIndex={0} title={isRunning ? "Task is currently running" : "Enter a task description to run"} className="mt-3">
+          <button
+            disabled
+            className="primary-button w-full flex items-center justify-center gap-2 pointer-events-none"
+          >
+            {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            {isRunning ? "Routing through core …" : (
+              <span className="flex items-center gap-2">
+                Run through Neural Core
+                <span className="hidden sm:inline-flex items-center gap-0.5 text-[9px] font-mono text-cyan-200/50 bg-cyan-950/30 border border-cyan-800/30 px-1 py-0.5 rounded shadow-sm leading-none ml-1">
+                  <kbd>⌘</kbd>
+                  <span>/</span>
+                  <kbd>Ctrl</kbd>
+                  <span>+</span>
+                  <kbd>Enter</kbd>
+                </span>
+              </span>
+            )}
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={onRun}
+          className="primary-button w-full mt-3 flex items-center justify-center gap-2"
+        >
+          <Play className="w-4 h-4" />
           <span className="flex items-center gap-2">
             Run through Neural Core
             <span className="hidden sm:inline-flex items-center gap-0.5 text-[9px] font-mono text-cyan-200/50 bg-cyan-950/30 border border-cyan-800/30 px-1 py-0.5 rounded shadow-sm leading-none ml-1">
@@ -86,8 +106,8 @@ export function TaskConsole({
               <kbd>Enter</kbd>
             </span>
           </span>
-        )}
-      </button>
+        </button>
+      )}
 
       <div
         className={`mt-3 rounded-xl border p-3 min-h-[96px] ${
