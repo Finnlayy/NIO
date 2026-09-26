@@ -21,6 +21,7 @@ export function FilterBar({
           <button
             key={filter.id}
             onClick={() => onFilter(filter.id)}
+            aria-pressed={active}
             className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors ${
               active
                 ? "bg-white/[0.08] text-white border-white/15"
