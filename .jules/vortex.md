@@ -7,3 +7,6 @@
 ## 2026-09-12 - [Animation / Rendering Optimization]
 **Learning:** High-frequency live orderbook (CVD heatmap) updates were causing a layout-thrashing bottleneck due to animating the non-composite `width` property on progress bars and utilizing `transition-all` on dynamically repainted elements.
 **Action:** Removed `transition-all` from the CVD heatmap grid cells to prevent unnecessary layout recalculations. Refactored the `buyPct` and `sellPct` progress bars to use the hardware-accelerated composite property `transform: scaleX(...)` with `transformOrigin` instead of animating layout-invalidating `width`. Enforced `contain: layout paint;` on the isolated `.ops-widget` trading cards in `globals.css` to limit reflow scopes.
+## 2026-09-27 - [Graphics / Rendering Insight]
+**Learning:** Animating `width` and `margin` properties triggers synchronous layout recalculations and layout thrashing in high-frequency orderbook feeds.
+**Action:** Replaced `width` and `margin` with `transform: scaleX(...)` on `CompositeRankings.tsx` and `TechnicalGauge.tsx` and used `clip-path: inset(...)` on `KeyLevelsTable.tsx` to hardware-accelerate cropping without border scaling.
