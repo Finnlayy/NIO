@@ -120,8 +120,7 @@ class ErrorPatternDetector:
     def detect(self, errors: list) -> list:
         """Group errors by taxonomy type; returns list[ErrorPattern] sorted by frequency.
 
-        The pattern fingerprint is the error *type* (TODO Phase 4: "group errors
-        by type"), so `E_SAFETY_NET: feed stale` and `E_SAFETY_NET: feed stale
+        The pattern fingerprint is the error *type*, so `E_SAFETY_NET: feed stale` and `E_SAFETY_NET: feed stale
         again` fold into one pattern with per-message samples retained.
         """
         now = datetime.datetime.utcnow().isoformat() + "Z"
