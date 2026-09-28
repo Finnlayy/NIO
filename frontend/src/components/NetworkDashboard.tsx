@@ -28,6 +28,12 @@ type TaskResponse = {
   metadata: Record<string, unknown>;
 };
 
+// ⚡ Bolt: Extracted static derivations to module-level constants to bypass
+// React useMemo overhead and prevent initial render delay.
+const NODE_BY_ID = Object.fromEntries(networkNodes.map((node) => [node.id, node]));
+const ACTIVE_DOMAIN_COUNT = new Set(networkNodes.map((node) => node.domain).filter(Boolean)).size;
+const AGENT_COUNT = networkNodes.filter((node) => node.kind === "agent").length;
+
 export default function NetworkDashboard() {
   const [selectedId, setSelectedId] = useState("neural-core");
   const [activeFilter, setActiveFilter] = useState<DomainId | "all">("all");
@@ -66,11 +72,7 @@ export default function NetworkDashboard() {
     });
   }, [log]);
 
-  const nodeById = useMemo(
-    () => Object.fromEntries(networkNodes.map((node) => [node.id, node])),
-    [],
-  );
-  const selectedNode = nodeById[selectedId] ?? nodeById["neural-core"];
+  const selectedNode = NODE_BY_ID[selectedId] ?? NODE_BY_ID["neural-core"];
   const selectedPreset = taskPresets[selectedId];
 
   const visibleIds = useMemo(() => {
@@ -161,15 +163,6 @@ export default function NetworkDashboard() {
     }
   }
 
-  const activeDomainCount = useMemo(
-    () => new Set(networkNodes.map((node) => node.domain).filter(Boolean)).size,
-    [],
-  );
-  const agentCount = useMemo(
-    () => networkNodes.filter((node) => node.kind === "agent").length,
-    [],
-  );
-
   return (
     <main className="min-h-screen bg-[#090b12]">
       <Header
@@ -182,15 +175,15 @@ export default function NetworkDashboard() {
       <div className="max-w-[1600px] mx-auto p-4 sm:p-6 space-y-4">
         <KpiStrip
           nodeCount={networkNodes.length}
-          domainCount={activeDomainCount}
-          agentCount={agentCount}
+          domainCount={ACTIVE_DOMAIN_COUNT}
+          agentCount={AGENT_COUNT}
           edgeCount={networkEdges.length}
           latencyMs={latencyMs}
         />
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           <CoreTile
-            node={nodeById["neural-core"]}
+            node={NODE_BY_ID["neural-core"]}
             selected={selectedId === "neural-core"}
             dimmed={!visibleIds.has("neural-core")}
             onSelect={() => selectNode("neural-core")}

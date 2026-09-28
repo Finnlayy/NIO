@@ -1,0 +1,17 @@
+--- frontend/src/components/NetworkDashboard.tsx
++++ frontend/src/components/NetworkDashboard.tsx
+@@ -28,8 +28,15 @@
+   metadata: Record<string, unknown>;
+ };
+
++/**
++ * ⚡ Bolt: Extracted static object derivation to module level constants to prevent
++ * expensive execution during React initial render and to bypass useMemo overhead.
++ * Deriving these arrays from static data (networkNodes) means they never change,
++ * so keeping them inside the component was a performance anti-pattern.
++ */
+ const NODE_BY_ID = Object.fromEntries(networkNodes.map((node) => [node.id, node]));
+ const ACTIVE_DOMAIN_COUNT = new Set(networkNodes.map((node) => node.domain).filter(Boolean)).size;
+ const AGENT_COUNT = networkNodes.filter((node) => node.kind === "agent").length;
+
+ export default function NetworkDashboard() {
