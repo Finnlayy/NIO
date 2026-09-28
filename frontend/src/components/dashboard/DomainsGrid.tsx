@@ -126,7 +126,7 @@ function TopicChip({
         event.stopPropagation();
         onSelect(topic.id);
       }}
-      className={`px-2 py-1 rounded-md text-[10px] font-medium border transition-colors ${
+      className={`px-2 py-1 rounded-md text-[10px] font-medium border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${
         dimmed ? "opacity-40" : "hover:border-current"
       }`}
       style={{

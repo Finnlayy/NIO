@@ -21,7 +21,8 @@ export function FilterBar({
           <button
             key={filter.id}
             onClick={() => onFilter(filter.id)}
-            className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors ${
+            aria-pressed={active}
+            className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 ${
               active
                 ? "bg-white/[0.08] text-white border-white/15"
                 : "text-slate-500 border-transparent hover:text-slate-200 hover:bg-white/[0.04]"

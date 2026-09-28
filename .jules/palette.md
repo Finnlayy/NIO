@@ -1,0 +1,3 @@
+## 2024-05-28 - Adding accessible tooltips to disabled interactive elements
+**Learning:** Standard `<button disabled>` elements completely swallow focus, making them invisible to keyboard-only and screen reader users. This means users have no way to discover *why* an action is disabled, causing friction and confusion in complex workflows like the Neural Core routing.
+**Action:** Wrap disabled interactive elements (like the TaskConsole submit button) in a `div` or `span` that handles the focus and descriptive attributes (e.g., `<div tabIndex={0} title="Explain why disabled">`). Use a ternary to swap the `tabIndex` to `-1` when the button is enabled so you don't introduce redundant tab stops.
