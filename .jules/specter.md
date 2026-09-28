@@ -31,3 +31,7 @@
 ## 2026-09-08 - NewsSentiment visual inconsistencies and missing monospace typography
 **Learning:** `NewsSentiment.tsx` used raw hex colors in inline styles (`#34d399`, `#f87171`, `#94a3b8`, `#fbbf24`) instead of Tailwind semantic tokens, which violates the MP-17 Dark-Glassmorphism standard. Percentages and timestamps also lacked monospace tabular figures, so they would not align under live updates.
 **Action:** Enforce Tailwind semantic color tokens (`text-emerald-400`, `text-rose-400`, `text-amber-400`, `bg-rose-400` / `bg-slate-500` / `bg-emerald-400`) and `font-mono tabular-nums` on numerical values. Guard in `news-hotkeys.test.js`.
+
+## 2026-09-08 - TradePlan visual inconsistencies and missing monospace typography
+**Learning:** `TradePlan.tsx` used raw hex colors in inline styles (`#34d399`, `#60a5fa`, `#f87171`) for the ladder component and lacked explicit dark-glassmorphism tokens (`bg-[#0a0a0c]/80 backdrop-blur-sm`). The Stat and Row percentages and numerical values also lacked monospace tabular figures (`font-mono tabular-nums`), which violates the MP-17 Dark-Glassmorphism standard.
+**Action:** Replaced inline hex colors with a `theme` prop using Tailwind semantic color tokens (`emerald`, `blue`, `rose`). Applied `bg-[#0a0a0c]/80 backdrop-blur-sm` to the ladder badges. Enforced `font-mono tabular-nums` on all numerical values in Stat and Row components.
