@@ -32,3 +32,7 @@ Runtime-Persistenz fragen: Was ist durabler Zustand vs. abgeleitete Metrik?
 ## 2026-09-09 - React Render Loop Write-Amplification
 **Learning:** Computing heavy nested filters and object derivations directly inside a React component (like DomainsGrid computing nodes, topics, and links per domain) triggers an expensive O(N*M) execution on every re-render, creating CPU spikes even when underlying static data hasn't changed.
 **Action:** When component properties are derived from static configurations, extract the calculation into a module-level constant instead of keeping it in the render loop or relying on useMemo.
+
+## 2026-09-10 - React Render Loop Object Allocation Optimization
+**Learning:** Re-declaring static arrays or object dictionaries directly inside function body or inside render-loop methods (like `tileWeight` which contains `bySymbol` map, or inside `useMemo` hooks relying on external static data that itself doesn't change like `networkNodes` in `NetworkDashboard`) creates hidden execution overhead. It needlessly reallocates objects on the heap or calculates things every mount that could instead be solved by simply hoisting them to the module or file level scope.
+**Action:** Extract large static objects and configuration dictionaries (e.g., `TILE_WEIGHTS_BY_SYMBOL`, `NODE_BY_ID`, `ACTIVE_DOMAIN_COUNT`) into module-level constants. This avoids repeated memory allocation and garbage collection overhead during rapid component renders or `map`/`sort` loop execution paths without sacrificing readability.

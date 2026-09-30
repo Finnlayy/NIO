@@ -2,14 +2,16 @@ import { tickers, fmt, type Ticker } from "../marketData";
 import { useMarketData } from "../hooks/useMarketData";
 import { Pct, Insight, LiveBadge } from "./bits";
 
+// ⚡ Bolt: Hoisted static object out of function scope to prevent garbage collection and reallocation inside hot `map` / `sort` loops.
+const TILE_WEIGHTS_BY_SYMBOL: Record<string, number> = {
+  BTCUSDT: 34, ETHUSDT: 22, BNBUSDT: 14, SOLUSDT: 10, LTCUSDT: 7,
+  XRPUSDT: 6, NEARUSDT: 5, DOGEUSDT: 4, ADAUSDT: 4, AVAXUSDT: 4,
+  ZECUSDT: 4, MAGMAUSDT_P: 3, ACEUSDT: 3, DOTUSDT: 4,
+};
+
 /* Treemap-style breadth grid: tile area ~ market weight proxy, color = change */
 function tileWeight(t: Ticker) {
-  const bySymbol: Record<string, number> = {
-    BTCUSDT: 34, ETHUSDT: 22, BNBUSDT: 14, SOLUSDT: 10, LTCUSDT: 7,
-    XRPUSDT: 6, NEARUSDT: 5, DOGEUSDT: 4, ADAUSDT: 4, AVAXUSDT: 4,
-    ZECUSDT: 4, MAGMAUSDT_P: 3, ACEUSDT: 3, DOTUSDT: 4,
-  };
-  return bySymbol[t.symbol.replace(/[.-]/g, "_")] ?? 4;
+  return TILE_WEIGHTS_BY_SYMBOL[t.symbol.replace(/[.-]/g, "_")] ?? 4;
 }
 
 function tileColor(changePct: number) {
