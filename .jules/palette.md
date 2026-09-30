@@ -1,0 +1,3 @@
+## 2026-09-30 - Prevent disabled buttons from swallowing focus
+**Learning:** Standard `<button disabled>` elements are completely skipped by keyboard navigation (Tab), meaning screen reader users and keyboard users cannot reach them to discover why they are disabled. Adding `aria-disabled` instead of `disabled` works for screen readers but requires manual click prevention and styling logic.
+**Action:** The most robust pattern is to wrap the disabled `<button>` in a generic focusable container (e.g. `<div tabIndex={0} title="...">`) with focus styles (`focus-visible:ring-2`) and an explanatory tooltip. This keeps the native disabled behavior of the inner button while ensuring the component remains discoverable via keyboard.
