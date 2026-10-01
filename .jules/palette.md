@@ -1,0 +1,3 @@
+## 2024-10-24 - Accessible Disabled Buttons and Toggle State
+**Learning:** In Next.js components, disabled standard HTML buttons naturally swallow focus, making them completely invisible to keyboard and screen reader users. This means users navigating via keyboard don't even know the button exists, let alone why they can't click it. Furthermore, custom filter buttons acting as toggles lack state announcements by default.
+**Action:** Wrap disabled buttons in a standard element like `<div tabIndex={0} title="...">` to ensure screen readers and keyboard users can focus them, see a focus ring, and hear/read the explanation via tooltip. For filter buttons acting as toggles, explicitly add `aria-pressed={active}` to ensure screen readers announce their pressed state.
