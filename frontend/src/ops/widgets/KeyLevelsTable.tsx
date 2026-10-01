@@ -19,6 +19,10 @@ export function KeyLevelsTable({ data, symbol }: { data: Record<string, unknown>
         {levels.map((lvl, i) => {
           const color = kindColor[lvl.kind];
           const isNow = lvl.kind === "now";
+          const lPct = lvl.distancePct < 0 ? Math.max(0, (1 - lvl.width) * 100 - 40) : 0;
+          const wPct = Math.max(10, lvl.width * 100);
+          const rPct = Math.max(0, 100 - lPct - wPct);
+
           return (
             <div key={`${lvl.label}-${i}`} className="flex items-center gap-2 text-[11px]">
               <span
@@ -33,10 +37,9 @@ export function KeyLevelsTable({ data, symbol }: { data: Record<string, unknown>
                   <span className="absolute inset-x-0 top-1/2 border-t border-dashed border-indigo-400/70" />
                 ) : (
                   <span
-                    className="absolute top-1/2 -translate-y-1/2 rounded-[2px] border"
+                    className="absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-[2px] border"
                     style={{
-                      width: `${Math.max(10, lvl.width * 100)}%`,
-                      marginLeft: lvl.distancePct < 0 ? `${Math.max(0, (1 - lvl.width) * 100 - 40)}%` : "0",
+                      clipPath: `inset(0 ${rPct}% 0 ${lPct}%)`,
                       borderColor: color,
                       background: `${color}22`,
                       height: "8px",
