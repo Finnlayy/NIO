@@ -32,3 +32,6 @@ Runtime-Persistenz fragen: Was ist durabler Zustand vs. abgeleitete Metrik?
 ## 2026-09-09 - React Render Loop Write-Amplification
 **Learning:** Computing heavy nested filters and object derivations directly inside a React component (like DomainsGrid computing nodes, topics, and links per domain) triggers an expensive O(N*M) execution on every re-render, creating CPU spikes even when underlying static data hasn't changed.
 **Action:** When component properties are derived from static configurations, extract the calculation into a module-level constant instead of keeping it in the render loop or relying on useMemo.
+## 2026-10-01 - Global mod+k Collision with Search Shortcut
+**Learning:** A local hotkey in the Network Dashboard header was intercepting `mod+k` to focus the search input, which collided with the global MCP Console toggle hotkey mapped in `opsHotkey`. This indiscriminate local `keydown` listener swallowed the event, preventing the console from opening and creating a frustrating user workflow bottleneck.
+**Action:** Removed the `mod+k` override from `Header.tsx`, restricting dashboard search focus exclusively to the `/` key. This preserves the global MCP Console binding and ensures deterministic shortcut layouts.
