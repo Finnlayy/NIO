@@ -22,7 +22,7 @@ export function Header({
         return;
       }
 
-      if (e.key === "/" || (e.key === "k" && (e.metaKey || e.ctrlKey))) {
+      if (e.key === "/") {
         e.preventDefault();
         searchInputRef.current?.focus();
       }
