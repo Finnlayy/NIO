@@ -29,6 +29,6 @@ Runtime-Persistenz fragen: Was ist durabler Zustand vs. abgeleitete Metrik?
 ## 2026-09-09 - React Render Loop Write-Amplification
 **Learning:** Computing heavy nested filters and object derivations directly inside a React component (like DomainsGrid computing nodes, topics, and links per domain) triggers an expensive  execution on every re-render, creating CPU spikes even when underlying static data (e.g., ) hasn't changed. This is a common performance anti-pattern in dashboards fetching layout configuration.
 **Action:** When component properties are derived from static configurations (like  and ), extract the calculation into a module-level constant (e.g., ) instead of keeping it in the render loop or relying exclusively on .
-## 2026-09-09 - React Render Loop Write-Amplification
-**Learning:** Computing heavy nested filters and object derivations directly inside a React component (like DomainsGrid computing nodes, topics, and links per domain) triggers an expensive O(N*M) execution on every re-render, creating CPU spikes even when underlying static data hasn't changed.
-**Action:** When component properties are derived from static configurations, extract the calculation into a module-level constant instead of keeping it in the render loop or relying on useMemo.
+## 2026-09-09 - React Render Loop Write-Amplification (NetworkDashboard)
+**Learning:** Computing array derivations directly inside a React component (like `activeDomainCount` and `agentCount`) using `useMemo` or inline triggers an expensive execution on every render, adding overhead when the underlying data source is statically configured constants.
+**Action:** Extract derived metrics from static configuration (`networkNodes`) into top-level module constants (`ACTIVE_DOMAIN_COUNT`, `AGENT_COUNT`) so they are calculated only once at module load time rather than during the React render cycle.
