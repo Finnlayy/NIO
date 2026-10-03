@@ -70,9 +70,12 @@ export function TaskConsole({
       </label>
 
       <button
-        onClick={onRun}
-        disabled={isRunning || !taskText.trim()}
-        className="primary-button w-full mt-3 flex items-center justify-center gap-2"
+        onClick={() => {
+          if (isRunning || !taskText.trim()) return;
+          onRun();
+        }}
+        aria-disabled={isRunning || !taskText.trim()}
+        className="primary-button w-full mt-3 flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
       >
         {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
         {isRunning ? "Routing through core …" : (
