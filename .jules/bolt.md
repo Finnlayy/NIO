@@ -32,3 +32,6 @@ Runtime-Persistenz fragen: Was ist durabler Zustand vs. abgeleitete Metrik?
 ## 2026-09-09 - React Render Loop Write-Amplification
 **Learning:** Computing heavy nested filters and object derivations directly inside a React component (like DomainsGrid computing nodes, topics, and links per domain) triggers an expensive O(N*M) execution on every re-render, creating CPU spikes even when underlying static data hasn't changed.
 **Action:** When component properties are derived from static configurations, extract the calculation into a module-level constant instead of keeping it in the render loop or relying on useMemo.
+## 2026-09-09 - React Performance Anti-Pattern: useMemo overhead on static data
+**Learning:** Using `useMemo` for derived data that strictly depends on static imports (like `networkNodes`) is an anti-pattern. While `useMemo` avoids recalculation on every render, it still incurs overhead for dependency array checks, memory allocation, and the initial hook setup on mount.
+**Action:** When a component derives variables entirely from static configurations or module-level constants (e.g. data from `@/data/network`), extract the derivation logic to module-level constants outside the component definition entirely. This completely removes the work from the render cycle.
