@@ -28,15 +28,15 @@ export function KeyLevelsTable({ data, symbol }: { data: Record<string, unknown>
                 {lvl.kind === "user" && <span className="text-[8px] px-1 rounded bg-blue-500/20 text-blue-300">YOURS</span>}
                 {lvl.label}
               </span>
-              <span className="flex-1 h-[6px] relative">
+              <span className="flex-1 h-[6px] relative w-full overflow-hidden">
                 {isNow ? (
                   <span className="absolute inset-x-0 top-1/2 border-t border-dashed border-indigo-400/70" />
                 ) : (
                   <span
-                    className="absolute top-1/2 -translate-y-1/2 rounded-[2px] border"
+                    className="absolute top-1/2 -translate-y-1/2 rounded-[2px] border w-full"
                     style={{
-                      width: `${Math.max(10, lvl.width * 100)}%`,
-                      marginLeft: lvl.distancePct < 0 ? `${Math.max(0, (1 - lvl.width) * 100 - 40)}%` : "0",
+                      clipPath: `inset(0 ${100 - Math.max(10, lvl.width * 100)}% 0 0)`,
+                      transform: `translateX(${lvl.distancePct < 0 ? Math.max(0, (1 - lvl.width) * 100 - 40) : 0}%)`,
                       borderColor: color,
                       background: `${color}22`,
                       height: "8px",
