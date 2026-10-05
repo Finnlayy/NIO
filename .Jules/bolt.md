@@ -1,3 +1,7 @@
 ## 2024-09-25 - Centralized Keyboard Handlers & Modal Ergonomics
 **Learning:** Adding local keydown listeners for Escape inside modals bypasses global input guards and can indiscriminately steal keystrokes. Modals also lack inherent keyboard traversability without proper roles and autofocus targets.
 **Action:** Remove redundant local Escape listeners in favor of a centralized `opsHotkey` global handler with `isTypingTarget` guard explicitly wiring the `close-panels` action. Ensure all modals use `role="dialog"`, `aria-modal="true"`, and `autoFocus` on the primary dismiss element for accessibility and speed.
+
+## 2024-10-05 - Shortcut Ergonomics & Input Accessibility
+**Learning:** Hardcoded single-letter shortcuts (like `mod+k`) inside local component keydown listeners often collide with global toggles (like MCP Console `mod+k`). Using the native `disabled` attribute on action buttons strips them from the keyboard tab sequence, breaking screen-reader traversal. Conditionally mounting shortcut badges `<kbd>` causes visual layout shifts during state transitions.
+**Action:** Removed overlapping `mod+k` mapping from the search bar, making `/` the exclusive focus shortcut. Replaced native `disabled` on the primary action button with `aria-disabled="true"` to ensure tab-traversal, adding a manual event `e.preventDefault()` guard to prevent execution. Refactored button content to keep `<kbd>` badges consistently rendered across both running and idle states, preventing layout shifts.
