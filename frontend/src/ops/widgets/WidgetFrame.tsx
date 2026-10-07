@@ -146,19 +146,18 @@ export const WidgetFrameContent = memo(function WidgetFrameContent({ widget }: {
         </span>
       </header>
 
-      <AnimatePresence initial={false}>
-        {!widget.minimized && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.22, ease: "easeInOut" }}
-            className="overflow-hidden"
-          >
-            <div className="p-3.5">{renderWidget(widget)}</div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <motion.div
+        initial={false}
+        animate={{
+          height: widget.minimized ? 0 : "auto",
+          opacity: widget.minimized ? 0 : 1,
+          transitionEnd: { display: widget.minimized ? "none" : "block" },
+        }}
+        transition={{ duration: 0.22, ease: "easeInOut" }}
+        className="overflow-hidden"
+      >
+        <div className="p-3.5">{renderWidget(widget)}</div>
+      </motion.div>
     </>
   );
 });
