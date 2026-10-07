@@ -1,0 +1,3 @@
+## 2024-05-15 - [Accessible Disabled Button States]
+**Learning:** Native `disabled` attributes on interactive elements entirely swallow keyboard focus and prevent tooltips or alternative context from being read by assistive technologies or navigated to via keyboard.
+**Action:** Use `aria-disabled="true"` to semantically communicate a disabled state to screen readers while retaining keyboard focusability. Intercept `onClick` and `onKeyDown` to prevent action execution. Ensure CSS applies identical disabled styling and suppresses `:hover` and `:active` effects by chaining `:not([aria-disabled="true"])`.
