@@ -68,7 +68,8 @@ export function WidgetFrame({ widget, index, onDragStart, onDragEnter, onDragEnd
  * unrelated grid churn (other ticks, drag sessions, sibling reorders).
  */
 export const WidgetFrameContent = memo(function WidgetFrameContent({ widget }: { widget: WidgetInstance }) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const menuOpen = useGridStore((s) => s.activeMenuId === widget.id);
+  const setActiveMenu = useGridStore((s) => s.setActiveMenu);
   const toggleMinimize = useGridStore((s) => s.toggleMinimize);
   const togglePin = useGridStore((s) => s.togglePin);
   const cycleSpan = useGridStore((s) => s.cycleSpan);
@@ -108,31 +109,33 @@ export const WidgetFrameContent = memo(function WidgetFrameContent({ widget }: {
           <IconBtn title={widget.minimized ? "Expand" : "Minimize"} onClick={() => toggleMinimize(widget.id)}>
             <Minus className={`w-3.5 h-3.5 transition-transform ${widget.minimized ? "rotate-180" : ""}`} />
           </IconBtn>
-          <IconBtn title="Widget options" onClick={() => setMenuOpen((v) => !v)}>
+          <IconBtn title="Widget options" onClick={() => setActiveMenu(menuOpen ? null : widget.id)}>
             <MoreVertical className="w-3.5 h-3.5" />
           </IconBtn>
 
           <AnimatePresence>
             {menuOpen && (
               <>
-                <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                <div className="fixed inset-0 z-40" onClick={() => setActiveMenu(null)} />
                 <motion.div
+                  role="menu"
+                  aria-orientation="vertical"
                   initial={{ opacity: 0, y: -4, scale: 0.97 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -4, scale: 0.97 }}
                   transition={{ duration: 0.12 }}
                   className="absolute right-0 top-9 z-50 w-48 rounded-xl border border-white/10 bg-[#11151f] shadow-2xl p-1.5"
                 >
-                  <MenuItem onClick={() => { cycleSpan(widget.id); setMenuOpen(false); }} icon={<ArrowDownUp className="w-3.5 h-3.5" />}>
+                  <MenuItem onClick={() => { cycleSpan(widget.id); setActiveMenu(null); }} icon={<ArrowDownUp className="w-3.5 h-3.5" />}>
                     Width · {widget.span}/6
                   </MenuItem>
-                  <MenuItem onClick={() => { cycleHeight(widget.id); setMenuOpen(false); }} icon={<Maximize2 className="w-3.5 h-3.5" />}>
+                  <MenuItem onClick={() => { cycleHeight(widget.id); setActiveMenu(null); }} icon={<Maximize2 className="w-3.5 h-3.5" />}>
                     Height · {widget.height}
                   </MenuItem>
-                  <MenuItem onClick={() => { togglePin(widget.id); setMenuOpen(false); }} icon={widget.pinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}>
+                  <MenuItem onClick={() => { togglePin(widget.id); setActiveMenu(null); }} icon={widget.pinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}>
                     {widget.pinned ? "Unpin" : "Pin to position"}
                   </MenuItem>
-                  <MenuItem onClick={() => { dispatchRefresh(widget); setMenuOpen(false); }} icon={<RefreshCw className="w-3.5 h-3.5" />}>
+                  <MenuItem onClick={() => { dispatchRefresh(widget); setActiveMenu(null); }} icon={<RefreshCw className="w-3.5 h-3.5" />}>
                     Re-hydrate from twin
                   </MenuItem>
                   <div className="h-px bg-white/[0.07] my-1" />
@@ -181,7 +184,7 @@ function IconBtn({
         e.stopPropagation();
         onClick();
       }}
-      className="p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-white/[0.07] transition-colors"
+      className="p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-white/[0.07] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/50"
     >
       {children}
     </button>
@@ -202,8 +205,9 @@ function MenuItem({
   return (
     <button
       type="button"
+      role="menuitem"
       onClick={onClick}
-      className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-left transition-colors ${
+      className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/50 ${
         danger
           ? "text-rose-300 hover:bg-rose-500/10"
           : "text-slate-300 hover:bg-white/[0.06]"
