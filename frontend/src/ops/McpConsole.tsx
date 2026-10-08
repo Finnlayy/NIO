@@ -47,7 +47,7 @@ export function McpConsole() {
             <button
               autoFocus
               onClick={() => setOpen(false)}
-              className="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/[0.07]"
+              className="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/50"
               aria-label="Close console"
             >
               <X className="w-4 h-4" />
