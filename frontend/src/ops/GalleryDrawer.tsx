@@ -37,6 +37,8 @@ export function GalleryDrawer() {
             exit={{ x: 380 }}
             transition={{ type: "spring", stiffness: 300, damping: 32 }}
             className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md bg-[#0c0f18] border-l border-white/[0.08] flex flex-col"
+            role="dialog"
+            aria-modal="true"
           >
             <div className="flex items-center gap-2.5 px-5 h-14 border-b border-white/[0.07]">
               <Library className="w-4 h-4 text-cyan-300" />

@@ -34,6 +34,8 @@ export function McpConsole() {
           exit={{ y: 320, opacity: 0 }}
           transition={{ type: "spring", stiffness: 260, damping: 30 }}
           className="fixed bottom-0 inset-x-0 z-40 h-80 bg-[#0a0d16]/95 backdrop-blur-xl border-t border-white/[0.08] flex flex-col"
+          role="dialog"
+          aria-modal="true"
         >
           <div className="flex items-center gap-2 px-4 h-10 border-b border-white/[0.06] shrink-0">
             <Terminal className="w-3.5 h-3.5 text-cyan-300" />
