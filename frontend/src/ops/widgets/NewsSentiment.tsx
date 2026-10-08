@@ -45,10 +45,10 @@ export function NewsSentiment({ data, symbol }: { data: Record<string, unknown>;
         <LiveBadge source={source} />
       </p>
 
-      <div className="flex h-1.5 rounded-full overflow-hidden mt-2.5">
-        <div className="bg-rose-400" style={{ width: "100%", transform: `scaleX(${negative / 100})`, transformOrigin: "left" }} />
-        <div className="bg-slate-500" style={{ width: "100%", transform: `scaleX(${neutral / 100})`, transformOrigin: "left" }} />
-        <div className="bg-emerald-400" style={{ width: "100%", transform: `scaleX(${positive / 100})`, transformOrigin: "left" }} />
+      <div className="relative h-1.5 rounded-full overflow-hidden mt-2.5 bg-white/[0.05]">
+        <div className="absolute inset-y-0 left-0 w-full h-full bg-rose-400" style={{ transform: `scaleX(${negative / 100})`, transformOrigin: "left" }} />
+        <div className="absolute inset-y-0 left-0 w-full h-full bg-slate-500" style={{ transform: `translateX(${negative}%) scaleX(${neutral / 100})`, transformOrigin: "left" }} />
+        <div className="absolute inset-y-0 left-0 w-full h-full bg-emerald-400" style={{ transform: `translateX(${negative + neutral}%) scaleX(${positive / 100})`, transformOrigin: "left" }} />
       </div>
       <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5 text-[10px] text-slate-500">
         <span className="flex items-center gap-1 font-mono tabular-nums">
