@@ -32,16 +32,20 @@ export function KeyLevelsTable({ data, symbol }: { data: Record<string, unknown>
                 {isNow ? (
                   <span className="absolute inset-x-0 top-1/2 border-t border-dashed border-indigo-400/70" />
                 ) : (
-                  <span
-                    className="absolute top-1/2 -translate-y-1/2 rounded-[2px] border"
-                    style={{
-                      width: `${Math.max(10, lvl.width * 100)}%`,
-                      marginLeft: lvl.distancePct < 0 ? `${Math.max(0, (1 - lvl.width) * 100 - 40)}%` : "0",
-                      borderColor: color,
-                      background: `${color}22`,
-                      height: "8px",
-                    }}
-                  />
+                  (() => {
+                    const left = lvl.distancePct < 0 ? Math.max(0, (1 - lvl.width) * 100 - 40) : 0;
+                    const width = Math.max(10, lvl.width * 100);
+                    return (
+                      <span
+                        className="absolute top-1/2 -translate-y-1/2 w-full h-[8px] rounded-[2px] border"
+                        style={{
+                          clipPath: `inset(0 ${100 - (left + width)}% 0 ${left}%)`,
+                          borderColor: color,
+                          background: `${color}22`,
+                        }}
+                      />
+                    );
+                  })()
                 )}
               </span>
               <span className="w-20 text-right font-mono text-slate-200 tabular-nums shrink-0">
