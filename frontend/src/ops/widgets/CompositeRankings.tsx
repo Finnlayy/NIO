@@ -37,11 +37,11 @@ export function CompositeRankings({ data }: { data: Record<string, unknown> }) {
                 {row.wkChange ? ` · ${row.wkChange > 0 ? "+" : ""}${row.wkChange.toFixed(1)}% wk, ${row.moChange > 0 ? "+" : ""}${row.moChange.toFixed(1)}% mo` : ""}
               </p>
               <p className="text-[9px] text-slate-600">Weakest: Volume {row.volume}</p>
-              <div className="h-1 rounded-full bg-white/[0.06] mt-0.5 overflow-hidden">
+              <div className="relative w-full h-1 rounded-full bg-white/[0.06] mt-0.5 overflow-hidden">
                 <div
-                  className="h-full rounded-full"
+                  className="absolute inset-y-0 left-0 w-full h-full rounded-full"
                   style={{
-                    width: `${row.score}%`,
+                    clipPath: `inset(0 ${100 - row.score}% 0 0)`,
                     background: "linear-gradient(90deg, #0d9488, #2fae87)",
                   }}
                 />
