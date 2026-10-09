@@ -1,3 +1,6 @@
 ## 2024-09-25 - Centralized Keyboard Handlers & Modal Ergonomics
 **Learning:** Adding local keydown listeners for Escape inside modals bypasses global input guards and can indiscriminately steal keystrokes. Modals also lack inherent keyboard traversability without proper roles and autofocus targets.
 **Action:** Remove redundant local Escape listeners in favor of a centralized `opsHotkey` global handler with `isTypingTarget` guard explicitly wiring the `close-panels` action. Ensure all modals use `role="dialog"`, `aria-modal="true"`, and `autoFocus` on the primary dismiss element for accessibility and speed.
+## 2024-10-09 - Extracted static derivations outside component body to eliminate React hook overhead
+**Learning:** Static data computations from imported configuration arrays (e.g., `networkNodes`) do not need to be calculated repeatedly. When placed inside a React component using `useMemo` with an empty dependency array (`[]`), they still evaluate once per component instance and incur the overhead of the React hook (closure allocation, dependency array checking).
+**Action:** Move static data derivation logic completely out of the React component's body and into the module-level scope. This guarantees the operations are evaluated truly only once per module load, directly eliminating React hook runtime overhead entirely without affecting functionality.
