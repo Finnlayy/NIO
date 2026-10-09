@@ -333,12 +333,33 @@ function launch(command: string, args: string[]): Proc | null {
 }
 
 const HUB_KEY = Symbol.for("nio.telemetry.hub");
+const LISTENERS_KEY = Symbol.for("nio.listeners");
 
 /** Singleton across hot reloads — two consumers would fight over the socket. */
 export function getTelemetryHub(): TelemetryHub {
-  const holder = globalThis as unknown as Record<symbol, { hub?: TelemetryHub }>;
+  const holder = globalThis as unknown as Record<symbol, { hub?: TelemetryHub; bound?: boolean }>;
   if (!holder[HUB_KEY]) holder[HUB_KEY] = {};
   const slot = holder[HUB_KEY];
   if (!slot.hub) slot.hub = new TelemetryHub(resolvePaths());
+
+  const listenersSlot = globalThis as unknown as Record<symbol, boolean>;
+  if (!listenersSlot[LISTENERS_KEY]) {
+    listenersSlot[LISTENERS_KEY] = true;
+
+    process.on("exit", () => {
+      if (slot.hub) slot.hub.stop();
+    });
+
+    process.on("SIGINT", () => {
+      if (slot.hub) slot.hub.stop();
+      process.exit(130);
+    });
+
+    process.on("SIGTERM", () => {
+      if (slot.hub) slot.hub.stop();
+      process.exit(143);
+    });
+  }
+
   return slot.hub;
 }
