@@ -96,13 +96,14 @@ test("minimized widgets keep the expand control and drop the body", () => {
  * `FeedBadge` to `orderflow-cvd-heatmap` (+2) and to `quantum-envelope-chart`
  * (+2) plus a 4-cell engine read row there (+14). Both are intentional: the
  * badges are what makes a dead bus visible instead of showing a frozen value.
+ * Baseline 2023-10-09: 1087 nodes (+4) - Specter: PatternScanner UI Polish added wrappers to numeric fields to enforce font-mono.
  */
-test("DOM node budget of the default layout is stable (1083)", () => {
+test("DOM node budget of the default layout is stable (1087)", () => {
   const widgets = seedDefaultLayout();
   let total = 0;
   for (const [i, widget] of widgets.entries()) {
     total += countOpenTags(frameHtml(widget, i));
   }
   resetStore();
-  assert.equal(total, 1083, "default layout DOM node count");
+  assert.equal(total, 1087, "default layout DOM node count");
 });

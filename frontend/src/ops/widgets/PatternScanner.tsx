@@ -1,17 +1,18 @@
 import type { PatternSetup } from "../marketData";
-import { Insight, upBar, downBar } from "./bits";
+import { Insight } from "./bits";
 
 function FlagIcon({ bullish }: { bullish: boolean }) {
   return (
     <span
-      className="w-9 h-7 rounded-md grid place-items-center shrink-0"
-      style={{ background: bullish ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)" }}
+      className={`w-9 h-7 rounded-md grid place-items-center shrink-0 ${
+        bullish ? "bg-emerald-400/[0.12]" : "bg-rose-400/[0.12]"
+      }`}
     >
       <svg viewBox="0 0 24 16" className="w-6 h-4">
         <path
           d={bullish ? "M2 14 L6 6 L12 9 L18 3 L20 5 L13 11 L7 8 Z" : "M2 2 L6 10 L12 7 L18 13 L20 11 L13 5 L7 8 Z"}
           fill="none"
-          stroke={bullish ? upBar : downBar}
+          className={bullish ? "stroke-emerald-400" : "stroke-rose-400"}
           strokeWidth="1.6"
           strokeLinejoin="round"
         />
@@ -26,29 +27,33 @@ export function PatternScanner({ data }: { data: Record<string, unknown> }) {
   const bearish = data.bearish as number;
   const insight = data.insight as string;
   const total = bullish + bearish || 1;
+  const bullPct = total > 0 ? (bullish / total) * 100 : 0;
+  const bearPct = total > 0 ? (bearish / total) * 100 : 0;
 
   return (
     <div className="flex flex-col h-full">
-      <p className="text-lg font-bold text-white">{patterns.length} forming, none broken yet</p>
+      <p className="text-lg font-bold text-white">
+        <span className="font-mono tabular-nums">{patterns.length}</span> forming, none broken yet
+      </p>
 
       {/* bull/bear progress */}
-      <div className="flex h-1.5 rounded-full overflow-hidden mt-2.5">
-        <div style={{ width: "100%", background: upBar, transform: `scaleX(${bullish / total})`, transformOrigin: "left" }} />
-        <div style={{ width: "100%", background: downBar, transform: `scaleX(${bearish / total})`, transformOrigin: "left" }} />
+      <div className="flex relative w-full h-1.5 rounded-full overflow-hidden mt-2.5">
+        <div className="absolute inset-y-0 left-0 h-full w-full bg-emerald-400" style={{ clipPath: `inset(0 ${100 - bullPct}% 0 0)` }} />
+        <div className="absolute inset-y-0 right-0 h-full w-full bg-rose-400" style={{ clipPath: `inset(0 0 0 ${100 - bearPct}%)` }} />
       </div>
       <p className="flex items-center gap-3 mt-1.5 text-[10px]">
         <span className="flex items-center gap-1 text-slate-500">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: upBar }} />
-          Bullish {bullish}
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+          Bullish <span className="font-mono tabular-nums">{bullish}</span>
         </span>
         <span className="flex items-center gap-1 text-slate-500">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: downBar }} />
-          Bearish {bearish}
+          <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+          Bearish <span className="font-mono tabular-nums">{bearish}</span>
         </span>
       </p>
 
       <p className="text-[10px] uppercase tracking-[0.14em] text-slate-600 mt-3 mb-1.5">
-        Approaching trigger · {patterns.length}
+        Approaching trigger · <span className="font-mono tabular-nums">{patterns.length}</span>
       </p>
 
       <div className="space-y-0">
