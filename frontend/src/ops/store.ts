@@ -81,6 +81,7 @@ interface GridState {
   mcpLog: McpEvent[];
   consoleOpen: boolean;
   galleryOpen: boolean;
+  activeMenuId: string | null;
 
   /* store-internal mutations (no event emission) */
   pushLog: (event: McpEvent) => void;
@@ -96,6 +97,7 @@ interface GridState {
   cycleHeight: (id: string) => void;
   setConsoleOpen: (open: boolean) => void;
   setGalleryOpen: (open: boolean) => void;
+  setActiveMenuId: (id: string | null) => void;
 }
 
 export const useGridStore = create<GridState>((set) => ({
@@ -103,6 +105,7 @@ export const useGridStore = create<GridState>((set) => ({
   mcpLog: [],
   consoleOpen: false,
   galleryOpen: false,
+  activeMenuId: null,
 
   pushLog: (event) =>
     set((s) => ({ mcpLog: [...s.mcpLog.slice(-59), event] })),
@@ -170,6 +173,7 @@ export const useGridStore = create<GridState>((set) => ({
 
   setConsoleOpen: (open) => set({ consoleOpen: open }),
   setGalleryOpen: (open) => set({ galleryOpen: open }),
+  setActiveMenuId: (id) => set({ activeMenuId: id }),
 }));
 
 /* ------------------------------------------------------------------ */
