@@ -1,3 +1,6 @@
 ## 2024-09-25 - Centralized Keyboard Handlers & Modal Ergonomics
 **Learning:** Adding local keydown listeners for Escape inside modals bypasses global input guards and can indiscriminately steal keystrokes. Modals also lack inherent keyboard traversability without proper roles and autofocus targets.
 **Action:** Remove redundant local Escape listeners in favor of a centralized `opsHotkey` global handler with `isTypingTarget` guard explicitly wiring the `close-panels` action. Ensure all modals use `role="dialog"`, `aria-modal="true"`, and `autoFocus` on the primary dismiss element for accessibility and speed.
+## 2025-02-17 - Centralized Ergonimic Menu State
+**Learning:** Local state for component menus (e.g. `useState`) fails ergonomically because the global `Escape` key handler doesn't know about them, meaning users cannot escape contextual menus seamlessly if focus is trapped.
+**Action:** Lift local localized menu state to a global store (e.g., Zustand `activeMenuId`) and update the central hotkey handler for `Escape` (`close-panels`) to dismiss active widgets prior to generic layout panels. Use strict equality selectors (e.g. `s.activeMenuId === widget.id`) within the components to prevent performance regressions from rendering churn.
