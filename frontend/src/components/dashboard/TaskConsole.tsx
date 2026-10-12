@@ -70,8 +70,10 @@ export function TaskConsole({
       </label>
 
       <button
-        onClick={onRun}
-        disabled={isRunning || !taskText.trim()}
+        onClick={(e) => { if (isRunning || !taskText.trim()) { e.preventDefault(); return; } onRun(); }}
+        aria-disabled={isRunning || !taskText.trim()}
+        aria-label="Run task"
+        title={isRunning ? "Task is currently running" : !taskText.trim() ? "Please enter a task description to run" : undefined}
         className="primary-button w-full mt-3 flex items-center justify-center gap-2"
       >
         {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
