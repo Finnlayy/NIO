@@ -119,9 +119,9 @@ function BarLine({ label, value, score }: { label: string; value: string; score:
       </div>
       <div className="h-1 rounded-full bg-white/[0.06] relative">
         <div
-          className="absolute inset-y-0 left-0 rounded-full"
+          className="w-full h-full absolute inset-y-0 left-0 rounded-full"
           style={{
-            width: `${pct}%`,
+            clipPath: `inset(0 ${100 - pct}% 0 0)`,
             background: "linear-gradient(90deg, #f59e0b, #34d399)",
           }}
         />
