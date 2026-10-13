@@ -80,11 +80,12 @@ test("pinned widgets lock reordering affordances", () => {
   resetStore();
 });
 
-test("minimized widgets keep the expand control and drop the body", () => {
+test("minimized widgets keep the expand control and hide the body", () => {
   const widgets = seedDefaultLayout();
   const minimized = { ...widgets[2], minimized: true };
   const html = frameHtml(minimized, 2, { widget: minimized });
   assert.ok(html.includes("Expand"), "expand control");
+  assert.ok(html.includes('aria-hidden="true"'), "aria-hidden applied");
   resetStore();
 });
 
