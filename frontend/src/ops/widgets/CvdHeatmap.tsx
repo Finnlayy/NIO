@@ -59,9 +59,9 @@ export function CvdHeatmap({ data }: { data: Record<string, unknown> }) {
         <span className="text-[11px] text-slate-400">
           Buy pressure <b className="text-emerald-400 tabular-nums">{buyPct}%</b>
         </span>
-        <div className="flex-1 h-1.5 rounded-full overflow-hidden flex relative">
-          <div className="absolute inset-y-0 left-0 h-full" style={{ width: "100%", background: "#34d399", transform: `scaleX(${buyPct / 100})`, transformOrigin: "left" }} />
-          <div className="absolute inset-y-0 right-0 h-full" style={{ width: "100%", background: "#f87171", transform: `scaleX(${sellPct / 100})`, transformOrigin: "right" }} />
+        <div className="flex-1 relative w-full h-1.5 rounded-full overflow-hidden">
+          <div className="absolute inset-y-0 left-0 w-full h-full" style={{ background: "#34d399", clipPath: `inset(0 ${100 - buyPct}% 0 0)` }} />
+          <div className="absolute inset-y-0 left-0 w-full h-full" style={{ background: "#f87171", clipPath: `inset(0 0 0 ${100 - sellPct}%)` }} />
         </div>
         <span className="text-[11px] text-slate-400">
           <b className="text-rose-400 tabular-nums">{sellPct}%</b> Sell
