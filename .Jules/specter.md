@@ -1,0 +1,3 @@
+## 2023-10-24 - [UI Aesthetic Insight]
+**Learning:** Hardcoded arbitrary colors via inline styles (`style={{ borderColor: "...", background: "..." }}`) violate the Dark-Glassmorphism standard and make token management difficult. Numerical outputs like counts for links and nodes lack monospace tabular number formatting, creating visual instability during updates.
+**Action:** Replaced inline styles in `TopicChip` with a static token mapping object (`topicChipToneClasses`) using semantic Tailwind utility classes for consistent hover states and colors. Applied `font-mono tabular-nums` to numerical outputs (`{nodes.length}` and `{links}`) to ensure crisp and stable typography.
