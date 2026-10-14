@@ -161,6 +161,7 @@ export default function OpsGridPage() {
           </span>
           <button
             onClick={() => setConsoleOpen(!consoleOpen)}
+            aria-label="Toggle MCP Bus Console"
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
               consoleOpen
                 ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-200"
@@ -172,6 +173,7 @@ export default function OpsGridPage() {
           </button>
           <button
             onClick={exportLayout}
+            aria-label="Export widget layout"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/[0.08] text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
@@ -179,6 +181,7 @@ export default function OpsGridPage() {
           </button>
           <button
             onClick={() => setGalleryOpen(true)}
+            aria-label="Add widget"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:brightness-110 transition-colors"
           >
             <Library className="w-3.5 h-3.5" />
