@@ -189,13 +189,12 @@ body {
   transition: filter 150ms ease, transform 150ms ease, opacity 150ms ease;
 }
 
-.primary-button:hover:not(:disabled):not([aria-disabled="true"]) {
+.primary-button:hover:not(:disabled) {
   filter: brightness(1.1);
   transform: translateY(-1px);
 }
 
-.primary-button:disabled,
-.primary-button[aria-disabled="true"] {
+.primary-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
