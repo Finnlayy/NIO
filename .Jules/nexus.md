@@ -1,3 +1,7 @@
 ## 2026-09-08 - [IPC/API Integration Insight]
 **Learning:** UDS telemetry bridge node process lacked exponential backoff, causing too fast respawns on failure.
 **Action:** Enforce exponential backoff bounded at 30 seconds for spawn loops next time.
+
+## 2023-10-25 - [IPC/API Integration Insight]
+**Learning:** When spawning Python UDS telemetry child processes from Node.js (e.g., telemetry bridge) that bind to an `AF_UNIX` socket, process termination signals like `SIGINT` or `SIGTERM` sent to the Node process do not automatically invoke the cleanup or termination logic of the spawned child processes unless explicit event listeners are wired. This can lead to orphaned Python processes and lingering `.sock` files that block the event loop or prevent restarting. Additionally, when handling these termination signals, Node.js will swallow the exit code and exit with `0` unless explicitly instructed to exit with `130` (`SIGINT`) or `143` (`SIGTERM`).
+**Action:** Always register explicit process event listeners (`exit`, `SIGINT`, `SIGTERM`) when spawning UDS child processes to invoke `.kill()` or similar teardown methods. Ensure that listeners bound to singletons across hot reloads are deduplicated using a global symbol (e.g., `Symbol.for("nio.listeners")`). For `SIGINT` and `SIGTERM` handlers, ensure they call `process.exit(130)` and `process.exit(143)` respectively to properly propagate termination signals.
