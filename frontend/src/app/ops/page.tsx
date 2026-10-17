@@ -48,10 +48,11 @@ export default function OpsGridPage() {
         return;
       }
       if (action === "close-panels") {
-        if (s.consoleOpen || s.galleryOpen) {
+        if (s.consoleOpen || s.galleryOpen || s.activeMenuId !== null) {
           e.preventDefault();
           s.setConsoleOpen(false);
           s.setGalleryOpen(false);
+          s.setActiveMenuId(null);
         }
       }
     }
