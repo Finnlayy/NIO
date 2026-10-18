@@ -1,4 +1,6 @@
 import { AlertTriangle, CheckCircle2, Loader2, Play, Terminal } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { isTypingTarget } from "@/ops/hotkeys";
 import { ModuleHeader, StatusDot, Tile } from "./shared";
 import type { RunState } from "./types";
 
@@ -23,6 +25,24 @@ export function TaskConsole({
   apiUrl: string;
   onRun: () => void;
 }) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isTyping = isTypingTarget(document.activeElement);
+      if (!isTyping || document.activeElement === textareaRef.current) {
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          if (!isRunning && taskText.trim()) {
+            onRun();
+          }
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isRunning, taskText, onRun]);
+
   return (
     <Tile className="p-4 h-full flex flex-col">
       <ModuleHeader
@@ -43,16 +63,9 @@ export function TaskConsole({
       />
 
       <textarea
+        ref={textareaRef}
         value={taskText}
         onChange={(event) => onTaskText(event.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            if (!isRunning && taskText.trim()) {
-              onRun();
-            }
-          }
-        }}
         rows={3}
         className="console-input resize-none text-[12.5px] leading-relaxed"
         placeholder="Describe a task for the Neural Core …"
@@ -70,8 +83,14 @@ export function TaskConsole({
       </label>
 
       <button
-        onClick={onRun}
-        disabled={isRunning || !taskText.trim()}
+        onClick={(e) => {
+          if (isRunning || !taskText.trim()) {
+            e.preventDefault();
+            return;
+          }
+          onRun();
+        }}
+        aria-disabled={isRunning || !taskText.trim() ? "true" : undefined}
         className="primary-button w-full mt-3 flex items-center justify-center gap-2"
       >
         {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}

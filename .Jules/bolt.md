@@ -1,3 +1,7 @@
 ## 2024-09-25 - Centralized Keyboard Handlers & Modal Ergonomics
 **Learning:** Adding local keydown listeners for Escape inside modals bypasses global input guards and can indiscriminately steal keystrokes. Modals also lack inherent keyboard traversability without proper roles and autofocus targets.
 **Action:** Remove redundant local Escape listeners in favor of a centralized `opsHotkey` global handler with `isTypingTarget` guard explicitly wiring the `close-panels` action. Ensure all modals use `role="dialog"`, `aria-modal="true"`, and `autoFocus` on the primary dismiss element for accessibility and speed.
+
+## 2024-09-26 - Lifting Execution Shortcuts and aria-disabled Ergonomics
+**Learning:** Local onKeyDown listeners on textareas for execution shortcuts fail when the user clicks a preset but hasn't focused the text area. Also, using native `disabled` on buttons breaks keyboard tab traversal. Additionally, `mod+k` mappings on inputs collide with the globally reserved MCP console shortcut.
+**Action:** Lift execution shortcuts (`Cmd/Ctrl+Enter`) to global `useEffect` listeners guarded by `isTypingTarget` (while still explicitly allowing it inside its own textarea). Replace native `disabled` attributes on primary action buttons with `aria-disabled="true"` to preserve keyboard traversability, manually block execution in `onClick`, and update CSS pseudo-classes. Remove `mod+k` aliases globally.
