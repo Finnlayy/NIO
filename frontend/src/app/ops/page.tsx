@@ -48,6 +48,12 @@ export default function OpsGridPage() {
         return;
       }
       if (action === "close-panels") {
+        /* Bolt Ergonomics: Close centralized widget menus before layout panels */
+        if (s.activeMenuId !== null) {
+          e.preventDefault();
+          s.setActiveMenuId(null);
+          return;
+        }
         if (s.consoleOpen || s.galleryOpen) {
           e.preventDefault();
           s.setConsoleOpen(false);
