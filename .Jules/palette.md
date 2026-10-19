@@ -1,3 +1,7 @@
 ## 2026-09-12 - Keyboard Shortcut and Modal Close Accessibility
 **Learning:** We realized that global keyboard shortcuts in the dashboard were hijacking inputs for users trying to use forms (specifically in elements with `isContentEditable` set). Additionally, drawer/modal components were missing standard Escape key listeners, forcing users to click close buttons or the backdrop, thus limiting keyboard navigation.
 **Action:** Always verify `document.activeElement?.isContentEditable` alongside input and textarea tags when writing custom keyboard shortcut hooks. Furthermore, all overlay menus must pair with an `Escape` key close listener to support non-mouse accessibility.
+
+## 2026-10-19 - Accessible states and ARIA semantics
+**Learning:** We realized that natively disabled buttons cannot receive keyboard focus, which prevents screen readers from reading hover tooltips that explain *why* the button is disabled. Furthermore, auto-updating feeds (like the Activity Stream) were silently inserting content without notifying screen reader users. Toggle buttons in filter bars were missing state indicators.
+**Action:** Replace the native `disabled` attribute with `aria-disabled="true"` to enable focus and hover tooltips on disabled elements, manually guarding the `onClick` handler and ensuring CSS states are updated with `:not([aria-disabled="true"])`. For auto-updating feeds, wrap dynamically updating lists in `role="log"` with `aria-live="polite"`. Add `aria-pressed={active}` to toggle buttons.
