@@ -37,7 +37,7 @@ export function DomainsGrid({
       <ModuleHeader
         icon={<Layers className="w-4 h-4" />}
         title="Domain Clusters"
-        meta={`${DOMAIN_CLUSTERS.filter((d) => d.nodes.length > 0).length} active`}
+        meta={<><span className="font-mono tabular-nums">{DOMAIN_CLUSTERS.filter((d) => d.nodes.length > 0).length}</span> active</>}
         status={<StatusDot tone="active" label="Mesh" />}
       />
 
@@ -90,15 +90,14 @@ export function DomainsGrid({
                       topic={topic}
                       onSelect={onSelectNode}
                       dimmed={!visibleIds.has(topic.id)}
-                      color={color.text}
                     />
                   ))}
                 </div>
               )}
 
               <div className="flex items-center gap-3 mt-3 pt-2.5 border-t border-white/[0.05] text-[10px] text-slate-600">
-                <span>{nodes.length} nodes</span>
-                <span>{links} links</span>
+                <span><span className="font-mono tabular-nums">{nodes.length}</span> nodes</span>
+                <span><span className="font-mono tabular-nums">{links}</span> links</span>
               </div>
             </Tile>
           );
@@ -108,17 +107,28 @@ export function DomainsGrid({
   );
 }
 
+const TOPIC_COLOR_CLASSES: Record<string, string> = {
+  yellow: "text-[#fef08a]",
+  purple: "text-[#e9d5ff]",
+  orange: "text-[#fed7aa]",
+  green: "text-[#bbf7d0]",
+  cyan: "text-[#a5f3fc]",
+  blue: "text-[#bfdbfe]",
+  red: "text-[#fecdd3]",
+  slate: "text-[#e2e8f0]",
+};
+
 function TopicChip({
   topic,
   onSelect,
   dimmed,
-  color,
 }: {
   topic: NetworkNode;
   onSelect: (id: string) => void;
   dimmed: boolean;
-  color: string;
 }) {
+  const textColorClass = TOPIC_COLOR_CLASSES[topic.color] ?? TOPIC_COLOR_CLASSES.slate;
+
   return (
     <button
       type="button"
@@ -126,14 +136,9 @@ function TopicChip({
         event.stopPropagation();
         onSelect(topic.id);
       }}
-      className={`px-2 py-1 rounded-md text-[10px] font-medium border transition-colors ${
+      className={`px-2 py-1 rounded-md text-[10px] font-medium border border-white/10 bg-white/5 transition-colors ${textColorClass} ${
         dimmed ? "opacity-40" : "hover:border-current"
       }`}
-      style={{
-        borderColor: "rgba(255,255,255,0.08)",
-        background: "rgba(255,255,255,0.03)",
-        color,
-      }}
     >
       {topic.shortLabel.replace("\n", " ")}
     </button>

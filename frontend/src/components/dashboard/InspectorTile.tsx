@@ -55,7 +55,7 @@ export function InspectorTile({
         {node.sources !== undefined && (
           <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] px-2.5 py-2">
             <dt className="text-[9px] uppercase tracking-[0.12em] text-slate-600">Sources</dt>
-            <dd className="text-sm font-semibold text-slate-200 tabular-nums">{node.sources}</dd>
+            <dd className="text-sm font-semibold font-mono text-slate-200 tabular-nums">{node.sources}</dd>
           </div>
         )}
         <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] px-2.5 py-2">

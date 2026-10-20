@@ -18,7 +18,7 @@ export function AgentsTile({
       <ModuleHeader
         icon={<Bot className="w-4 h-4" />}
         title="Specialist Agents"
-        meta={`${SPECIALIST_AGENTS.length} routed`}
+        meta={<><span className="font-mono tabular-nums">{SPECIALIST_AGENTS.length}</span> routed</>}
         status={<StatusDot tone="active" label="Live" />}
       />
 

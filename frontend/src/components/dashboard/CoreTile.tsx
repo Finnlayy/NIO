@@ -62,7 +62,7 @@ export function CoreTile({
 function Stat({ value, label }: { value: number; label: string }) {
   return (
     <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] py-2">
-      <p className="text-sm font-semibold text-white tabular-nums">{value}</p>
+      <p className="text-sm font-semibold font-mono text-white tabular-nums">{value}</p>
       <p className="text-[9px] uppercase tracking-[0.12em] text-slate-600">{label}</p>
     </div>
   );
