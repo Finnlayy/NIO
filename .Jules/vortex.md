@@ -1,4 +1,3 @@
-
-## 2026-09-20 - [Graphics / Rendering Insight]
-**Learning:** `transition-all` triggers heavy CPU reflow and layout-thrashing on every frame, and animating properties like `width` causes layout invalidation.
-**Action:** Replaced `transition-all` with `transition-colors` in FilterBar and page ops. Replaced `width` animations in `NewsSentiment` and `PatternScanner` horizontal progress bars with `transform: scaleX(...)` and `transformOrigin: left` to ensure pure composite-layer animation running on GPU.
+## 2025-02-15 - [Graphics / Rendering Insight]
+**Learning:** For GPU-accelerated stacked bar charts, flex wrappers with `scaleX` inner elements fail visually due to border squishing and layout thrashing, and `width` animations cause severe CPU reflow and layout thrashing.
+**Action:** Replaced dynamic `width` animations and flex-based `scaleX` bars with GPU-accelerated absolute positioned layouts using `clip-path: inset(...)`. This enables dynamic hardware-accelerated cropping without layout invalidation or visual distortion, eliminating the heavy CPU recalculation bottleneck.
