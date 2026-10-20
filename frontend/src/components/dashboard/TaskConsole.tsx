@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, Play, Terminal } from "lucide-react";
 import { ModuleHeader, StatusDot, Tile } from "./shared";
 import type { RunState } from "./types";
@@ -23,6 +24,30 @@ export function TaskConsole({
   apiUrl: string;
   onRun: () => void;
 }) {
+  const isRunningRef = useRef(isRunning);
+  const taskTextRef = useRef(taskText);
+  const onRunRef = useRef(onRun);
+
+  useEffect(() => {
+    isRunningRef.current = isRunning;
+    taskTextRef.current = taskText;
+    onRunRef.current = onRun;
+  }, [isRunning, taskText, onRun]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        if (!isRunningRef.current && taskTextRef.current.trim()) {
+          onRunRef.current();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <Tile className="p-4 h-full flex flex-col">
       <ModuleHeader
@@ -45,14 +70,6 @@ export function TaskConsole({
       <textarea
         value={taskText}
         onChange={(event) => onTaskText(event.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            if (!isRunning && taskText.trim()) {
-              onRun();
-            }
-          }
-        }}
         rows={3}
         className="console-input resize-none text-[12.5px] leading-relaxed"
         placeholder="Describe a task for the Neural Core …"
@@ -70,8 +87,12 @@ export function TaskConsole({
       </label>
 
       <button
-        onClick={onRun}
-        disabled={isRunning || !taskText.trim()}
+        onClick={() => {
+          if (!isRunning && taskText.trim()) {
+            onRun();
+          }
+        }}
+        aria-disabled={isRunning || !taskText.trim()}
         className="primary-button w-full mt-3 flex items-center justify-center gap-2"
       >
         {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}

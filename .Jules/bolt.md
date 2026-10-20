@@ -1,3 +1,7 @@
 ## 2024-09-25 - Centralized Keyboard Handlers & Modal Ergonomics
 **Learning:** Adding local keydown listeners for Escape inside modals bypasses global input guards and can indiscriminately steal keystrokes. Modals also lack inherent keyboard traversability without proper roles and autofocus targets.
 **Action:** Remove redundant local Escape listeners in favor of a centralized `opsHotkey` global handler with `isTypingTarget` guard explicitly wiring the `close-panels` action. Ensure all modals use `role="dialog"`, `aria-modal="true"`, and `autoFocus` on the primary dismiss element for accessibility and speed.
+
+## 2024-10-20 - Global Task Dispatch & Search Shortcut Ergonomics
+**Learning:** The `mod+k` shortcut should be reserved for the global MCP console per convention, and binding it locally to search inputs creates collisions. Additionally, requiring focus on a specific input field to trigger task dispatch (via `Enter`) adds unnecessary friction, and native `disabled` attributes prevent hover tooltips or focus on action buttons.
+**Action:** Use `/` exclusively for local dashboard search. Expose global workflows (like `mod+Enter` for dispatching tasks) using top-level `useEffect` keyboard listeners rather than scoped `onKeyDown` input handlers. Replace `disabled` with `aria-disabled="true"` alongside an `onClick` execution guard to maintain accessibility and interaction without state loss.
