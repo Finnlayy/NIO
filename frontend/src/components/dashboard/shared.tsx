@@ -76,20 +76,17 @@ export function Tile({
   onClick?: () => void;
   dimmed?: boolean;
   selected?: boolean;
-  /** hex color used for the top accent bar + selection ring */
-  accent?: string;
+  /** Tailwind classes used for the top accent bar + selection ring */
+  accent?: { line: string; borderAlpha: string };
   className?: string;
 }) {
-  const style = selected && accent ? { borderColor: `${accent}66` } : undefined;
-
   const content = (
     <div
-      className={`tile ${selected ? "tile-selected" : ""} ${dimmed ? "tile-dimmed" : ""} ${
+      className={`tile ${selected ? "tile-selected" : ""} ${selected && accent ? accent.borderAlpha : ""} ${dimmed ? "tile-dimmed" : ""} ${
         onClick ? "tile-clickable" : ""
       } ${className}`}
-      style={style}
     >
-      {accent && <span className="tile-accent" style={{ background: accent }} />}
+      {accent && <span className={`tile-accent ${accent.line}`} />}
       {children}
     </div>
   );

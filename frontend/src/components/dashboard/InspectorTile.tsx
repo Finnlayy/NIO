@@ -21,7 +21,7 @@ export function InspectorTile({
   const color = palette[node.color] ?? palette.slate;
 
   return (
-    <Tile dimmed={dimmed} accent={color.line} className="p-4 h-full">
+    <Tile dimmed={dimmed} accent={{ line: color.line, borderAlpha: color.borderAlpha }} className="p-4 h-full">
       <ModuleHeader
         icon={<Eye className="w-4 h-4" />}
         title="Inspector"
@@ -32,7 +32,7 @@ export function InspectorTile({
         {kindLabel[node.kind]}
       </p>
       <h4 className="text-base font-semibold text-white mt-1 flex items-center gap-2">
-        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color.line }} />
+        <span className={`w-2 h-2 rounded-full shrink-0 ${color.line}`} />
         <span className="truncate">{node.label}</span>
       </h4>
 
@@ -55,7 +55,7 @@ export function InspectorTile({
         {node.sources !== undefined && (
           <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] px-2.5 py-2">
             <dt className="text-[9px] uppercase tracking-[0.12em] text-slate-600">Sources</dt>
-            <dd className="text-sm font-semibold text-slate-200 tabular-nums">{node.sources}</dd>
+            <dd className="text-sm font-semibold text-slate-200 font-mono tabular-nums">{node.sources}</dd>
           </div>
         )}
         <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] px-2.5 py-2">

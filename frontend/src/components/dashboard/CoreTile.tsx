@@ -20,7 +20,7 @@ export function CoreTile({
       onClick={onSelect}
       selected={selected}
       dimmed={dimmed}
-      accent={color.line}
+      accent={{ line: color.line, borderAlpha: color.borderAlpha }}
       className="p-4 h-full flex flex-col"
     >
       <ModuleHeader
@@ -32,10 +32,9 @@ export function CoreTile({
 
       <div className="flex items-center gap-3 mt-1">
         <span
-          className="w-11 h-11 rounded-full grid place-items-center border shrink-0"
-          style={{ borderColor: color.border, background: color.fill }}
+          className={`w-11 h-11 rounded-full grid place-items-center border shrink-0 ${color.border} ${color.fill}`}
         >
-          <BrainCircuit className="w-5 h-5" style={{ color: color.text }} />
+          <BrainCircuit className={`w-5 h-5 ${color.text}`} />
         </span>
         <div className="min-w-0">
           <p className="text-sm font-semibold text-white truncate">{node.label}</p>
@@ -62,7 +61,7 @@ export function CoreTile({
 function Stat({ value, label }: { value: number; label: string }) {
   return (
     <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] py-2">
-      <p className="text-sm font-semibold text-white tabular-nums">{value}</p>
+      <p className="text-sm font-semibold text-white font-mono tabular-nums">{value}</p>
       <p className="text-[9px] uppercase tracking-[0.12em] text-slate-600">{label}</p>
     </div>
   );

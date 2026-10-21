@@ -180,15 +180,17 @@ export const networkEdges = [
   { from: "dp-engineer", to: "domain-dp", color: "green" },
 ];
 
-export const palette: Record<string, { border: string; fill: string; text: string; glow: string; line: string }> = {
-  yellow: { border: "#facc15", fill: "rgba(234,179,8,0.18)", text: "#fef08a", glow: "rgba(250,204,21,0.45)", line: "#facc15" },
-  purple: { border: "#c084fc", fill: "rgba(139,92,246,0.16)", text: "#e9d5ff", glow: "rgba(192,132,252,0.42)", line: "#c084fc" },
-  orange: { border: "#fb923c", fill: "rgba(249,115,22,0.16)", text: "#fed7aa", glow: "rgba(251,146,60,0.42)", line: "#fb923c" },
-  green: { border: "#4ade80", fill: "rgba(34,197,94,0.16)", text: "#bbf7d0", glow: "rgba(74,222,128,0.42)", line: "#4ade80" },
-  cyan: { border: "#22d3ee", fill: "rgba(6,182,212,0.16)", text: "#a5f3fc", glow: "rgba(34,211,238,0.42)", line: "#22d3ee" },
-  blue: { border: "#60a5fa", fill: "rgba(59,130,246,0.16)", text: "#bfdbfe", glow: "rgba(96,165,250,0.4)", line: "#60a5fa" },
-  red: { border: "#fb7185", fill: "rgba(239,68,68,0.16)", text: "#fecdd3", glow: "rgba(251,113,133,0.42)", line: "#fb7185" },
-  slate: { border: "#94a3b8", fill: "rgba(100,116,139,0.16)", text: "#e2e8f0", glow: "rgba(148,163,184,0.32)", line: "#94a3b8" },
+export type PaletteColor = { border: string; fill: string; text: string; glow: string; line: string; borderAlpha: string };
+
+export const palette: Record<string, PaletteColor> = {
+  yellow: { border: "border-yellow-400", fill: "bg-yellow-500/[0.18]", text: "text-yellow-200", glow: "shadow-yellow-400/45", line: "bg-yellow-400", borderAlpha: "border-yellow-400/40" },
+  purple: { border: "border-purple-400", fill: "bg-purple-500/[0.16]", text: "text-purple-200", glow: "shadow-purple-400/42", line: "bg-purple-400", borderAlpha: "border-purple-400/40" },
+  orange: { border: "border-orange-400", fill: "bg-orange-500/[0.16]", text: "text-orange-200", glow: "shadow-orange-400/42", line: "bg-orange-400", borderAlpha: "border-orange-400/40" },
+  green: { border: "border-green-400", fill: "bg-green-500/[0.16]", text: "text-green-200", glow: "shadow-green-400/42", line: "bg-green-400", borderAlpha: "border-green-400/40" },
+  cyan: { border: "border-cyan-400", fill: "bg-cyan-500/[0.16]", text: "text-cyan-200", glow: "shadow-cyan-400/42", line: "bg-cyan-400", borderAlpha: "border-cyan-400/40" },
+  blue: { border: "border-blue-400", fill: "bg-blue-500/[0.16]", text: "text-blue-200", glow: "shadow-blue-400/40", line: "bg-blue-400", borderAlpha: "border-blue-400/40" },
+  red: { border: "border-rose-400", fill: "bg-rose-500/[0.16]", text: "text-rose-200", glow: "shadow-rose-400/42", line: "bg-rose-400", borderAlpha: "border-rose-400/40" },
+  slate: { border: "border-slate-400", fill: "bg-slate-500/[0.16]", text: "text-slate-200", glow: "shadow-slate-400/32", line: "bg-slate-400", borderAlpha: "border-slate-400/40" },
 };
 
 export const taskPresets: Record<string, { taskDescription: string; isComplexWorkflow: boolean; domainHint?: string; algorithmTag?: string; politenessTier?: string }> = {

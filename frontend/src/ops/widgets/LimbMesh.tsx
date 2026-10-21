@@ -39,7 +39,19 @@ export function LimbMesh({ data }: { data: Record<string, unknown> }) {
             const a = positions[e.from];
             const b = positions[e.to];
             if (!a || !b) return null;
-            const color = palette[e.color]?.line ?? "#475569";
+            // Map the semantic Tailwind class back to a hex value for SVG rendering
+            const hexColorMapping: Record<string, string> = {
+              "bg-yellow-400": "#facc15",
+              "bg-purple-400": "#c084fc",
+              "bg-orange-400": "#fb923c",
+              "bg-green-400": "#4ade80",
+              "bg-cyan-400": "#22d3ee",
+              "bg-blue-400": "#60a5fa",
+              "bg-rose-400": "#fb7185",
+              "bg-slate-400": "#94a3b8",
+            };
+            const tailwindClass = palette[e.color]?.line;
+            const color = tailwindClass ? hexColorMapping[tailwindClass] ?? "#475569" : "#475569";
             return (
               <line
                 key={i}
@@ -68,13 +80,9 @@ export function LimbMesh({ data }: { data: Record<string, unknown> }) {
               <span
                 className={`inline-flex items-center justify-center rounded-full border ${
                   isCore ? "w-12 h-12" : "w-8 h-8"
-                }`}
-                style={{
-                  borderColor: color.border,
-                  background: color.fill,
-                }}
+                } ${color.border} ${color.fill}`}
               >
-                <span className={`w-1.5 h-1.5 rounded-full ${isCore ? "w-2.5 h-2.5" : ""}`} style={{ background: color.line }} />
+                <span className={`w-1.5 h-1.5 rounded-full ${isCore ? "w-2.5 h-2.5" : ""} ${color.line}`} />
               </span>
               <p className="text-[8px] text-slate-400 mt-0.5 whitespace-nowrap max-w-[72px] truncate">
                 {n.label}

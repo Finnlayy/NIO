@@ -33,14 +33,13 @@ export function AgentsTile({
               onClick={() => onSelect(agent.id)}
               dimmed={dimmed}
               selected={selected}
-              accent={color.line}
+              accent={{ line: color.line, borderAlpha: color.borderAlpha }}
               className="p-3 h-full"
             >
               <span
-                className="w-8 h-8 rounded-lg grid place-items-center border"
-                style={{ borderColor: color.border, background: color.fill }}
+                className={`w-8 h-8 rounded-lg grid place-items-center border ${color.border} ${color.fill}`}
               >
-                <Bot className="w-4 h-4" style={{ color: color.text }} />
+                <Bot className={`w-4 h-4 ${color.text}`} />
               </span>
               <p className="text-[12px] font-medium text-slate-100 mt-2 leading-tight">
                 {agent.label}

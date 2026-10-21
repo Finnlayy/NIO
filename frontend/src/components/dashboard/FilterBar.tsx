@@ -28,8 +28,7 @@ export function FilterBar({
             }`}
           >
             <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ background: active ? color.line : "rgba(148,163,184,0.4)" }}
+              className={`w-1.5 h-1.5 rounded-full ${active ? color.line : "bg-slate-400/40"}`}
             />
             {filter.icon} {filter.label}
           </button>
