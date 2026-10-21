@@ -1,6 +1,9 @@
+import { useEffect } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, Play, Terminal } from "lucide-react";
 import { ModuleHeader, StatusDot, Tile } from "./shared";
 import type { RunState } from "./types";
+
+import { useRef } from "react";
 
 export function TaskConsole({
   taskText,
@@ -23,6 +26,33 @@ export function TaskConsole({
   apiUrl: string;
   onRun: () => void;
 }) {
+  const isRunningRef = useRef(isRunning);
+  const taskTextRef = useRef(taskText);
+  const onRunRef = useRef(onRun);
+
+  useEffect(() => {
+    isRunningRef.current = isRunning;
+    taskTextRef.current = taskText;
+    onRunRef.current = onRun;
+  }, [isRunning, taskText, onRun]);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Evaluate Cmd/Ctrl+Enter to allow global execution
+      // and prevent issues with global isTypingTarget guard abstractions.
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        if (!isRunningRef.current && taskTextRef.current.trim()) {
+          onRunRef.current();
+        }
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, []);
+
   return (
     <Tile className="p-4 h-full flex flex-col">
       <ModuleHeader
@@ -45,14 +75,6 @@ export function TaskConsole({
       <textarea
         value={taskText}
         onChange={(event) => onTaskText(event.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            if (!isRunning && taskText.trim()) {
-              onRun();
-            }
-          }
-        }}
         rows={3}
         className="console-input resize-none text-[12.5px] leading-relaxed"
         placeholder="Describe a task for the Neural Core …"
