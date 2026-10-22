@@ -161,6 +161,22 @@ export default function NetworkDashboard() {
     }
   }
 
+  const runTaskRef = useRef(runTask);
+  useEffect(() => {
+    runTaskRef.current = runTask;
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        runTaskRef.current();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const activeDomainCount = useMemo(
     () => new Set(networkNodes.map((node) => node.domain).filter(Boolean)).size,
     [],
