@@ -23,6 +23,8 @@ export function TaskConsole({
   apiUrl: string;
   onRun: () => void;
 }) {
+  const isDisabled = isRunning || !taskText.trim();
+
   return (
     <Tile className="p-4 h-full flex flex-col">
       <ModuleHeader
@@ -70,8 +72,15 @@ export function TaskConsole({
       </label>
 
       <button
-        onClick={onRun}
-        disabled={isRunning || !taskText.trim()}
+        onClick={(e) => {
+          if (isDisabled) {
+            e.preventDefault();
+            return;
+          }
+          onRun();
+        }}
+        aria-disabled={isDisabled}
+        title={!taskText.trim() ? "Enter a task description to run" : undefined}
         className="primary-button w-full mt-3 flex items-center justify-center gap-2"
       >
         {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
