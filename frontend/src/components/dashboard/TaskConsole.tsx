@@ -1,6 +1,8 @@
+import { useEffect, useRef } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, Play, Terminal } from "lucide-react";
 import { ModuleHeader, StatusDot, Tile } from "./shared";
 import type { RunState } from "./types";
+import { isTypingTarget } from "@/ops/hotkeys";
 
 export function TaskConsole({
   taskText,
@@ -23,6 +25,31 @@ export function TaskConsole({
   apiUrl: string;
   onRun: () => void;
 }) {
+  const textAreaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Keep latest callbacks/state in ref to avoid re-binding global listener
+  const stateRef = useRef({ isRunning, taskText, onRun });
+  useEffect(() => {
+    stateRef.current = { isRunning, taskText, onRun };
+  }, [isRunning, taskText, onRun]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        if (isTypingTarget(document.activeElement) && document.activeElement !== textAreaRef.current) return;
+
+        e.preventDefault();
+        const state = stateRef.current;
+        if (!state.isRunning && state.taskText.trim()) {
+          state.onRun();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <Tile className="p-4 h-full flex flex-col">
       <ModuleHeader
@@ -43,19 +70,12 @@ export function TaskConsole({
       />
 
       <textarea
+        ref={textAreaRef}
         value={taskText}
         onChange={(event) => onTaskText(event.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            if (!isRunning && taskText.trim()) {
-              onRun();
-            }
-          }
-        }}
         rows={3}
         className="console-input resize-none text-[12.5px] leading-relaxed"
-        placeholder="Describe a task for the Neural Core …"
+        placeholder="Describe a task for the Neural Core … (⌘/Ctrl+Enter)"
         aria-label="Task description"
       />
 
