@@ -48,7 +48,10 @@ export default function OpsGridPage() {
         return;
       }
       if (action === "close-panels") {
-        if (s.consoleOpen || s.galleryOpen) {
+        if (s.activeMenuId !== null) {
+          e.preventDefault();
+          s.setActiveMenuId(null);
+        } else if (s.consoleOpen || s.galleryOpen) {
           e.preventDefault();
           s.setConsoleOpen(false);
           s.setGalleryOpen(false);

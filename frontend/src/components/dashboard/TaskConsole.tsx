@@ -1,5 +1,7 @@
 import { AlertTriangle, CheckCircle2, Loader2, Play, Terminal } from "lucide-react";
 import { ModuleHeader, StatusDot, Tile } from "./shared";
+import { useEffect, useRef } from "react";
+import { isTypingTarget } from "@/ops/hotkeys";
 import type { RunState } from "./types";
 
 export function TaskConsole({
@@ -23,6 +25,24 @@ export function TaskConsole({
   apiUrl: string;
   onRun: () => void;
 }) {
+  const stateRef = useRef({ isRunning, taskText, onRun });
+  stateRef.current = { isRunning, taskText, onRun };
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isTyping = isTypingTarget(document.activeElement);
+      if (isTyping && document.activeElement !== textareaRef.current) return;
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        const { isRunning, taskText, onRun } = stateRef.current;
+        if (!isRunning && taskText.trim()) onRun();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <Tile className="p-4 h-full flex flex-col">
       <ModuleHeader
@@ -43,16 +63,9 @@ export function TaskConsole({
       />
 
       <textarea
+        ref={textareaRef}
         value={taskText}
         onChange={(event) => onTaskText(event.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            if (!isRunning && taskText.trim()) {
-              onRun();
-            }
-          }
-        }}
         rows={3}
         className="console-input resize-none text-[12.5px] leading-relaxed"
         placeholder="Describe a task for the Neural Core …"
