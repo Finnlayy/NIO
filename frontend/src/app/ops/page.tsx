@@ -168,6 +168,7 @@ export default function OpsGridPage() {
             }`}
           >
             <Radio className="w-3.5 h-3.5" />
+            <span className="sr-only sm:hidden">Toggle MCP Bus Console</span>
             <span className="hidden sm:inline">MCP Bus <kbd className="ml-1 opacity-50 font-sans">Ctrl/⌘K</kbd></span>
           </button>
           <button
@@ -175,6 +176,7 @@ export default function OpsGridPage() {
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/[0.08] text-slate-400 hover:text-slate-200 hover:bg-white/[0.04] transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
+            <span className="sr-only sm:hidden">Export Layout</span>
             <span className="hidden sm:inline">Export</span>
           </button>
           <button
