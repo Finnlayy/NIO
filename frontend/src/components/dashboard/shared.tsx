@@ -84,7 +84,7 @@ export function Tile({
 
   const content = (
     <div
-      className={`tile ${selected ? "tile-selected" : ""} ${dimmed ? "tile-dimmed" : ""} ${
+      className={`tile backdrop-blur-md ${selected ? "tile-selected" : ""} ${dimmed ? "tile-dimmed" : ""} ${
         onClick ? "tile-clickable" : ""
       } ${className}`}
       style={style}
