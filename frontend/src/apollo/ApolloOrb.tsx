@@ -519,27 +519,33 @@ export function ApolloOrb({ className = "" }: { className?: string }) {
         </div>
       </div>
 
-      {/* micro-HUD, revealed on hover/focus */}
+      {/* Micro-HUD, revealed on hover/focus.
+          It floats to the right of the orb, but the offset is clamped against
+          the viewport: a fixed 210 px push ran the card up to 162 px off the
+          right edge on narrow screens. `50vw - 256px` is "centre to right edge,
+          minus half the card and a 16 px gutter", so the card always fits;
+          below ~1000 px it simply overlaps the orb instead of leaving the page. */}
       <div
-        className={`pointer-events-none absolute left-1/2 top-1/2 z-20 w-[240px] -translate-y-1/2 translate-x-[min(30vmin,210px)] transition-all duration-300 ${
+        className={`pointer-events-none absolute left-1/2 top-1/2 z-20 w-[240px] transition-all duration-300 ${
           hovered ? "opacity-100" : "opacity-0"
         }`}
+        style={{ transform: "translate(min(30vmin, 210px, calc(50vw - 256px)), -50%)" }}
         aria-hidden={!hovered}
       >
         <div className="glass-card rounded-xl p-3 shadow-[0_18px_50px_rgba(0,0,0,0.45)]">
-          <div className="mb-2 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.24em] text-slate-500">
+          <div className="mb-2 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.24em] text-slate-400">
             <span>apollo · hud</span>
             <span style={{ color: style.color }}>{mounted ? "live" : "—"}</span>
           </div>
           <dl className="space-y-1.5 text-[11px]">
             <div className="flex items-baseline justify-between gap-2">
-              <dt className="text-slate-500">Active model</dt>
+              <dt className="text-slate-400">Active model</dt>
               <dd className="truncate font-medium text-slate-100" title={activeModel.name}>
                 {activeModel.name}
               </dd>
             </div>
             <div className="flex items-baseline justify-between gap-2">
-              <dt className="text-slate-500">Primary quota</dt>
+              <dt className="text-slate-400">Primary quota</dt>
               <dd className="font-mono tabular-nums" style={{ color: quotaColor }}>
                 {quota}%
               </dd>
@@ -551,19 +557,19 @@ export function ApolloOrb({ className = "" }: { className?: string }) {
               />
             </div>
             <div className="flex items-baseline justify-between gap-2">
-              <dt className="text-slate-500">FreeLLM pool</dt>
+              <dt className="text-slate-400">FreeLLM pool</dt>
               <dd className="font-mono text-slate-300">
                 {config.freeLLMRouting.enabled ? "armed" : "off"} · {failovers} swap{failovers === 1 ? "" : "s"}
               </dd>
             </div>
             <div className="flex items-baseline justify-between gap-2">
-              <dt className="text-slate-500">Latency</dt>
+              <dt className="text-slate-400">Latency</dt>
               <dd className="font-mono tabular-nums text-slate-300">
                 {Math.round(latency)} ms
               </dd>
             </div>
           </dl>
-          <div className="mt-2 border-t border-white/5 pt-2 font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">
+          <div className="mt-2 border-t border-white/5 pt-2 font-mono text-[9px] uppercase tracking-[0.18em] text-slate-400">
             click → control deck
           </div>
         </div>

@@ -94,7 +94,7 @@ export default function ApolloStagePage() {
             </span>
             <div>
               <div className="text-[12.5px] font-semibold tracking-[0.12em] text-slate-100">NIO · APOLLO</div>
-              <div className="font-mono text-[8.5px] uppercase tracking-[0.24em] text-slate-500">
+              <div className="font-mono text-[8.5px] uppercase tracking-[0.24em] text-slate-400">
                 neural orchestration stage
               </div>
             </div>
@@ -109,7 +109,7 @@ export default function ApolloStagePage() {
 
         <div className="flex items-center gap-1.5">
           <div className="hidden items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2 py-1 lg:flex">
-            <span className="font-mono text-[8.5px] uppercase tracking-[0.16em] text-slate-500">quota</span>
+            <span className="font-mono text-[8.5px] uppercase tracking-[0.16em] text-slate-400">quota</span>
             <div className="w-16">
               <MiniBar value={quota} color={quota > 50 ? PALETTE.emerald : quota > 15 ? PALETTE.amber : PALETTE.crimson} />
             </div>
@@ -122,7 +122,7 @@ export default function ApolloStagePage() {
             className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-300 transition-colors hover:border-emerald-400/40 hover:text-emerald-200"
           >
             <TerminalSquare size={11} /> terminal
-            <kbd className="hidden rounded border border-white/10 px-1 text-[8px] text-slate-500 sm:inline">`</kbd>
+            <kbd className="hidden rounded border border-white/10 px-1 text-[8px] text-slate-400 sm:inline">`</kbd>
           </button>
           <button
             type="button"
@@ -173,7 +173,7 @@ export default function ApolloStagePage() {
         </NeuralGraph>
 
         {/* corner telemetry */}
-        <div className="pointer-events-none absolute left-3 top-3 z-20 hidden flex-col gap-1.5 sm:flex">
+        <div className="apollo-hud pointer-events-none absolute left-3 top-3 z-20 hidden flex-col gap-1.5 sm:flex">
           <TelemetryChip icon={<Radio size={10} />} label="orb" value={stateStyle.label} accent={stateStyle.color} />
           <TelemetryChip icon={<Activity size={10} />} label="latency" value={`${42} ms`} />
           <TelemetryChip
@@ -184,13 +184,13 @@ export default function ApolloStagePage() {
           />
         </div>
 
-        <div className="pointer-events-none absolute right-3 top-3 z-20 hidden flex-col items-end gap-1.5 sm:flex">
+        <div className="apollo-hud pointer-events-none absolute right-3 top-3 z-20 hidden flex-col items-end gap-1.5 sm:flex">
           <TelemetryChip icon={<Gauge size={10} />} label="swaps" value={String(router.failoverCount)} accent={router.failoverCount > 0 ? PALETTE.amber : undefined} />
           <TelemetryChip icon={<Keyboard size={10} />} label="hotkeys" value="⌘K · `" />
         </div>
 
         {/* legend */}
-        <div className="pointer-events-none absolute bottom-2 left-1/2 z-20 hidden -translate-x-1/2 items-center gap-3 rounded-full border border-white/[0.06] bg-[#05080f]/70 px-3 py-1 font-mono text-[8.5px] uppercase tracking-[0.16em] text-slate-500 backdrop-blur md:flex">
+        <div className="apollo-legend pointer-events-none absolute bottom-2 left-1/2 z-20 hidden -translate-x-1/2 items-center gap-3 rounded-full border border-white/[0.06] bg-[#05080f]/70 px-3 py-1 font-mono text-[8.5px] uppercase tracking-[0.16em] text-slate-400 backdrop-blur md:flex">
           {[
             ["dispatch", PALETTE.cyan],
             ["result", PALETTE.emerald],
@@ -237,7 +237,7 @@ export default function ApolloStagePage() {
             {nodes.slice(0, 8).map((node) => (
               <span
                 key={node.id}
-                className="flex items-center gap-1 rounded border border-white/[0.06] bg-white/[0.02] px-1.5 py-0.5 font-mono text-[8.5px] text-slate-500"
+                className="flex items-center gap-1 rounded border border-white/[0.06] bg-white/[0.02] px-1.5 py-0.5 font-mono text-[8.5px] text-slate-400"
                 title={`${node.label} · ${node.category}`}
               >
                 <span
@@ -273,7 +273,7 @@ function TelemetryChip({
   return (
     <span className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-[#05080f]/70 px-2 py-1 backdrop-blur">
       <span style={{ color: accent }}>{icon}</span>
-      <span className="font-mono text-[8.5px] uppercase tracking-[0.16em] text-slate-600">{label}</span>
+      <span className="font-mono text-[8.5px] uppercase tracking-[0.16em] text-slate-400">{label}</span>
       <span className="font-mono text-[10px] text-slate-300">{value}</span>
     </span>
   );
@@ -287,14 +287,14 @@ function TaskRail() {
     return (
       <div className="rounded-xl border border-white/[0.06] bg-white/[0.015] px-3 py-2">
         <div className="flex items-center justify-between">
-          <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-slate-500">task rail</span>
+          <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-slate-400">task rail</span>
           <Badge tone="slate">idle</Badge>
         </div>
         <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
           Ask Apollo something in the terminal (or hit a quick command) — the orb turns violet, an axon fires, the
           target node streams, and the answer returns through a synthesising pulse.
         </p>
-        <div className="mt-1.5 flex flex-wrap gap-1 font-mono text-[8.5px] uppercase tracking-[0.14em] text-slate-600">
+        <div className="mt-1.5 flex flex-wrap gap-1 font-mono text-[8.5px] uppercase tracking-[0.14em] text-slate-400">
           <span className="rounded border border-white/[0.06] px-1.5 py-0.5">{nodes.length} nodes online</span>
           <span className="rounded border border-white/[0.06] px-1.5 py-0.5">
             {Object.keys(ORB_STATE_STYLE).length} orb states
@@ -314,7 +314,7 @@ function TaskRail() {
   return (
     <div className="rounded-xl border border-white/[0.06] bg-white/[0.015] px-3 py-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-mono text-[9px] uppercase tracking-[0.22em] text-slate-500">
+        <span className="truncate font-mono text-[9px] uppercase tracking-[0.22em] text-slate-400">
           task · {task.label}
         </span>
         <Badge tone={pct === 100 ? "emerald" : "violet"}>{pct}%</Badge>

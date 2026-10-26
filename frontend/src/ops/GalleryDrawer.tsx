@@ -41,11 +41,11 @@ export function GalleryDrawer() {
             <div className="flex items-center gap-2.5 px-5 h-14 border-b border-white/[0.07]">
               <Library className="w-4 h-4 text-cyan-300" />
               <h2 className="text-sm font-semibold text-white">Widget Template Gallery</h2>
-              <span className="text-[10px] text-slate-500">{widgetTemplates.length} blueprints</span>
+              <span className="text-[10px] text-slate-400">{widgetTemplates.length} blueprints</span>
               <button
                 autoFocus
                 onClick={() => setOpen(false)}
-                className="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/[0.07]"
+                className="ml-auto p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.07]"
                 aria-label="Close gallery"
               >
                 <X className="w-4 h-4" />
@@ -81,8 +81,8 @@ export function GalleryDrawer() {
                       </span>
                     </div>
                     <p className="text-[13px] font-semibold text-slate-100 mt-1">{tpl.title}</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">{tpl.tagline}</p>
-                    <p className="text-[10px] text-slate-600 font-mono mt-1.5 truncate">
+                    <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">{tpl.tagline}</p>
+                    <p className="text-[10px] text-slate-400 font-mono mt-1.5 truncate">
                       key: {tpl.key} · span {tpl.defaultSpan}/6 · {tpl.defaultHeight}
                     </p>
                   </div>
@@ -98,7 +98,7 @@ export function GalleryDrawer() {
               ))}
             </div>
 
-            <p className="px-5 py-3 border-t border-white/[0.07] text-[10px] text-slate-600 leading-relaxed">
+            <p className="px-5 py-3 border-t border-white/[0.07] text-[10px] text-slate-400 leading-relaxed">
               Templates are declarative blueprints. Hydration sends a JSON-RPC payload with the
               template key + live state; the canvas materializes the widget with a spring animation.
             </p>

@@ -13,20 +13,20 @@ export function CompositeRankings({ data }: { data: Record<string, unknown> }) {
 
   return (
     <div className="flex flex-col h-full">
-      <p className="text-[11px] text-slate-500 mb-2 flex items-center gap-2">
+      <p className="text-[11px] text-slate-400 mb-2 flex items-center gap-2">
         Ranked by composite score · momentum + levels + volume
         <LiveBadge source={source} />
       </p>
       <div className="space-y-1">
         {rows.map((row) => (
           <div key={row.symbol} className="flex items-center gap-3 py-1 group">
-            <span className="w-5 text-[11px] text-slate-600 text-right tabular-nums shrink-0">{row.rank}</span>
+            <span className="w-5 text-[11px] text-slate-400 text-right tabular-nums shrink-0">{row.rank}</span>
             <div className="w-24 shrink-0">
               <p className="text-[12px] font-semibold text-slate-100 font-mono leading-tight">{row.symbol}</p>
-              <p className="text-[10px] text-slate-500 leading-tight truncate">{row.name}</p>
+              <p className="text-[10px] text-slate-400 leading-tight truncate">{row.name}</p>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] text-slate-500 truncate">
+              <p className="text-[10px] text-slate-400 truncate">
                 {row.technicals >= 1
                   ? "Strong buy technicals"
                   : row.technicals >= 0.5
@@ -36,7 +36,7 @@ export function CompositeRankings({ data }: { data: Record<string, unknown> }) {
                       : "Setup"}
                 {row.wkChange ? ` · ${row.wkChange > 0 ? "+" : ""}${row.wkChange.toFixed(1)}% wk, ${row.moChange > 0 ? "+" : ""}${row.moChange.toFixed(1)}% mo` : ""}
               </p>
-              <p className="text-[9px] text-slate-600">Weakest: Volume {row.volume}</p>
+              <p className="text-[9px] text-slate-400">Weakest: Volume {row.volume}</p>
               <div className="h-1 rounded-full bg-white/[0.06] mt-0.5 overflow-hidden">
                 <div
                   className="h-full rounded-full"

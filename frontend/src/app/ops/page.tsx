@@ -131,7 +131,7 @@ export default function OpsGridPage() {
           <p className="text-[13px] font-semibold text-white leading-tight truncate">
             NIO COMPOSABLE OPS GRID
           </p>
-          <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500 leading-tight">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400 leading-tight">
             Widget gallery · MCP hydration
           </p>
         </div>

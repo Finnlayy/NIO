@@ -10,6 +10,7 @@ import {
   easeInOutCubic,
   easeOutCubic,
   ellipseFor,
+  fitEllipse,
   hexToRgba,
   springStep,
   toPixels,
@@ -19,9 +20,6 @@ import {
 } from "./graph";
 import { useApolloStore } from "./store";
 import type { Impulse, NioNode } from "./types";
-
-const CARD_WIDTH = 196;
-const CARD_HEIGHT = 96;
 
 const IMPULSE_COLORS: Record<Impulse["kind"], { from: string; to: string }> = {
   outbound: { from: PALETTE.cyan, to: "#7dd3fc" },
@@ -47,6 +45,23 @@ export function NeuralGraph({ children }: { children: React.ReactNode }) {
   const seenAt = useRef(new Map<string, number>());
   const vesicles = useRef(new Map<string, SpringState>());
   const filterId = `gooey-lymp-filter-${useId().replace(/:/g, "")}`;
+  const nodes = useApolloStore((s) => s.nodes);
+
+  /* Cards are 196 x ~96 and are centred on the ring, so the ring radius has to
+     leave half a card plus a margin on every side — and grow when `/spawn`
+     pushes past the eight seed nodes. `fitEllipse` walks the radius out until
+     every card clears its neighbours; if the scene is simply too small it
+     reports `crowded` and the nodes fall back to the board below. */
+  const measured = size.width > 1 && size.height > 1;
+  const geometry = useMemo(() => {
+    const positions = nodes.map((node) => node.position);
+    // Before the ResizeObserver reports, fall back to a nominal desktop scene so
+    // the server and the first client render agree: a 0x0 scene reads as
+    // "crowded", which used to flip the markup to the board and fail hydration.
+    if (!measured) return { ellipse: ellipseFor(1440, 720), scale: 1, crowded: false };
+    return fitEllipse(positions, size.width, size.height);
+  }, [nodes, size, measured]);
+  const { ellipse, scale, crowded } = geometry;
 
   useEffect(() => {
     const element = containerRef.current;
@@ -66,7 +81,6 @@ export function NeuralGraph({ children }: { children: React.ReactNode }) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const ellipse: Ellipse = ellipseFor(size.width, size.height);
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = Math.round(size.width * dpr);
     canvas.height = Math.round(size.height * dpr);
@@ -250,31 +264,22 @@ export function NeuralGraph({ children }: { children: React.ReactNode }) {
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [size]);
-
-  /* Cards are 196 x ~96 and are centred on the ring, so the ring radius has to
-     leave half a card plus a margin on every side. On narrow viewports the
-     nominal ellipse would push the horizontal cards off-screen; clamp it. */
-  const ellipse = useMemo(() => {
-    const base = ellipseFor(size.width || 1, size.height || 1);
-    const maxRx = Math.max(40, size.width / 2 - CARD_WIDTH / 2 - 14);
-    const maxRy = Math.max(40, size.height / 2 - CARD_HEIGHT / 2 - 14);
-    return { ...base, rx: Math.min(base.rx, maxRx), ry: Math.min(base.ry, maxRy) };
-  }, [size]);
+  }, [size, ellipse]);
 
   /* Under ~720 px eight 196 px cards cannot sit on a ring without colliding, so
      the graph folds into a column: orb on top, nodes in a scrollable grid.
      The axons are a wide-screen affordance and are skipped there. */
-  const compact = size.width > 0 && size.width < 720;
+  const compact = measured && size.width < 720;
+  const layout = compact ? "compact" : crowded ? "board" : "radial";
 
   return (
     <div
       ref={containerRef}
       className="absolute inset-0"
       data-testid="neural-graph"
-      data-layout={compact ? "compact" : "radial"}
+      data-layout={layout}
     >
-      {!compact && (
+      {layout === "radial" && (
         <svg aria-hidden className="pointer-events-none absolute h-0 w-0">
           <defs>
             <filter id={filterId} colorInterpolationFilters="sRGB">
@@ -291,9 +296,21 @@ export function NeuralGraph({ children }: { children: React.ReactNode }) {
         </svg>
       )}
 
-      {!compact && <canvas ref={canvasRef} className="pointer-events-none absolute inset-0" aria-hidden />}
+      {layout === "radial" && (
+        <canvas ref={canvasRef} className="pointer-events-none absolute inset-0" aria-hidden />
+      )}
 
-      {compact ? (
+      {layout === "board" ? (
+        <div
+          className="absolute inset-0 z-[6] overflow-y-auto overscroll-contain bg-[#05070d] px-3 pb-6 pt-3 sm:px-4"
+          data-testid="node-board"
+        >
+          <p className="mb-2 font-mono text-[9.5px] uppercase tracking-[0.2em] text-slate-400">
+            Node board · {nodes.length} live · ring at capacity
+          </p>
+          <NodeCards variant="grid" positions={ellipse} gooeyFilter={`url(#${filterId})`} />
+        </div>
+      ) : compact ? (
         <div className="absolute inset-0 overflow-y-auto overscroll-contain px-3 pb-4 pt-1">
           <div className="relative mx-auto h-[min(62vw,300px)] w-full max-w-[340px]">{children}</div>
           <NodeCards variant="grid" positions={ellipse} gooeyFilter={`url(#${filterId})`} />
@@ -301,7 +318,7 @@ export function NeuralGraph({ children }: { children: React.ReactNode }) {
       ) : (
         <>
           {children}
-          <NodeCards variant="radial" positions={ellipse} gooeyFilter={`url(#${filterId})`} />
+          <NodeCards variant="radial" positions={ellipse} scale={scale} gooeyFilter={`url(#${filterId})`} />
         </>
       )}
     </div>
@@ -316,10 +333,13 @@ function NodeCards({
   positions,
   gooeyFilter,
   variant,
+  scale = 1,
 }: {
   positions: Ellipse;
   gooeyFilter: string;
   variant: "radial" | "grid";
+  /** Radius cards step down to when the ring is crowded. */
+  scale?: number;
 }) {
   const nodes = useApolloStore((s) => s.nodes);
   const dispatch = useApolloStore((s) => s.dispatch);
@@ -358,13 +378,17 @@ function NodeCards({
             className="absolute z-10 -translate-x-1/2 -translate-y-1/2"
             style={{ left, top }}
           >
-            <NodeCard
-              node={node}
-              gooeyFilter={gooeyFilter}
-              hovered={hovered === node.id}
-              onHover={setHovered}
-              onDispatch={() => dispatch(node.id, { probe: "layout", at: new Date().toISOString() })}
-            />
+            {/* Scaling an inner box keeps the card centred on its ring slot;
+                scaling the positioned box shifts it by the translate amount. */}
+            <div style={scale === 1 ? undefined : { transform: `scale(${scale})` }}>
+              <NodeCard
+                node={node}
+                gooeyFilter={gooeyFilter}
+                hovered={hovered === node.id}
+                onHover={setHovered}
+                onDispatch={() => dispatch(node.id, { probe: "layout", at: new Date().toISOString() })}
+              />
+            </div>
           </div>
         );
       })}
@@ -441,7 +465,7 @@ function NodeCard({
             >
               {node.label}
             </div>
-            <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">
+            <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-slate-400">
               {style.short}
             </div>
           </div>
@@ -452,13 +476,13 @@ function NodeCard({
           />
         </div>
 
-        <div className="mt-1.5 flex items-center justify-between gap-2 font-mono text-[10px] text-slate-500">
+        <div className="mt-1.5 flex items-center justify-between gap-2 font-mono text-[10px] text-slate-400">
           <span style={{ color: node.state === "IDLE" ? undefined : state.color }}>{state.label}</span>
           <span className="tabular-nums">{Math.round(node.metrics?.latencyMs ?? 0)} ms</span>
         </div>
 
         {node.metrics?.activeProvider && (
-          <div className="mt-0.5 truncate font-mono text-[10px] text-slate-600" title={node.metrics.activeProvider}>
+          <div className="mt-0.5 truncate font-mono text-[10px] text-slate-400" title={node.metrics.activeProvider}>
             {node.metrics.activeProvider}
           </div>
         )}

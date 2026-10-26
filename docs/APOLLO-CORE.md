@@ -110,7 +110,8 @@ npm run build
 
 `src/ops/__tests__/apollo-router.test.js` covers the routing maths, the failover
 engine (including the exhausted pool), handoff-note ordering and truncation, the
-CLI table, and the geometry helpers (ring fit, widest-gap spawn, spring
+CLI table, and the geometry helpers (ring fit, widest-gap spawn, card collision
+and the board fallback, spring
 convergence). It is the spec for the visible behaviour.
 
 ## Dev server
@@ -131,3 +132,12 @@ At ≥720 px the eight cards sit on the ellipse; the ellipse is clamped so a
 196 × 96 card always fits on screen. Below 720 px the graph folds into a column
 (orb, then a scrollable card grid) and the axons are skipped — eight cards
 cannot share a ring at that width without overlapping.
+
+`/spawn` can push past eight nodes, so the ring adapts instead of piling cards
+up: `fitEllipse()` walks the radius out to the scene bounds and, when the height
+will not allow it, steps the cards down (196 → 180 → 165 → 149 px). Only if even
+the smallest step collides does the stage switch to `data-layout="board"` — an
+opaque, scrollable two-column node board with the corner HUD and the axon legend
+hidden (they belong to the radial scene). Before the `ResizeObserver` reports a
+size the graph assumes a nominal 1440 × 720 scene, so the server and the first
+client render agree and hydration stays clean.

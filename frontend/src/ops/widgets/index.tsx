@@ -33,7 +33,7 @@ export function renderWidget(widget: WidgetInstance) {
   const Cmp = renderers[keyById[widget.templateId] ?? widget.templateId];
   if (!Cmp) {
     return (
-      <p className="text-[12px] text-slate-500 p-2">
+      <p className="text-[12px] text-slate-400 p-2">
         Unknown template <code>{widget.templateId}</code> — awaiting renderer registration.
       </p>
     );

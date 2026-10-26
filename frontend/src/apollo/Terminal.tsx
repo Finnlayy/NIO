@@ -48,10 +48,19 @@ export function HybridTerminal() {
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [pinned, setPinned] = useState(true);
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [blocked, setBlocked] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    // Opening the terminal is a keyboard action (backtick / header button); land
+    // the caret in the input so the user can type immediately.
+    const timer = setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 40);
+    return () => clearTimeout(timer);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -79,6 +88,14 @@ export function HybridTerminal() {
   const submit = async () => {
     const text = input.trim();
     if (!text) return;
+    /* One turn at a time. A prompt in flight owns the router, the task rail and
+       the transcript; letting /clear or /spawn run underneath it interleaves two
+       stories into one log. Compose freely, but hold the command. */
+    if (busy) {
+      setBlocked(true);
+      setTimeout(() => setBlocked(false), 1500);
+      return;
+    }
     setInput("");
     setHistory((prev) => [...prev.slice(-49), text]);
     setHistoryIndex(-1);
@@ -114,17 +131,42 @@ export function HybridTerminal() {
     }
   };
 
+  /** Copy that works in an iframe / insecure origin, and says so when it cannot. */
   const copyAll = async () => {
     const text = entries
       .map((entry) => `${entry.timestamp} [${entry.origin}/${entry.level}] ${entry.message}${entry.handoffNote ? `\n${entry.handoffNote}` : ""}`)
       .join("\n");
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      setCopied(false);
+
+    const legacyCopy = () => {
+      try {
+        const area = document.createElement("textarea");
+        area.value = text;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(area);
+        return ok;
+      } catch {
+        return false;
+      }
+    };
+
+    let ok = false;
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      } catch {
+        ok = legacyCopy();
+      }
+    } else {
+      ok = legacyCopy();
     }
+    setCopyState(ok ? "copied" : "failed");
+    setTimeout(() => setCopyState("idle"), 1800);
   };
 
   return (
@@ -142,7 +184,7 @@ export function HybridTerminal() {
           </span>
           <div>
             <div className="text-[11.5px] font-semibold text-slate-100">NIO · Apollo terminal</div>
-            <div className="font-mono text-[8.5px] uppercase tracking-[0.2em] text-slate-500">
+            <div className="font-mono text-[8.5px] uppercase tracking-[0.2em] text-slate-400">
               chat · telemetry · cli
             </div>
           </div>
@@ -163,11 +205,27 @@ export function HybridTerminal() {
             type="button"
             onClick={() => void copyAll()}
             aria-label="Copy transcript"
-            className="grid h-6 w-6 place-items-center rounded-md border border-white/10 text-slate-400 transition-colors hover:text-slate-100"
-            title={copied ? "Copied" : "Copy transcript"}
+            className={`grid h-6 w-6 place-items-center rounded-md border transition-colors ${
+              copyState === "copied"
+                ? "border-emerald-400/40 text-emerald-300"
+                : copyState === "failed"
+                  ? "border-rose-400/40 text-rose-300"
+                  : "border-white/10 text-slate-400 hover:text-slate-100"
+            }`}
+            title={copyState === "copied" ? "Copied" : copyState === "failed" ? "Clipboard unavailable" : "Copy transcript"}
           >
             <Copy size={11} />
           </button>
+          {copyState !== "idle" && (
+            <span
+              role="status"
+              className={`font-mono text-[9px] uppercase tracking-[0.16em] ${
+                copyState === "copied" ? "text-emerald-300" : "text-rose-300"
+              }`}
+            >
+              {copyState === "copied" ? "copied" : "copy blocked"}
+            </span>
+          )}
           <button
             type="button"
             onClick={clear}
@@ -202,7 +260,7 @@ export function HybridTerminal() {
           {entries.length === 0 ? (
             <div className="grid h-full place-items-center text-center">
               <div className="max-w-sm space-y-2">
-                <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-slate-500">
+                <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-slate-400">
                   no traffic yet
                 </p>
                 <p className="text-[11.5px] leading-relaxed text-slate-400">
@@ -247,8 +305,8 @@ export function HybridTerminal() {
                   className="flex w-full items-baseline gap-2 rounded px-1.5 py-0.5 text-left hover:bg-white/5"
                 >
                   <span className="font-mono text-[10.5px] text-cyan-300">{command.command}</span>
-                  <span className="truncate font-mono text-[9px] text-slate-600">{command.usage}</span>
-                  <span className="ml-auto hidden truncate text-[10px] text-slate-500 sm:block">{command.detail}</span>
+                  <span className="truncate font-mono text-[9px] text-slate-400">{command.usage}</span>
+                  <span className="ml-auto hidden truncate text-[10px] text-slate-400 sm:block">{command.detail}</span>
                 </button>
               </li>
             ))}
@@ -268,21 +326,24 @@ export function HybridTerminal() {
             aria-label="Apollo terminal input"
             spellCheck={false}
             autoComplete="off"
-            className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-slate-100 outline-none placeholder:text-slate-600"
+            className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-slate-100 outline-none placeholder:text-slate-400"
             data-testid="terminal-input"
           />
           <button
             type="button"
             onClick={() => void submit()}
-            disabled={!input.trim()}
+            disabled={!input.trim() || busy}
             aria-label="Send"
+            title={busy ? "Apollo is mid-turn" : "Send"}
             className="grid h-6 w-6 place-items-center rounded-md border border-white/10 text-slate-400 transition-colors hover:border-cyan-400/40 hover:text-cyan-200 disabled:opacity-40"
           >
             <CornerDownLeft size={11} />
           </button>
         </div>
-        <div className="mt-1 flex items-center justify-between font-mono text-[8.5px] uppercase tracking-[0.14em] text-slate-600">
-          <span>↑↓ history · tab complete · /help</span>
+        <div className="mt-1 flex items-center justify-between font-mono text-[8.5px] uppercase tracking-[0.14em] text-slate-400">
+          <span aria-live="polite" className={blocked ? "text-amber-300" : undefined}>
+            {blocked ? "mid-turn · command held" : busy ? "apollo is working · input held" : "↑↓ history · tab complete · /help"}
+          </span>
           <span className="flex items-center gap-1"><ListFilter size={8} /> {entries.length} entries</span>
         </div>
       </div>
@@ -316,9 +377,9 @@ function UnifiedStream({ entries }: { entries: LogEntry[] }) {
               <div className="max-w-[88%] rounded-xl rounded-bl-sm border border-violet-400/25 bg-violet-400/[0.06] px-3 py-2">
                 <div className="mb-0.5 flex items-center gap-2 font-mono text-[8px] uppercase tracking-[0.16em] text-violet-300/80">
                   <span>apollo</span>
-                  {entry.activeModel && <span className="text-slate-500">· {entry.activeModel}</span>}
+                  {entry.activeModel && <span className="text-slate-400">· {entry.activeModel}</span>}
                   {entry.simulated && <Badge tone="slate">sim</Badge>}
-                  <span className="text-slate-600">{entry.timestamp}</span>
+                  <span className="text-slate-400">{entry.timestamp}</span>
                 </div>
                 <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-slate-100">{entry.message}</p>
                 {entry.handoffNote && <HandoffBlock note={entry.handoffNote} />}
@@ -401,9 +462,9 @@ function Disclosure({
       >
         {collapsible && hasBody ? (
           expanded ? (
-            <ChevronDown size={11} className="mt-0.5 shrink-0 text-slate-500" />
+            <ChevronDown size={11} className="mt-0.5 shrink-0 text-slate-400" />
           ) : (
-            <ChevronRight size={11} className="mt-0.5 shrink-0 text-slate-500" />
+            <ChevronRight size={11} className="mt-0.5 shrink-0 text-slate-400" />
           )
         ) : (
           <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-slate-600" />
@@ -411,7 +472,7 @@ function Disclosure({
         <span className="min-w-0 flex-1">
           <span className="mb-0.5 flex flex-wrap items-center gap-1.5">
             <Badge tone={tone}>{label}</Badge>
-            <span className="font-mono text-[8px] uppercase tracking-[0.14em] text-slate-600">{meta}</span>
+            <span className="font-mono text-[8px] uppercase tracking-[0.14em] text-slate-400">{meta}</span>
           </span>
           <span className="block whitespace-pre-wrap break-words font-mono text-[10.5px] leading-relaxed text-slate-300">
             {title}
@@ -420,7 +481,7 @@ function Disclosure({
       </button>
       {expanded && hasBody && (
         <div className="border-t border-white/[0.05] px-2.5 py-2">
-          {detail && <p className="mb-1.5 font-mono text-[10px] text-slate-500">{detail}</p>}
+          {detail && <p className="mb-1.5 font-mono text-[10px] text-slate-400">{detail}</p>}
           {handoffNote && <HandoffBlock note={handoffNote} />}
           {payload && (
             <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded border border-white/[0.05] bg-black/40 p-2 font-mono text-[9.5px] leading-relaxed text-slate-400">
@@ -442,11 +503,11 @@ function RawStream({ entries }: { entries: LogEntry[] }) {
     <ol className="space-y-0.5 font-mono text-[10.5px] leading-relaxed" data-testid="raw-stream">
       {entries.map((entry) => (
         <li key={entry.id} className="group flex items-start gap-2 rounded px-1 py-0.5 hover:bg-white/[0.03]">
-          <span className="shrink-0 tabular-nums text-slate-600">{entry.timestamp}</span>
+          <span className="shrink-0 tabular-nums text-slate-400">{entry.timestamp}</span>
           <span className={`shrink-0 ${LEVEL_COLOR[entry.level]}`}>[{entry.level}]</span>
-          <span className="shrink-0 uppercase tracking-wide text-slate-500">[{entry.origin}]</span>
+          <span className="shrink-0 uppercase tracking-wide text-slate-400">[{entry.origin}]</span>
           {entry.activeModel && (
-            <span className="hidden shrink-0 truncate text-slate-600 sm:inline" title={entry.activeModel}>
+            <span className="hidden shrink-0 truncate text-slate-400 sm:inline" title={entry.activeModel}>
               «{entry.activeModel}»
             </span>
           )}
@@ -454,10 +515,10 @@ function RawStream({ entries }: { entries: LogEntry[] }) {
             {entry.message}
             {entry.data && (
               <details className="mt-0.5">
-                <summary className="cursor-pointer list-none text-[9px] uppercase tracking-[0.14em] text-slate-600 hover:text-cyan-300">
+                <summary className="cursor-pointer list-none text-[9px] uppercase tracking-[0.14em] text-slate-400 hover:text-cyan-300">
                   json
                 </summary>
-                <pre className="mt-1 overflow-auto rounded border border-white/[0.05] bg-black/40 p-1.5 text-[9px] text-slate-500">
+                <pre className="mt-1 overflow-auto rounded border border-white/[0.05] bg-black/40 p-1.5 text-[9px] text-slate-400">
                   {JSON.stringify(entry.data, null, 2)}
                 </pre>
               </details>

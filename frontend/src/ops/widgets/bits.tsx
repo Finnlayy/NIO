@@ -16,7 +16,7 @@ export function LiveBadge({ source }: { source: DataSource }) {
       className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide border ${
         live
           ? "text-emerald-300 border-emerald-400/30 bg-emerald-400/10"
-          : "text-slate-500 border-white/10 bg-white/[0.04]"
+          : "text-slate-400 border-white/10 bg-white/[0.04]"
       }`}
       title={live ? "Live data via tvremix MCP" : "Simulated data (live feed unavailable)"}
     >
@@ -66,8 +66,17 @@ export function FeedBadge({ connection }: { connection: FeedConnectionState }) {
   );
 }
 
-export function Pct({ value, signed = true }: { value: number; signed?: boolean }) {
-  const cls = value >= 0 ? up : down;
+export function Pct({
+  value,
+  signed = true,
+  className,
+}: {
+  value: number;
+  signed?: boolean;
+  /** Override the up/down colour, e.g. on a filled treemap tile. */
+  className?: string;
+}) {
+  const cls = className ?? (value >= 0 ? up : down);
   const text = `${signed && value > 0 ? "+" : ""}${value.toFixed(2)}%`;
   return <span className={`font-mono font-medium ${cls}`}>{text}</span>;
 }

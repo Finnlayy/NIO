@@ -42,14 +42,14 @@ export function Header({
           <p className="text-[13px] font-semibold text-white leading-tight truncate">
             NEURAL INTELLIGENCE NETWORK
           </p>
-          <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500 leading-tight">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400 leading-tight">
             Monitoring Grid
           </p>
         </div>
       </div>
 
       <div className="hidden md:flex flex-1 max-w-sm ml-auto relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
         <input
           ref={searchInputRef}
           value={search}

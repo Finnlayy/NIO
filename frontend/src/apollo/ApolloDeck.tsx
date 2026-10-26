@@ -17,7 +17,7 @@ import {
   Zap,
 } from "lucide-react";
 import { MCP_SERVERS, PALETTE, PRIMARY_ENGINES, PROVIDERS } from "./catalog";
-import { poolHealth, rankCandidates } from "./routing";
+import { normalizeWeights, poolHealth, rankCandidates, type Weights } from "./routing";
 import { selectActiveModel, useApolloStore } from "./store";
 import { Badge, EmptyHint, Field, MiniBar, SectionCard, Segmented, Slider, TextInput, Toggle } from "./ui";
 import type { ApolloConfiguration, FreeLLMProviderKey } from "./types";
@@ -28,6 +28,12 @@ const TABS: Array<{ id: Tab; label: string; icon: typeof Gauge }> = [
   { id: "runtime", label: "Runtime", icon: Gauge },
   { id: "router", label: "FreeLLM Router", icon: Zap },
   { id: "bridge", label: "MCP & Sandbox", icon: ShieldCheck },
+];
+
+const WEIGHT_KEYS: Array<{ id: keyof Weights; label: string; accent: string }> = [
+  { id: "reliability", label: "Reliability", accent: PALETTE.emerald },
+  { id: "speed", label: "Speed", accent: PALETTE.cyan },
+  { id: "intelligence", label: "Intelligence", accent: PALETTE.violet },
 ];
 
 const PROVIDER_TONE: Record<FreeLLMProviderKey["status"], "emerald" | "amber" | "slate"> = {
@@ -55,40 +61,68 @@ export function ApolloDeck() {
   const [applied, setApplied] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
+  /* Seed the draft when the deck opens or the committed config changes.
+     Deliberately NOT keyed on the router: the live quota has its own control
+     (below) which writes straight to the router. Re-seeding the draft on every
+     quota tick made each slider step cost two synchronous renders, and a fast
+     key-repeat run tripped React's nested-update limit. */
   useEffect(() => {
     if (open) {
-      // Quota is runtime state, not configuration: seed the draft from the live
-      // router so pressing Apply never silently rewinds a drained quota.
-      setDraft({ ...structuredClone(config), primaryQuotaPercent: router.primaryQuotaPercent });
+      setDraft(structuredClone(config));
       setApplied(false);
     }
-  }, [open, config, router.primaryQuotaPercent]);
+  }, [open, config]);
 
+  /* Modal focus contract:
+     - opening moves focus into the dialog (otherwise Tab walks the page
+       *behind* the overlay, and the trap below never sees it),
+     - Tab/Shift+Tab cycle inside, wrapping at both ends,
+     - closing returns focus to whatever opened it.
+     The trap also pulls focus back in if it escaped by any other route. */
   useEffect(() => {
     if (!open) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    dialog?.focus({ preventScroll: true });
+
+    const focusablesIn = () =>
+      Array.from(
+        dialog?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.stopPropagation();
         setDeckOpen(false);
+        return;
       }
-      if (event.key === "Tab") {
-        const focusables = dialogRef.current?.querySelectorAll<HTMLElement>(
-          'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
-        );
-        if (!focusables || focusables.length === 0) return;
-        const first = focusables[0];
-        const last = focusables[focusables.length - 1];
-        if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        } else if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        }
+      if (event.key !== "Tab") return;
+      const items = focusablesIn();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (!active || !dialog?.contains(active)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
+      if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
       }
     };
+
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      previous?.focus?.({ preventScroll: true });
+    };
   }, [open, setDeckOpen]);
 
   const ranked = useMemo(
@@ -111,15 +145,11 @@ export function ApolloDeck() {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) setDeckOpen(false);
-      }}
-    >
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6" role="presentation">
       <div
         aria-hidden
+        data-testid="apollo-deck-scrim"
+        onMouseDown={() => setDeckOpen(false)}
         className="absolute inset-0 bg-[#03060d]/72 backdrop-blur-[10px] apollo-fade-in"
       />
 
@@ -128,6 +158,8 @@ export function ApolloDeck() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="apollo-deck-title"
+        tabIndex={-1}
+        onMouseDown={(event) => event.stopPropagation()}
         className="apollo-deck relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-cyan-300/15 bg-[#070b16]/95 shadow-[0_40px_120px_rgba(0,0,0,0.7)] apollo-rise-in"
       >
         {/* header */}
@@ -140,7 +172,7 @@ export function ApolloDeck() {
               <h2 id="apollo-deck-title" className="text-[13.5px] font-semibold tracking-wide text-slate-100">
                 NIO Apollo Control Deck
               </h2>
-              <p className="font-mono text-[9px] uppercase tracking-[0.22em] text-slate-500">
+              <p className="font-mono text-[9px] uppercase tracking-[0.22em] text-slate-400">
                 {activeModel.name} · {router.mode.toLowerCase()} · {router.failoverCount} failover
                 {router.failoverCount === 1 ? "" : "s"}
               </p>
@@ -163,7 +195,20 @@ export function ApolloDeck() {
         </header>
 
         {/* tabs */}
-        <nav className="flex gap-1 border-b border-white/[0.06] px-3 pt-2" aria-label="Deck sections">
+        <nav
+          className="flex gap-1 border-b border-white/[0.06] px-3 pt-2"
+          role="tablist"
+          aria-label="Deck sections"
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            const index = TABS.findIndex((entry) => entry.id === tab);
+            const next = (index + (event.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length;
+            setTab(TABS[next].id);
+            const buttons = event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]');
+            buttons[next]?.focus();
+          }}
+        >
           {TABS.map((entry) => {
             const Icon = entry.icon;
             const active = tab === entry.id;
@@ -172,12 +217,15 @@ export function ApolloDeck() {
                 key={entry.id}
                 type="button"
                 role="tab"
+                id={`apollo-deck-tab-${entry.id}`}
                 aria-selected={active}
+                aria-controls="apollo-deck-panel"
+                tabIndex={active ? 0 : -1}
                 onClick={() => setTab(entry.id)}
                 className={`flex items-center gap-1.5 rounded-t-lg border-b-2 px-3 py-2 text-[11.5px] font-medium transition-colors ${
                   active
                     ? "border-cyan-400 text-cyan-200"
-                    : "border-transparent text-slate-500 hover:text-slate-300"
+                    : "border-transparent text-slate-400 hover:text-slate-300"
                 }`}
               >
                 <Icon size={13} />
@@ -188,7 +236,13 @@ export function ApolloDeck() {
         </nav>
 
         {/* body */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+        <div
+          id="apollo-deck-panel"
+          role="tabpanel"
+          aria-labelledby={`apollo-deck-tab-${tab}`}
+          tabIndex={-1}
+          className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5"
+        >
           {tab === "runtime" && (
             <div className="grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
               <SectionCard
@@ -215,7 +269,7 @@ export function ApolloDeck() {
                           <span className={`block text-[12px] ${selected ? "text-cyan-100" : "text-slate-200"}`}>
                             {engine.label}
                           </span>
-                          <span className="block font-mono text-[9px] uppercase tracking-[0.16em] text-slate-500">
+                          <span className="block font-mono text-[9px] uppercase tracking-[0.16em] text-slate-400">
                             {engine.detail}
                           </span>
                         </span>
@@ -230,7 +284,7 @@ export function ApolloDeck() {
                 <SectionCard title="Quota monitor" hint="Auto-failover fires at or below the threshold.">
                   <div className="space-y-3">
                     <div>
-                      <div className="flex items-baseline justify-between font-mono text-[10px] text-slate-500">
+                      <div className="flex items-baseline justify-between font-mono text-[10px] text-slate-400">
                         <span>primary quota · live</span>
                         <span
                           className="tabular-nums"
@@ -361,7 +415,7 @@ export function ApolloDeck() {
                   aria-label="System directive"
                   className="w-full resize-y rounded-lg border border-white/[0.08] bg-black/30 px-3 py-2 text-[11.5px] leading-relaxed text-slate-200 outline-none transition-colors focus:border-cyan-400/50"
                 />
-                <p className="mt-1.5 font-mono text-[9.5px] text-slate-500">
+                <p className="mt-1.5 font-mono text-[9.5px] text-slate-400">
                   {draft.systemDirective.length} chars · handoff notes are clipped to 900
                 </p>
               </SectionCard>
@@ -414,41 +468,35 @@ export function ApolloDeck() {
                   right={<Badge tone="violet">{endpoints} endpoints</Badge>}
                 >
                   <div className="space-y-3">
-                    <Slider
-                      label="Reliability"
-                      value={draft.freeLLMRouting.weights.reliability}
-                      min={0}
-                      max={100}
-                      step={5}
-                      onChange={(value) => setWeights({ reliability: value })}
-                      format={(value) => `${value}%`}
-                      accent={PALETTE.emerald}
-                    />
-                    <Slider
-                      label="Speed"
-                      value={draft.freeLLMRouting.weights.speed}
-                      min={0}
-                      max={100}
-                      step={5}
-                      onChange={(value) => setWeights({ speed: value })}
-                      format={(value) => `${value}%`}
-                      accent={PALETTE.cyan}
-                    />
-                    <Slider
-                      label="Intelligence"
-                      value={draft.freeLLMRouting.weights.intelligence}
-                      min={0}
-                      max={100}
-                      step={5}
-                      onChange={(value) => setWeights({ intelligence: value })}
-                      format={(value) => `${value}%`}
-                      accent={PALETTE.violet}
-                    />
-                    <p className="font-mono text-[9px] text-slate-500">
+                    {/* These edit the DRAFT like every other control — the footer
+                        promises "changes apply on hot-reload", and writing to the
+                        live router here used to bypass Apply while the thumb
+                        silently kept a value the store no longer held. */}
+                    {WEIGHT_KEYS.map((key) => (
+                      <Slider
+                        key={key.id}
+                        label={key.label}
+                        value={draft.freeLLMRouting.weights[key.id]}
+                        min={0}
+                        max={100}
+                        step={5}
+                        onChange={(value) =>
+                          patchRouting({ weights: { ...draft.freeLLMRouting.weights, [key.id]: value } })
+                        }
+                        format={(value) => `${value}%`}
+                        accent={key.accent}
+                      />
+                    ))}
+                    <p className="font-mono text-[9px] text-slate-400">
                       normalised:{" "}
-                      {Object.entries(draft.freeLLMRouting.weights)
-                        .map(([key, value]) => `${key.slice(0, 3)} ${Math.round((value / Math.max(1, draft.freeLLMRouting.weights.reliability + draft.freeLLMRouting.weights.speed + draft.freeLLMRouting.weights.intelligence)) * 100)}%`)
-                        .join(" · ")}
+                      {(() => {
+                        const n = normalizeWeights(draft.freeLLMRouting.weights);
+                        return WEIGHT_KEYS.map(
+                          (key) => `${key.id.slice(0, 3)} ${n[key.id]}%`,
+                        ).join(" · ");
+                      })()}
+                      {" · "}
+                      <span className="text-slate-400">applies on hot-reload</span>
                     </p>
                   </div>
                 </SectionCard>
@@ -471,13 +519,13 @@ export function ApolloDeck() {
                       }}
                     >
                       <div className="flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.16em]">
-                        <span className={index === 0 ? "text-emerald-300" : "text-slate-500"}>#{index + 1}</span>
-                        <span className={index === 0 ? "text-emerald-300" : "text-slate-500"}>
+                        <span className={index === 0 ? "text-emerald-300" : "text-slate-400"}>#{index + 1}</span>
+                        <span className={index === 0 ? "text-emerald-300" : "text-slate-400"}>
                           {index === 0 ? "active" : index === 1 ? "ready" : "standby"}
                         </span>
                       </div>
                       <div className="mt-1 truncate text-[11.5px] font-medium text-slate-100">{candidate.name}</div>
-                      <div className="flex items-center justify-between font-mono text-[9.5px] text-slate-500">
+                      <div className="flex items-center justify-between font-mono text-[9.5px] text-slate-400">
                         <span className="truncate">{candidate.provider}</span>
                         <span className="tabular-nums">{candidate.compositeScore.toFixed(1)}</span>
                       </div>
@@ -516,7 +564,7 @@ export function ApolloDeck() {
                         >
                           <span className="min-w-0">
                             <span className="block truncate text-[11.5px] text-slate-200">{provider.name}</span>
-                            <span className="block font-mono text-[9px] text-slate-600">{provider.keyMasked}</span>
+                            <span className="block font-mono text-[9px] text-slate-400">{provider.keyMasked}</span>
                           </span>
                           <Badge tone={PROVIDER_TONE[provider.status]} dot>
                             {provider.status === "LIMIT_REACHED" ? "limited" : provider.status.toLowerCase()}
@@ -525,7 +573,7 @@ export function ApolloDeck() {
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-2 font-mono text-[9px] text-slate-600">click a key to toggle active ⇄ standby</p>
+                  <p className="mt-2 font-mono text-[9px] text-slate-400">click a key to toggle active ⇄ standby</p>
                 </SectionCard>
 
                 <SectionCard
@@ -535,7 +583,7 @@ export function ApolloDeck() {
                 >
                   <div className="max-h-[260px] overflow-y-auto pr-1">
                     <table className="w-full border-collapse text-left">
-                      <thead className="sticky top-0 bg-[#0a0f1b]/95 font-mono text-[8.5px] uppercase tracking-[0.16em] text-slate-600">
+                      <thead className="sticky top-0 bg-[#0a0f1b]/95 font-mono text-[8.5px] uppercase tracking-[0.16em] text-slate-400">
                         <tr>
                           <th className="py-1 pr-2">#</th>
                           <th className="py-1 pr-2">model</th>
@@ -548,10 +596,10 @@ export function ApolloDeck() {
                       <tbody>
                         {ranked.map((candidate, index) => (
                           <tr key={candidate.id} className="border-t border-white/[0.04]">
-                            <td className="py-1 pr-2 font-mono text-[9.5px] text-slate-600">{index + 1}</td>
+                            <td className="py-1 pr-2 font-mono text-[9.5px] text-slate-400">{index + 1}</td>
                             <td className="py-1 pr-2">
                               <div className="truncate text-[11px] text-slate-200">{candidate.name}</div>
-                              <div className="truncate font-mono text-[8.5px] text-slate-600">{candidate.provider}</div>
+                              <div className="truncate font-mono text-[8.5px] text-slate-400">{candidate.provider}</div>
                             </td>
                             <td className="py-1 pr-2 text-right font-mono text-[9.5px] tabular-nums text-slate-400">{candidate.reliability}</td>
                             <td className="py-1 pr-2 text-right font-mono text-[9.5px] tabular-nums text-slate-400">{candidate.speed}</td>
@@ -638,7 +686,7 @@ export function ApolloDeck() {
                       ["handoff", draft.freeLLMRouting.enableContextHandoffNote ? "on" : "off"],
                     ].map(([key, value]) => (
                       <div key={key} className="rounded-md border border-white/[0.05] bg-white/[0.015] px-2 py-1.5">
-                        <dt className="text-[8.5px] uppercase tracking-[0.16em] text-slate-600">{key}</dt>
+                        <dt className="text-[8.5px] uppercase tracking-[0.16em] text-slate-400">{key}</dt>
                         <dd className="mt-0.5 truncate text-slate-200" title={value}>{value}</dd>
                       </div>
                     ))}
@@ -670,7 +718,7 @@ export function ApolloDeck() {
 
         {/* footer */}
         <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.07] bg-black/25 px-4 py-3 sm:px-5">
-          <p className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-slate-600">
+          <p className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-slate-400">
             <SlidersHorizontal size={9} className="mr-1 inline" />
             {applied ? "hot-reloaded · apollo acknowledged" : "changes apply on hot-reload"}
           </p>

@@ -47,6 +47,9 @@ const {
   mulberry32,
   bowFor,
   RING,
+  CARD_BOX,
+  cardsCollide,
+  fitEllipse,
 } = require("../apollo/graph");
 const {
   PALETTE,
@@ -478,4 +481,53 @@ test("bowFor is deterministic per node id and stays small", () => {
   assert.equal(a, bowFor("node-router"));
   assert.ok(Math.abs(a) <= 0.32);
   assert.ok(mulberry32(7)() === mulberry32(7)());
+});
+
+/* ------------------------------------------------------------------ */
+/* ring capacity — /spawn must never stack cards on top of each other  */
+/* ------------------------------------------------------------------ */
+
+/** Seed positions plus `n` spawns placed in the widest gap, as the store does. */
+function ringWith(n) {
+  // Seeds carry an angle, not a point; the store projects them onto the ring.
+  const points = SEED_NODES.map((node) => radialPoint(node.angle));
+  while (points.length < n) {
+    const angle = widestGapAngle(points.map((point) => angleOf({ x: 0, y: 0 }, point)));
+    points.push(radialPoint(angle));
+  }
+  return points;
+}
+
+test("eight seed nodes keep the nominal ring and stay card-free", () => {
+  const scene = { width: 1440, height: 719 };
+  const fit = fitEllipse(ringWith(8), scene.width, scene.height);
+  assert.equal(fit.crowded, false);
+  assert.equal(fit.scale, 1);
+  assert.equal(cardsCollide(ringWith(8), fit.ellipse, scene), false);
+});
+
+test("spawns keep filling the ring until the scene really runs out", () => {
+  const scene = { width: 1440, height: 719 };
+  for (const count of [10, 12, 16]) {
+    const fit = fitEllipse(ringWith(count), scene.width, scene.height);
+    assert.equal(fit.crowded, false, `${count} nodes should still fit the ring`);
+    const box = { width: CARD_BOX.width * fit.scale, height: CARD_BOX.height * fit.scale };
+    assert.equal(cardsCollide(ringWith(count), fit.ellipse, scene, box), false, `${count} nodes overlap`);
+  }
+  // Cards step down before they would touch.
+  assert.ok(fitEllipse(ringWith(16), scene.width, scene.height).scale < 1);
+});
+
+test("a short scene falls back to the board instead of stacking cards", () => {
+  const scene = { width: 1024, height: 519 };
+  const fit = fitEllipse(ringWith(16), scene.width, scene.height);
+  assert.equal(fit.crowded, true);
+});
+
+test("cardsCollide spots a pile-up and a card hanging off the edge", () => {
+  const scene = { width: 800, height: 600 };
+  const centre = { cx: 400, cy: 300, rx: 200, ry: 150 };
+  assert.equal(cardsCollide([{ x: 0, y: 0 }, { x: 0, y: 0 }], centre, scene), true);
+  assert.equal(cardsCollide([{ x: -3, y: 0 }], centre, scene), true);
+  assert.equal(cardsCollide([{ x: 0, y: 1 }], centre, scene), false);
 });

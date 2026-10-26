@@ -50,7 +50,7 @@ export function NewsSentiment({ data, symbol }: { data: Record<string, unknown>;
         <div className="bg-slate-500" style={{ width: "100%", transform: `scaleX(${neutral / 100})`, transformOrigin: "left" }} />
         <div className="bg-emerald-400" style={{ width: "100%", transform: `scaleX(${positive / 100})`, transformOrigin: "left" }} />
       </div>
-      <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5 text-[10px] text-slate-500">
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5 text-[10px] text-slate-400">
         <span className="flex items-center gap-1 font-mono tabular-nums">
           <span className="w-1.5 h-1.5 rounded-full bg-rose-400" /> Negative {negative}%
         </span>
@@ -67,7 +67,7 @@ export function NewsSentiment({ data, symbol }: { data: Record<string, unknown>;
           <div key={i} className="py-2.5 flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[12px] text-slate-200 leading-snug line-clamp-2">{item.headline}</p>
-              <p className="text-[10px] text-slate-600 mt-1 flex items-center gap-1.5 font-mono tabular-nums">
+              <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1.5 font-mono tabular-nums">
                 {item.source} · {item.age}
                 {item.highImpact && (
                   <span className="px-1 rounded bg-rose-500/15 text-rose-300 font-semibold">HIGH IMPACT</span>

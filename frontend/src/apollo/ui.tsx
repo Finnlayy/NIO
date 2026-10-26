@@ -57,7 +57,7 @@ export function SectionCard({
       <header className="mb-3 flex items-start justify-between gap-3">
         <div>
           <h3 className="font-mono text-[10px] uppercase tracking-[0.26em] text-slate-400">{title}</h3>
-          {hint && <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-slate-500">{hint}</p>}
+          {hint && <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-slate-400">{hint}</p>}
         </div>
         {right}
       </header>
@@ -90,7 +90,7 @@ export function Toggle({
     >
       <span className="min-w-0">
         <span className="block text-[12px] font-medium text-slate-200">{label}</span>
-        {detail && <span className="mt-0.5 block text-[10.5px] leading-relaxed text-slate-500">{detail}</span>}
+        {detail && <span className="mt-0.5 block text-[10.5px] leading-relaxed text-slate-400">{detail}</span>}
       </span>
       <button
         id={id}
@@ -158,7 +158,7 @@ export function Slider({
           ["--range-pct" as string]: `${pct}%`,
         }}
       />
-      {hint && <p className="mt-1 text-[10px] leading-relaxed text-slate-500">{hint}</p>}
+      {hint && <p className="mt-1 text-[10px] leading-relaxed text-slate-400">{hint}</p>}
     </div>
   );
 }
@@ -209,11 +209,11 @@ export function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={htmlFor} className="block font-mono text-[9.5px] uppercase tracking-[0.2em] text-slate-500">
+      <label htmlFor={htmlFor} className="block font-mono text-[9.5px] uppercase tracking-[0.2em] text-slate-400">
         {label}
       </label>
       {children}
-      {hint && <p className="text-[10px] leading-relaxed text-slate-500">{hint}</p>}
+      {hint && <p className="text-[10px] leading-relaxed text-slate-400">{hint}</p>}
     </div>
   );
 }
@@ -243,7 +243,7 @@ export function TextInput({
       value={value}
       placeholder={placeholder}
       onChange={(event) => onChange(event.target.value)}
-      className={`w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-1.5 text-[12px] text-slate-100 outline-none transition-colors placeholder:text-slate-600 focus:border-cyan-400/50 focus:bg-cyan-400/[0.04] ${
+      className={`w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-1.5 text-[12px] text-slate-100 outline-none transition-colors placeholder:text-slate-400 focus:border-cyan-400/50 focus:bg-cyan-400/[0.04] ${
         mono ? "font-mono" : ""
       }`}
     />
@@ -263,7 +263,7 @@ export function MiniBar({ value, color, height = 3 }: { value: number; color: st
 
 export function EmptyHint({ children }: { children: ReactNode }) {
   return (
-    <p className="rounded-lg border border-dashed border-white/10 bg-white/[0.01] px-3 py-3 text-[11px] leading-relaxed text-slate-500">
+    <p className="rounded-lg border border-dashed border-white/10 bg-white/[0.01] px-3 py-3 text-[11px] leading-relaxed text-slate-400">
       {children}
     </p>
   );

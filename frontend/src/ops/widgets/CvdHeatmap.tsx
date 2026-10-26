@@ -81,7 +81,7 @@ export function CvdHeatmap({ data }: { data: Record<string, unknown> }) {
                 {bin.delta > 0 ? "▲" : "▼"}
               </span>
             </div>
-            <span className="text-[8px] text-slate-600 font-mono">{bin.label}</span>
+            <span className="text-[8px] text-slate-400 font-mono">{bin.label}</span>
           </div>
         ))}
       </div>

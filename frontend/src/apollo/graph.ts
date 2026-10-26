@@ -57,6 +57,74 @@ export function ellipseFor(width: number, height: number): Ellipse {
   };
 }
 
+/** Rendered size of a ring card, in CSS pixels (widest / tallest variant). */
+export const CARD_BOX = { width: 196, height: 96 } as const;
+
+/** Breathing room kept around a card before two of them count as colliding. */
+const CARD_GAP = 10;
+
+/** True when any two projected cards would overlap or leave the scene. */
+export function cardsCollide(
+  positions: readonly Point[],
+  ellipse: Ellipse,
+  scene: { width: number; height: number },
+  box: { width: number; height: number } = CARD_BOX,
+  gap = CARD_GAP,
+): boolean {
+  const points = positions.map((p) => toPixels(p, ellipse));
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    if (
+      a.x - box.width / 2 < -1 ||
+      a.x + box.width / 2 > scene.width + 1 ||
+      a.y - box.height / 2 < -1 ||
+      a.y + box.height / 2 > scene.height + 1
+    ) {
+      return true;
+    }
+    for (let j = i + 1; j < points.length; j += 1) {
+      const b = points[j];
+      if (Math.abs(a.x - b.x) < box.width + gap && Math.abs(a.y - b.y) < box.height + gap) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * The nominal ring is sized for the eight seed nodes. `/spawn` can add more, so
+ * the ellipse is inflated until the cards clear each other — and when the scene
+ * is too short for that, the cards themselves step down in size. Only when even
+ * the smallest step cannot fit does the caller switch to the node board, which
+ * is why `crowded` is reported instead of hidden.
+ */
+export function fitEllipse(
+  positions: readonly Point[],
+  width: number,
+  height: number,
+  box: { width: number; height: number } = CARD_BOX,
+): { ellipse: Ellipse; scale: number; crowded: boolean } {
+  const base = ellipseFor(width, height);
+  const scene = { width, height };
+  const scales = [1, 0.92, 0.84, 0.76];
+  for (const scale of scales) {
+    const scaled = { width: box.width * scale, height: box.height * scale };
+    const maxRx = Math.max(40, width / 2 - scaled.width / 2 - 14);
+    const maxRy = Math.max(40, height / 2 - scaled.height / 2 - 14);
+    for (let step = 0; step <= 24; step += 1) {
+      const k = 1 + step * 0.08;
+      const ellipse = {
+        ...base,
+        rx: Math.min(base.rx * k, maxRx),
+        ry: Math.min(base.ry * k, maxRy),
+      };
+      if (!cardsCollide(positions, ellipse, scene, scaled)) return { ellipse, scale, crowded: false };
+    }
+  }
+  return { ellipse: base, scale: 1, crowded: true };
+}
+
 /**
  * Angles are kept sorted; a new node drops into the widest gap. That makes
  * `/spawn` deterministic and keeps cards from piling up on one side.

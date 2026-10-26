@@ -37,7 +37,7 @@ export function TradePlan({ data, symbol }: { data: Record<string, unknown>; sym
         <Row label="Target 1" price={plan.t1} pctValue={plan.rewardPct} color="text-emerald-400" plan={plan} />
         <Row label="Target 2" price={plan.t2} pctValue={plan.rewardPct * 2} color="text-emerald-400" plan={plan} last />
       </div>
-      <p className="text-[10px] text-slate-600 mt-2">Blueprint for {symbol ?? "—"} · simulated levels</p>
+      <p className="text-[10px] text-slate-400 mt-2">Blueprint for {symbol ?? "—"} · simulated levels</p>
     </div>
   );
 }
@@ -62,7 +62,7 @@ function Ladder({
   dot?: boolean;
 }) {
   return (
-    <div className="absolute inset-x-0 flex items-center" style={{ top: y }}>
+    <div className="absolute inset-x-0 flex -translate-y-1/2 items-center" style={{ top: y }}>
       <span
         className="px-1.5 py-0.5 rounded text-[9px] font-bold border shrink-0 z-10"
         style={{ color, borderColor: `${color}66`, background: "rgba(9,11,18,0.9)" }}
@@ -123,7 +123,7 @@ function Stat({
 }) {
   return (
     <div>
-      <p className="text-[9px] uppercase tracking-wide text-slate-600">{label}</p>
+      <p className="text-[9px] uppercase tracking-wide text-slate-400">{label}</p>
       <p className={`font-bold mt-0.5 ${small ? "text-[11px]" : "text-[13px]"} ${valueClass ?? "text-slate-100"}`}>
         {value}
       </p>

@@ -353,7 +353,9 @@ body {
 .apollo-range {
   -webkit-appearance: none;
   appearance: none;
-  height: 18px;
+  /* 24px tall input, 4px visual track: the hit area meets the 24x24 touch
+     target guidance without changing how the slider looks. */
+  height: 24px;
   background: transparent;
   cursor: pointer;
 }
@@ -425,4 +427,12 @@ body {
   .pulse-dot {
     animation: none;
   }
+}
+
+/* The corner HUD and the axon legend belong to the radial scene. When the ring
+   folds into the node board (or the compact column) they would float over the
+   cards, so the layout owns the whole stage instead. */
+.apollo-stage:has([data-testid="neural-graph"]:not([data-layout="radial"])) .apollo-hud,
+.apollo-stage:has([data-testid="neural-graph"]:not([data-layout="radial"])) .apollo-legend {
+  display: none;
 }

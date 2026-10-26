@@ -506,10 +506,8 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
     restorePrimary: () => {
       const state = get();
       const next = restorePrimary(state.router, 100);
-      set({
-        router: next,
-        config: { ...state.config, primaryQuotaPercent: 100 },
-      });
+      // Same rule as setQuota: the reset belongs to the router, not to config.
+      set({ router: next });
       push({
         origin: "FREELLM_ROUTER",
         level: "INFO",
@@ -530,11 +528,11 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
     },
 
     setQuota: (percent) => {
-      const state = get();
-      set({
-        router: setRouterQuota(state.router, percent),
-        config: { ...state.config, primaryQuotaPercent: percent },
-      });
+      // Router only. Quota is runtime state: mirroring it into `config` gave the
+      // deck a new config object on every tick, which re-seeded its draft (so a
+      // slider move silently discarded unsaved edits) and made fast key-repeat
+      // nesting-dive React's update limit.
+      set((state) => ({ router: setRouterQuota(state.router, percent) }));
     },
 
     applyConfig: (next) => {
@@ -551,7 +549,9 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
       const router: RouterState = {
         ...state.router,
         primaryModel: next.primaryModel,
-        primaryQuotaPercent: next.primaryQuotaPercent,
+        // Quota is runtime state, not configuration: hot-reloading the deck must
+        // never rewind a drained primary (or refill an exhausted one).
+        primaryQuotaPercent: state.router.primaryQuotaPercent,
         chain,
         mode: state.router.mode === "PRIMARY" ? "PRIMARY" : state.router.mode,
       };

@@ -45,7 +45,7 @@ export function AgentsTile({
               <p className="text-[12px] font-medium text-slate-100 mt-2 leading-tight">
                 {agent.label}
               </p>
-              <p className="text-[10px] text-slate-500 mt-1 leading-snug line-clamp-2">
+              <p className="text-[10px] text-slate-400 mt-1 leading-snug line-clamp-2">
                 {agent.description}
               </p>
               <p className="mt-2">
