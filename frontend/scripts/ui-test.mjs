@@ -37,6 +37,13 @@ const entries = [
   "ops/hotkeys.ts",
   "ops/hooks/useMarketData.ts",
   "data/network.ts",
+  /* Apollo core: pure router/layout/command modules + the zustand store. */
+  "apollo/catalog.ts",
+  "apollo/engine.ts",
+  "apollo/routing.ts",
+  "apollo/graph.ts",
+  "apollo/commands.ts",
+  "apollo/store.ts",
 ].filter((rel) => existsSync(path.join(srcDir, rel)));
 
 function walk(dir, out = []) {

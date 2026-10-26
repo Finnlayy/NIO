@@ -174,6 +174,32 @@ Details: [`docs/NEU.md`](docs/NEU.md) · [`protocol/PROTOCOL.md`](protocol/PROTO
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (Grenzen, Datenhoheit, Phase 4) ·
 [`docs/REVIEW-2026-09-04.md`](docs/REVIEW-2026-09-04.md) (Bestandsaufnahme & Abnahme)
 
+## Apollo Core UI (`frontend/`, Next 16)
+
+`/` und `/apollo` rendern die **Apollo-Bühne**: ein radialer Neural-Node-Graph um
+einen Shader-Orb, dazu ein Control Deck und ein Hybrid-Terminal (Chat · Log ·
+CLI). `/ops` bleibt als Widget-Grid erreichbar.
+
+* **Orb** — WebGL-2D-Fallback: SDF-Kugel, domain-warped Plasma, Fresnel-Rim,
+  Amethyst-Schockwelle beim Failover, Crimson-Puls bei Fehlern.
+* **FreeLLMAPI-Routing** — 36 Provider, 635 Endpoints, gewichteter Score
+  (reliability/speed/intelligence), geordnete Fallback-Kette, Kontext-Übergabe
+  (≤900 Zeichen) an das nächste Modell. Kein Kandidat ⇒ `EXHAUSTED`, nie ein
+  erfundenes Modell.
+* **Lymp-Mitose** — neue Knoten werden als Vesikel aus der Membran gedrückt und
+  kristallisieren zur Karte (`/spawn`).
+* **Endpoints** — `POST /api/apollo` (Proxy, Keys nur serverseitig, fail-closed)
+  und `POST /api/sandbox` (read-only Allowlist, keine Shell).
+
+```bash
+cd frontend
+npx next dev -H 0.0.0.0 -p 4001   # Apollo-Bühne
+node scripts/ui-test.mjs          # 65 Tests (node --test, ohne Framework)
+npx tsc --noEmit && npm run build
+```
+
+Details: [`docs/APOLLO-CORE.md`](docs/APOLLO-CORE.md)
+
 ## Continuous Learning Loop
 
 Das System lernt kontinuierlich aus den Ergebnissen seiner Arbeit:
