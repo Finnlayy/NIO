@@ -1,7 +1,7 @@
 {
   "$comment": "NEU Operations-Register v1.1 -- normativ. 'phase' = Einfuehrungsphase, 'risk' = none|read|write|destructive|high, 'requires_elevation' = none|workspace|repo_write, 'path_params' = Parameter, die von core/policy.py gegen die Sandbox geprueft werden, 'implemented_by' = Limbs gemaess limbs/registry.json. Eine Operation gilt erst dann als verfuegbar, wenn ein Limb mit status='active' sie implementiert.",
-  "version": "1.1",
-  "updated_at": "2026-09-03",
+  "version": "1.2",
+  "updated_at": "2026-10-25",
   "operations": {
     "sys.ping": {
       "phase": 1,
@@ -191,6 +191,92 @@
       "params": {
         "path": "relativer Pfad (pflicht)",
         "entry": "objekt (pflicht)"
+      }
+    },
+    "rea.ping": {
+      "phase": 3,
+      "risk": "none",
+      "requires_elevation": "none",
+      "path_params": [],
+      "implemented_by": [
+        "rea"
+      ],
+      "description": "Handshake des REA-Subagenten: Ist REA in dieser Sandbox installiert, welche Version, welcher Node, welche Pfade? Ohne Nebenwirkung.",
+      "params": {}
+    },
+    "rea.install": {
+      "phase": 3,
+      "risk": "write",
+      "requires_elevation": "none",
+      "path_params": [],
+      "implemented_by": [
+        "rea"
+      ],
+      "description": "Installiert REA in der eigenen Sandbox: aus dem Git-Repository (clone + npm ci + build) oder als npm-Paket, optional mit pwntools-venv fuer den ELF-Provider. Verlangt constraints.allow_network=true; force=true baut nur eigene Baeume neu (Marker-Pflicht).",
+      "params": {
+        "source": "git | npm (optional, Default git)",
+        "repository": "string (optional) -- Git-URL, Default: das Reverse-Engineer-anything-Repository",
+        "ref": "string (optional) -- Branch/Tag fuer source=git",
+        "package": "string (optional) -- npm-Paketname, Default rea-agents",
+        "package_version": "string (optional) -- exakte Version fuer source=npm",
+        "build": "bool (optional, Default true) -- npm run build nach dem Klonen",
+        "with_pwntools": "bool (optional, Default false) -- venv mit pwntools/pyelftools/unicorn",
+        "python": "string (optional) -- Interpreter fuer das venv, Default: der Limb-Interpreter",
+        "force": "bool (optional, Default false) -- Neuinstallation, nur fuer eigene Marker-Baeume",
+        "timeout_s": "number (optional)"
+      }
+    },
+    "rea.doctor": {
+      "phase": 3,
+      "risk": "read",
+      "requires_elevation": "none",
+      "path_params": [
+        "target"
+      ],
+      "implemented_by": [
+        "rea"
+      ],
+      "description": "Fuehrt 'rea doctor' aus und verdichtet Checks, Fehlschlage und Empfehlungen. Diagnostics sind ein Befund, kein Fehlschlag.",
+      "params": {
+        "provider": "string (optional) -- ghidra | hopper | ida | pwntools-elf ...",
+        "target": "relativer Pfad (optional) -- Ziel, gegen das die Bereitschaft geprueft wird",
+        "timeout_s": "number (optional)"
+      }
+    },
+    "rea.capabilities": {
+      "phase": 3,
+      "risk": "none",
+      "requires_elevation": "none",
+      "path_params": [],
+      "implemented_by": [
+        "rea"
+      ],
+      "description": "Operationsmatrix inkl. Verfuegbarkeit und Nebenwirkungen; zeigt, welche Analysewege diese Maschine wirklich kann.",
+      "params": {
+        "timeout_s": "number (optional)"
+      }
+    },
+    "rea.analyze": {
+      "phase": 3,
+      "risk": "read",
+      "requires_elevation": "none",
+      "path_params": [
+        "target",
+        "out"
+      ],
+      "implemented_by": [
+        "rea"
+      ],
+      "description": "Fuehrt genau ein freigegebenes REA-Kommando gegen ein Ziel in der Sandbox aus (Allowlist in limbs/rea_limb.py). Ergebnis: verdichtete Evidence + Rohbeleg als Artefakt mit sha256. Kein Shell-String, argv-Listen.",
+      "params": {
+        "command": "string (pflicht) -- z.B. analyze-javascript-application | inspect-binary-layout | doctor",
+        "target": "relativer Pfad (optional) -- erstes Pfadargument, policy-geprueft",
+        "paths": "[string] (optional) -- weitere Pfadargumente, im Limb gegen die Sandbox geprueft",
+        "args": "[string] (optional) -- Literalargumente (Funktionsname, Adresse, Suchbegriff)",
+        "options": "objekt (optional) -- freigegebene Optionen je Kommando, z.B. {provider|artifact_format|snapshot}",
+        "out": "relativer Pfad (optional) -- Ablage des Rohbelegs, Default out/<command>-<zeit>.json",
+        "summary_mode": "full | compact (optional)",
+        "timeout_s": "number (optional)"
       }
     }
   }
