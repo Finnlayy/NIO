@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { BrainCircuit, Download, Library, Radio, Zap } from "lucide-react";
+import Link from "next/link";
+import { BrainCircuit, Download, GitBranch, Library, Radio, Zap } from "lucide-react";
 import { GridCanvas } from "@/ops/GridCanvas";
 import { GalleryDrawer } from "@/ops/GalleryDrawer";
 import { McpConsole } from "@/ops/McpConsole";
@@ -130,7 +131,7 @@ export default function OpsGridPage() {
           <p className="text-[13px] font-semibold text-white leading-tight truncate">
             NIO COMPOSABLE OPS GRID
           </p>
-          <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500 leading-tight">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400 leading-tight">
             Widget gallery · MCP hydration
           </p>
         </div>
@@ -159,6 +160,14 @@ export default function OpsGridPage() {
             />
             {dataSource === "live" ? "tvremix · Live" : dataSource === "sim" ? "Simulated" : "Connecting"}
           </span>
+          <Link
+            href="/apollo"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-cyan-400/25 bg-cyan-400/[0.07] text-cyan-200 hover:bg-cyan-400/15 transition-colors"
+            title="Apollo orchestrator stage — orb, neural graph, FreeLLMAPI router"
+          >
+            <GitBranch className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Apollo stage</span>
+          </Link>
           <button
             onClick={() => setConsoleOpen(!consoleOpen)}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${

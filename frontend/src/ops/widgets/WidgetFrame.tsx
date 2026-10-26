@@ -181,7 +181,7 @@ function IconBtn({
         e.stopPropagation();
         onClick();
       }}
-      className="p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-white/[0.07] transition-colors"
+      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-white/[0.07] transition-colors"
     >
       {children}
     </button>
@@ -209,7 +209,7 @@ function MenuItem({
           : "text-slate-300 hover:bg-white/[0.06]"
       }`}
     >
-      <span className="text-slate-500">{icon}</span>
+      <span className="text-slate-400">{icon}</span>
       {children}
     </button>
   );

@@ -21,10 +21,10 @@ function Kpi({
         <span className="block text-lg font-semibold text-white leading-tight tabular-nums">
           {value}
         </span>
-        <span className="block text-[10px] uppercase tracking-[0.12em] text-slate-500 truncate">
+        <span className="block text-[10px] uppercase tracking-[0.12em] text-slate-400 truncate">
           {label}
         </span>
-        <span className="block text-[10px] text-slate-600 truncate">{sub}</span>
+        <span className="block text-[10px] text-slate-400 truncate">{sub}</span>
       </span>
     </Tile>
   );

@@ -37,17 +37,17 @@ export function PatternScanner({ data }: { data: Record<string, unknown> }) {
         <div style={{ width: "100%", background: downBar, transform: `scaleX(${bearish / total})`, transformOrigin: "left" }} />
       </div>
       <p className="flex items-center gap-3 mt-1.5 text-[10px]">
-        <span className="flex items-center gap-1 text-slate-500">
+        <span className="flex items-center gap-1 text-slate-400">
           <span className="w-1.5 h-1.5 rounded-full" style={{ background: upBar }} />
           Bullish {bullish}
         </span>
-        <span className="flex items-center gap-1 text-slate-500">
+        <span className="flex items-center gap-1 text-slate-400">
           <span className="w-1.5 h-1.5 rounded-full" style={{ background: downBar }} />
           Bearish {bearish}
         </span>
       </p>
 
-      <p className="text-[10px] uppercase tracking-[0.14em] text-slate-600 mt-3 mb-1.5">
+      <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400 mt-3 mb-1.5">
         Approaching trigger · {patterns.length}
       </p>
 
@@ -65,7 +65,7 @@ export function PatternScanner({ data }: { data: Record<string, unknown> }) {
             <span className="text-[12px] font-mono text-slate-200 tabular-nums">
               {p.trigger.toLocaleString("en-US", { minimumFractionDigits: 2 })}
             </span>
-            <span className="w-14 text-right text-[10px] text-slate-500 shrink-0">{p.atrStatus}</span>
+            <span className="w-14 text-right text-[10px] text-slate-400 shrink-0">{p.atrStatus}</span>
           </div>
         ))}
       </div>

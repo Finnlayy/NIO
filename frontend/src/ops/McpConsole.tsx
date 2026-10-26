@@ -40,14 +40,14 @@ export function McpConsole() {
             <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
               MCP Event Bus
             </span>
-            <span className="flex items-center gap-1.5 text-[10px] text-slate-500">
+            <span className="flex items-center gap-1.5 text-[10px] text-slate-400">
               <Radio className="w-3 h-3 text-emerald-400 pulse-dot" />
               <ConsoleEventCount />
             </span>
             <button
               autoFocus
               onClick={() => setOpen(false)}
-              className="ml-auto p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/[0.07]"
+              className="ml-auto p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.07]"
               aria-label="Close console"
             >
               <X className="w-4 h-4" />
@@ -101,10 +101,10 @@ export function McpConsoleLog() {
 export const LogRow = memo(function LogRow({ event }: { event: McpEvent }) {
   return (
     <div className="flex gap-3 items-start hover:bg-white/[0.03] rounded px-1.5 py-0.5">
-      <span className="text-slate-600 shrink-0">{event.timestamp}</span>
+      <span className="text-slate-400 shrink-0">{event.timestamp}</span>
       <span className="text-violet-300/80 shrink-0">{event.source}</span>
       <span className={`shrink-0 ${toneClass(event.method)}`}>{event.method}</span>
-      <span className="text-slate-500 break-all">
+      <span className="text-slate-400 break-all">
         {JSON.stringify(event.params)}
       </span>
     </div>

@@ -41,7 +41,7 @@ export function EnvelopeChart({ data, symbol }: { data: Record<string, unknown>;
     <div className="flex flex-col h-full gap-2">
       <div className="flex items-baseline justify-between">
         <div>
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-slate-400">
             {String(data.symbol ?? symbol ?? "—")} · {venue}
           </p>
           <p className="text-2xl font-bold text-white tabular-nums mt-0.5">
@@ -65,7 +65,7 @@ export function EnvelopeChart({ data, symbol }: { data: Record<string, unknown>;
       <div className="grid grid-cols-6 gap-1 text-center">
         {tfStats.map((s) => (
           <div key={s.tf} className="rounded-md bg-white/[0.03] border border-white/[0.05] py-1.5">
-            <p className="text-[9px] uppercase tracking-wide text-slate-600">{s.tf}</p>
+            <p className="text-[9px] uppercase tracking-wide text-slate-400">{s.tf}</p>
             <p className={`text-[10px] font-mono ${s.pct >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
               {s.pct >= 0 ? "+" : ""}
               {s.pct.toFixed(1)}%
@@ -85,8 +85,8 @@ export function EnvelopeChart({ data, symbol }: { data: Record<string, unknown>;
           { label: "Confidence", value: regime ? `${(regime.confidence * 100).toFixed(0)}%` : "—" },
         ].map((cell) => (
           <div key={cell.label} className="rounded-md bg-white/[0.03] border border-white/[0.05] py-1.5">
-            <p className="text-[9px] uppercase tracking-wide text-slate-600">{cell.label}</p>
-            <p className={`text-[10px] font-mono ${feedLive ? "text-white" : "text-slate-600"}`}>
+            <p className="text-[9px] uppercase tracking-wide text-slate-400">{cell.label}</p>
+            <p className={`text-[10px] font-mono ${feedLive ? "text-white" : "text-slate-400"}`}>
               {cell.value}
             </p>
           </div>
@@ -101,11 +101,11 @@ export function EnvelopeChart({ data, symbol }: { data: Record<string, unknown>;
 
       <div className="grid grid-cols-2 gap-2 border-t border-white/[0.06] pt-2.5 mt-1">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.12em] text-slate-600">Market cap</p>
+          <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Market cap</p>
           <p className="text-sm font-semibold text-white tabular-nums">{marketCap}</p>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-[0.12em] text-slate-600">Volume</p>
+          <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Volume</p>
           <p className="text-sm font-semibold text-white tabular-nums">{volume}</p>
         </div>
       </div>

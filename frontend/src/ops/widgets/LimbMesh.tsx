@@ -31,14 +31,21 @@ export function LimbMesh({ data }: { data: Record<string, unknown> }) {
     "topic-lcs": { x: 91, y: 70 },
   };
 
+  /* Bubbles are centred on their coordinate and carry a label, so the outer
+     ring of the mesh has to stay clear of the panel edges. */
+  const contained = (point?: { x: number; y: number }) => ({
+    x: Math.min(89, Math.max(11, point?.x ?? 50)),
+    y: Math.min(87, Math.max(13, point?.y ?? 50)),
+  });
+
   return (
     <div className="flex flex-col h-full">
       <div className="relative flex-1 min-h-[190px] rounded-lg bg-black/25 border border-white/[0.05] overflow-hidden">
         <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
           {edges.map((e, i) => {
-            const a = positions[e.from];
-            const b = positions[e.to];
-            if (!a || !b) return null;
+            if (!positions[e.from] || !positions[e.to]) return null;
+            const a = contained(positions[e.from]);
+            const b = contained(positions[e.to]);
             const color = palette[e.color]?.line ?? "#475569";
             return (
               <line
@@ -55,7 +62,7 @@ export function LimbMesh({ data }: { data: Record<string, unknown> }) {
           })}
         </svg>
         {nodes.map((n) => {
-          const pos = positions[n.id] ?? { x: 50, y: 50 };
+          const pos = contained(positions[n.id]);
           const color = palette[n.color] ?? palette.slate;
           const isCore = n.kind === "core";
           return (
@@ -88,7 +95,7 @@ export function LimbMesh({ data }: { data: Record<string, unknown> }) {
         </span>
       </div>
 
-      <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-500">
+      <div className="flex items-center gap-3 mt-2 text-[10px] text-slate-400">
         <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> core</span>
         <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-400" /> agents</span>
         <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-slate-400" /> domains</span>

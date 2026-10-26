@@ -68,7 +68,7 @@ export function DomainsGrid({
                     <p className="text-[13px] font-medium text-slate-100 truncate">
                       {filter.label}
                     </p>
-                    <p className="text-[10px] text-slate-600 font-mono truncate">
+                    <p className="text-[10px] text-slate-400 font-mono truncate">
                       {filter.id}
                     </p>
                   </div>
@@ -76,7 +76,7 @@ export function DomainsGrid({
                 <StatusDot tone={idle ? "idle" : "online"} pulse={!idle} />
               </div>
 
-              <p className="text-[11px] text-slate-500 mt-2 leading-relaxed min-h-[32px]">
+              <p className="text-[11px] text-slate-400 mt-2 leading-relaxed min-h-[32px]">
                 {idle
                   ? "Standby — no knowledge nodes registered yet."
                   : domainNode?.description ?? "Cluster node pending registration."}
@@ -96,7 +96,7 @@ export function DomainsGrid({
                 </div>
               )}
 
-              <div className="flex items-center gap-3 mt-3 pt-2.5 border-t border-white/[0.05] text-[10px] text-slate-600">
+              <div className="flex items-center gap-3 mt-3 pt-2.5 border-t border-white/[0.05] text-[10px] text-slate-400">
                 <span>{nodes.length} nodes</span>
                 <span>{links} links</span>
               </div>

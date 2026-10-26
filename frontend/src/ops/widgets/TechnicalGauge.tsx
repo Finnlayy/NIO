@@ -87,7 +87,7 @@ export function TechnicalGauge({ data, symbol }: { data: Record<string, unknown>
             className={`rounded-md py-1.5 text-[10px] font-medium border transition-colors ${
               g.tf === tf
                 ? "bg-white/[0.09] border-white/20 text-white"
-                : "border-white/[0.07] text-slate-500 hover:text-slate-300"
+                : "border-white/[0.07] text-slate-400 hover:text-slate-300"
             }`}
           >
             {tf}
@@ -103,7 +103,7 @@ function Score({ n, label, tone }: { n: number; label: string; tone: "sell" | "n
   return (
     <div>
       <p className={`text-xl font-bold tabular-nums ${cls}`}>{n}</p>
-      <p className="text-[9px] uppercase tracking-wide text-slate-600">{label}</p>
+      <p className="text-[9px] uppercase tracking-wide text-slate-400">{label}</p>
     </div>
   );
 }
@@ -114,7 +114,7 @@ function BarLine({ label, value, score }: { label: string; value: string; score:
   return (
     <div>
       <div className="flex justify-between text-[10px] mb-1">
-        <span className="text-slate-500">{label}</span>
+        <span className="text-slate-400">{label}</span>
         <span className={vCls}>{value}</span>
       </div>
       <div className="h-1 rounded-full bg-white/[0.06] relative">
@@ -133,7 +133,7 @@ function BarLine({ label, value, score }: { label: string; value: string; score:
 function IndicatorRow({ name, value, verdict }: { name: string; value: string; verdict: string }) {
   return (
     <div className="flex items-center justify-between border-b border-white/[0.05] pb-1.5">
-      <dt className="text-slate-500">{name}</dt>
+      <dt className="text-slate-400">{name}</dt>
       <dd className="flex items-center gap-3">
         <span className="text-slate-300 font-mono tabular-nums">{value}</span>
         <span className={`w-12 text-right ${labelColor(verdict)}`}>{verdict}</span>

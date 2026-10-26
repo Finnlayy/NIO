@@ -66,7 +66,7 @@ export function TaskConsole({
           onChange={(event) => onComplex(event.target.checked)}
           className="accent-cyan-400"
         />
-        Complex workflow <span className="text-slate-600">(urgency wrapping)</span>
+        Complex workflow <span className="text-slate-400">(urgency wrapping)</span>
       </label>
 
       <button
@@ -121,7 +121,7 @@ export function TaskConsole({
         </p>
       </div>
 
-      <p className="mt-auto pt-3 text-[10px] text-slate-600 font-mono truncate">API · {apiUrl}</p>
+      <p className="mt-auto pt-3 text-[10px] text-slate-400 font-mono truncate">API · {apiUrl}</p>
     </Tile>
   );
 }

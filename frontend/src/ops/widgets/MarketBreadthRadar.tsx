@@ -97,17 +97,17 @@ export function MarketBreadthRadar({ data }: { data: Record<string, unknown> }) 
                 }}
                 title={`${t.name} · ${fmt(t.price, t.decimals)}`}
               >
-                <p className="text-[11px] font-semibold text-white/90 truncate">
+                <p className="truncate text-[11px] font-semibold text-white">
                   {t.symbol.replace("USDT", "").replace(".P", "")}
                 </p>
-                <Pct value={t.changePct} />
+                <Pct value={t.changePct} className="font-mono font-medium text-white" />
               </div>
             ))}
         </div>
 
         {/* Leaders rail */}
         <div className="rounded-lg border border-white/[0.06] bg-black/20 p-2.5">
-          <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500 mb-2">Largest moves</p>
+          <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400 mb-2">Largest moves</p>
           <div className="space-y-1.5">
             {leaders?.map((t) => (
               <div key={t.symbol} className="flex items-center justify-between text-[11px] gap-2">
@@ -116,7 +116,7 @@ export function MarketBreadthRadar({ data }: { data: Record<string, unknown> }) 
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-slate-600 mt-3 leading-relaxed">
+          <p className="text-[10px] text-slate-400 mt-3 leading-relaxed">
             Not investment advice. {source === "live" ? "Live TradingView feed via tvremix." : "Simulated telemetry (live feed unavailable)."}
           </p>
         </div>
