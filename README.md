@@ -92,10 +92,12 @@ core/           Protokoll 1.2, Konfiguration, Policy/Sandbox, Job-Lebenszyklus,
 orchestrator/   Runner, Scheduler (Zeitplan), Autodidaktik-Planner, Event-Bus,
                 Agent-Slots, Transport, CLI
 limbs/          Limb-Laufzeit (Timer-Aufsicht) + Echo-Limb + Bootstrap-Limb (fs.*)
+                + REA-Limb (Subagent mit eigener Sandbox, siehe docs/REA-SUBAGENT.md)
+orchestrator/   Runner, Scheduler, Planner, Events, CLI + subagent (Knoten-Rahmen)
 protocol/       normative Spezifikation 1.2, JSON Schemas, Operations-Register, Beispiele
 prompts/        Rollen-Spezifikationen für Core und Limbs
 scripts/        Nachweise (End-to-End-Beweis für CI und `make e2e`)
-workspace/      Sandbox für Limb-Artefakte
+workspace/      Sandbox für Limb-Artefakte; workspace/subagents/<id>/ je Subagent
 runtime/        Queues, Jobs, Zeitpläne, Archiv, Backups, Locks (nicht versioniert)
 tests/          210 Unittests mit echten Subprozessen und echten Timern
 docs/NEU.md     Bauplan, Phasen, Operationsregeln
@@ -141,6 +143,12 @@ python3 -m orchestrator watch --goal "Zeit beobachten" --op sys.simulate \
 
 python3 -m orchestrator schedule list     # hinterlegte Zeitpläne
 python3 -m orchestrator job show <job_id> # Historie inkl. Statusberichten
+
+# Subagent mit eigener Sandbox: REA installieren und ein Spiel analysieren
+python3 -m orchestrator subagent create rea-lab
+python3 -m orchestrator subagent install rea-lab --with-pwntools
+python3 scripts/rea_demo.py               # create -> install -> analyse -> reconstruct
+python3 scripts/rea_probe_tetris.py       # fremdes Bundle: analysieren + nachbauen
 
 # Events live mitlesen (opt-in UDS-Broadcast statt stderr-Mitschnitt)
 python3 -m orchestrator bus tail --socket runtime/bus.sock --json &

@@ -1,7 +1,8 @@
 # Projekt „Neu" — Bootstrapping & rekursive Selbstentwicklung
 
-Stand: **Phase 1 + Zeit-Schicht 1.2 + Phase 2 abgeschlossen** (Fundament,
-Zeit-Tracking, erster echter Arm: Bootstrap-Limb), Protokoll **1.2**.
+Stand: **Phase 1 + Zeit-Schicht 1.2 + Phase 2 + REA-Subagent abgeschlossen**
+(Fundament, Zeit-Tracking, erster echter Arm: Bootstrap-Limb, erster
+Subagent-Knoten mit eigener Sandbox: REA), Protokoll **1.2**.
 
 Dieses Dokument ist der Bauplan. Es beschreibt Rollen, Schichten, den
 Phasenplan und die Operationsregeln des KI-Kerns. Die normative
@@ -36,15 +37,18 @@ bewerten), damit Entscheidungen nachvollziehbar und testbar bleiben.
 │ orchestrator/     runner · scheduler · planner · events · locks    │
 │                   transport · cli                                  │
 ├────────────────────────────────────────────────────────────────────┤
-│ limbs/            base (Limb-Laufzeit) · echo_limb · bootstrap_limb │
-│                   registry.json                                    │
+│ limbs/            base · echo_limb · bootstrap_limb · rea_limb      │
+│                   registry.json                                     │
+├────────────────────────────────────────────────────────────────────┤
+│ orchestrator/     subagent (Sandbox-Rahmen für Werkzeug-Knoten)     │
 ├────────────────────────────────────────────────────────────────────┤
 │ core/             protocol · config · policy · job · kernel        │
 │                   schemacheck (JSON-Schema-Prüfer, Stdlib)         │
 └────────────────────────────────────────────────────────────────────┘
         workspace/         runtime/              protocol/      scripts/
-        Sandbox des Limbs  Queues, Jobs, Archiv, Spec, Schemas,  Nachweise
-        (Artefakte)        Locks, Zeitpläne      Beispiele       (CI, lokal)
+        Sandbox der Limbs  Queues, Jobs, Archiv, Spec, Schemas,  Nachweise
+        subagents/<id>/    Locks, Zeitpläne      Beispiele       (CI, lokal)
+        (je Knoten eigen)
 ```
 
 Importrichtung: `orchestrator → core`, `limbs → core`. Niemals umgekehrt.
@@ -263,6 +267,30 @@ Wichtige Event-Arten: `timer.armed`, `timer.tick`, `timer.trigger`,
       anlegen — mit Artefakt- und Hash-Nachweis im Result
       (`tests/test_bootstrap.py::TestMeilensteinOrchestrator`)
 
+### Phase 3a — REA-Subagent (ein Knoten mit eigener Sandbox) ✅
+
+Der erste **Subagent**: ein Knoten, der ein fremdes Werkzeug nicht global,
+sondern in seinem eigenen Wirkungsraum installiert und betreibt.
+
+* [x] `limbs/rea_limb.py` gemäß [`prompts/limbs/rea_limb.md`](../prompts/limbs/rea_limb.md)
+      (`rea.ping`, `rea.install`, `rea.doctor`, `rea.capabilities`, `rea.analyze`)
+* [x] `orchestrator/subagent.py`: Identität, Sandbox-Layout, Ziel-Import mit
+      Hashes, Lauf-Ledger; Läufe sind normale Jobs (Timer, Slot, Archiv, Events)
+* [x] CLI `python3 -m orchestrator subagent create|list|status|import|install|run`
+* [x] Register: `rea` (Phase 3, `active`); Operations `rea.*` inkl. `path_params`
+* [x] Installation aus dem Git-Repository (`clone → npm ci → npm run build`,
+      REA 6.0.0) und aus npm; optional pwntools-venv für den ELF-Provider
+* [x] Sandbox doppelt erzwungen (Pre-Flight + Laufzeit), eigenes `HOME`/`TMPDIR`,
+      Prozessgruppen-Kill bei Timer-Ablauf
+* [x] Meilenstein: ein kleines Spiel (Orbit Dodge) wird aus der Evidence
+      **rekonstruiert** und reproduziert das Original in 21 von 21 Fällen
+      (`scripts/rea_recover_orbit.py`); Einzelheiten in
+      [`docs/REA-SUBAGENT.md`](REA-SUBAGENT.md)
+* [x] Gegenprobe ohne Quellen: ein fremdes Spiel-Bundle (Tetris, MIT) wird im
+      Subagenten analysiert und aus der Evidence nachgebaut -- 6 von 6 Laeufen
+      bitgleich inkl. Brett-Hash und Reihen-Raeumung (`scripts/rea_probe_tetris.py`,
+      `make rea-probe`)
+
 ### Phase 3 — Ouroboros-Test (Selbstmodifikation)
 
 * [ ] Der Bootstrap-Limb erweitert `orchestrator/events.py` um einen
@@ -340,6 +368,14 @@ python3 -m orchestrator job run --goal "Der Kern laesst eine Datei anlegen" \
   --params '{"path":"hallo.txt","content":"Phase 2","mode":"create"}' \
   --deadline 15 --soft-deadline 10
 
+# Phase 3a: REA als Subagent mit eigener Sandbox
+python3 -m orchestrator subagent create rea-lab
+python3 -m orchestrator subagent install rea-lab --with-pwntools
+python3 -m orchestrator subagent import rea-lab tests/fixtures/rea/orbit-dodge/app --name orbit-dodge
+python3 -m orchestrator subagent run rea-lab --goal "Spiel rekonstruieren" \
+  --op rea.analyze \
+  --params '{"command":"analyze-javascript-application","target":"targets/orbit-dodge"}'
+
 python3 -m orchestrator job run --goal "Langlauf" --op sys.simulate \
   --params '{"mode":"timeout","seconds":30}' --deadline 2 --soft-deadline 1
 
@@ -409,7 +445,7 @@ fd-Leck im Dauerbetrieb kein stiller Fehler ist), ein Lint-/Typen-Job und ein
 End-to-End-Job, der die echte CLI fährt und den Exit-Code-Vertrag prüft.
 (`ci-evals.yml` prüft weiterhin das Legacy-Harness unter `evals/`.)
 
-### Test-Inventar (210)
+### Test-Inventar (337)
 
 | Modul | Anzahl | Was bewiesen wird |
 |---|---|---|
@@ -423,6 +459,10 @@ End-to-End-Job, der die echte CLI fährt und den Exit-Code-Vertrag prüft.
 | `tests/test_limbs.py` | 9 | Beide Aufrufwege, Versions-/Register-Drift, Limb-Uhr, Bootstrap-Register |
 | `tests/test_bootstrap.py` | 18 | Phase 2: fs.*, Sandbox, Backup, Patch, Hash, Meilenstein über den Orchestrator |
 | `tests/test_cli_contract.py` | 18 | Einstiegspunkt, Exit-Codes, `--json`-Kanäle, `--runtime-dir`-Isolation |
+| `tests/test_rea_limb.py` | 20 | REA-Limb: Register-Drift, Kommando-Allowlist, Sandbox-Escapes, Timer-Kill, Artefakt-Hashes, kleine Zusammenfassungen |
+| `tests/test_subagent.py` | 16 | Subagent: IDs, Layout, Isolation zweier Sandboxen, Import-Provenienz, Lauf-Ledger |
+| `tests/test_rea_recovery.py` | 6 | Meilenstein: PRNG bitgenau, Port ≡ Original (6 Seeds × Frames), Evidence liefert dieselben Konstanten, Gate-Skript besteht |
+| `tests/test_rea_probe.py` | 15 | Fremdes Bundle: Rollen-Keys, Baustein-Tabelle, Regel-Port (Raeumung, Punkte, Tempo, Reihe-0-Eigenheit, PRNG) |
 
 `scripts/ci_e2e_unlimited.py` ergänzt die Suite um den Nachweis am lebenden
 System: 15 Prüfungen über die echte CLI, darunter `deadline_s/expires_at/

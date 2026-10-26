@@ -83,6 +83,7 @@ from .events import build_event_bus  # noqa: E402
 from .locks import KIND_SCHEDULED  # noqa: E402
 from .runner import Attempt, JobOutcome, Orchestrator  # noqa: E402
 from .scheduler import Scheduler, describe_schedule  # noqa: E402
+from .subagent import SubagentManager  # noqa: E402
 from .transport import COMPACT_MIN_STALE_ENTRIES, COMPACT_OLDER_THAN_DAYS, FileTransport  # noqa: E402
 
 EXIT_OK = 0
@@ -392,6 +393,7 @@ def cmd_status(args: argparse.Namespace) -> int:
             "recent": [j.to_dict() for j in jobs.list(limit=5)],
         },
         "schedules": [orch.scheduler.report(state.job_id) for state in orch.scheduler.states()],
+        "subagents": [record.to_dict() for record in SubagentManager(config).list()],
         "operations": list(orch.operations.names()),
     }
     if args.json:
@@ -422,6 +424,14 @@ def cmd_status(args: argparse.Namespace) -> int:
         _say(f"  [{marker}] {name:<10} v{spec['version']:<7} phase {spec['phase']}  ops: {', '.join(spec['operations']) or '-'}")
         if spec["status"] != "active":
             _say(f"              status='{spec['status']}' -- {spec['description'][:90]}")
+    subagents = SubagentManager(config).list()
+    if subagents:
+        _say()
+        _say("Subagenten (eigene Sandbox, eigener Werkzeugstand)")
+        for agent in subagents:
+            installed = (agent.install or {}).get("version") or "kein REA"
+            _say(f"  {agent.agent_id:<18} limb={agent.limb:<8} {installed:<9} "
+                 f"ziele={len(agent.targets)} laeufe={len(agent.runs)}  {agent.sandbox}")
     _say()
     _say("Letzte Jobs")
     recent = jobs.list(limit=5)
@@ -1083,6 +1093,158 @@ def cmd_schedule_clear(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+# --------------------------------------------------------------------------- #
+# Subagenten (eigene Sandbox je Knoten, z.B. REA)
+# --------------------------------------------------------------------------- #
+def _subagent_manager(args: argparse.Namespace) -> SubagentManager:
+    return SubagentManager(_config_from_args(args))
+
+
+def _print_subagent_run(outcome: JobOutcome, *, json_mode: bool, sandbox: str) -> None:
+    """Job-Bericht plus *inhaltliches* Limb-Ergebnis -- sonst sieht man nur Metadaten."""
+    last = outcome.attempts[-1] if outcome.attempts else None
+    output = dict(last.result.output) if last is not None and isinstance(last.result.output, Mapping) else {}
+    if json_mode:
+        _dump({"sandbox": sandbox, "outcome": outcome.summary(), "output": output})
+        return
+    _print_outcome(outcome, json_mode=False)
+    _kv("Sandbox", sandbox)
+    if output:
+        _say()
+        _say("Ergebnis des Subagenten")
+        text = json.dumps(output, ensure_ascii=False, indent=2)
+        _say(text if len(text) <= 8000 else text[:8000] + "\n... (gekuerzt; vollstaendig mit --json)")
+
+
+def cmd_subagent_create(args: argparse.Namespace) -> int:
+    manager = _subagent_manager(args)
+    record = manager.ensure(args.agent_id, limb=args.limb)
+    payload = record.to_dict()
+    if args.json:
+        _dump(payload)
+        return EXIT_OK
+    _kv("Subagent", record.agent_id)
+    _kv("Limb", record.limb)
+    _kv("Sandbox", record.sandbox)
+    _kv("Angelegt", record.created_at)
+    _say("[ok] Subagent ist bereit; naechster Schritt: subagent install oder subagent import.")
+    return EXIT_OK
+
+
+def cmd_subagent_list(args: argparse.Namespace) -> int:
+    manager = _subagent_manager(args)
+    records = manager.list()
+    if args.json:
+        _dump([record.to_dict() for record in records])
+        return EXIT_OK
+    if not records:
+        _say(f"(keine Subagenten unter {manager.rel(manager.root)}/)")
+        return EXIT_OK
+    _rule("=")
+    _say(f"Subagenten unter {manager.rel(manager.root)}/")
+    _rule("=")
+    for record in records:
+        installed = "REA" if (record.install or {}).get("version") else "kein REA"
+        target_names = ", ".join(str(item.get("name")) for item in record.targets) or "-"
+        _say(
+            f"  {record.agent_id:<18} limb={record.limb:<8} {installed:<9} "
+            f"ziele={target_names:<24} laeufe={len(record.runs):<3} {record.sandbox}"
+        )
+    return EXIT_OK
+
+
+def cmd_subagent_status(args: argparse.Namespace) -> int:
+    manager = _subagent_manager(args)
+    payload = manager.status(args.agent_id)
+    if args.json:
+        _dump(payload)
+        return EXIT_OK
+    _rule("=")
+    _kv("Subagent", payload["agent_id"])
+    _kv("Limb", payload["limb"])
+    _kv("Sandbox", payload["sandbox"])
+    _kv("Angelegt", payload["created_at"])
+    _kv("REA", f"installiert={payload['rea']['installed']} version={payload['rea']['version'] or '-'} "
+                f"quelle={payload['rea']['source'] or '-'} pwntools={payload['rea']['pwntools']}")
+    _say()
+    _say("Verzeichnisse")
+    for name, info in payload["dirs"].items():
+        _say(f"  {name:<10} {info['files']:>6} Dateien {info['bytes']:>12} Bytes  {info['path']}")
+    _say()
+    _say("Ziele")
+    if not payload["targets"]:
+        _say("  (keine importiert)")
+    for item in payload["targets"]:
+        _say(f"  {item.get('name'):<20} {item.get('files')} Dateien  sha256={str(item.get('sha256_root'))[:16]}  {item.get('path')}")
+    _say()
+    _say(f"Laeufe (letzte {len(payload['runs'])} von {payload['runs_total']})")
+    if not payload["runs"]:
+        _say("  (noch keine)")
+    for run in payload["runs"]:
+        _say(f"  {run.get('at', '?')}  {run.get('operation'):<14} {run.get('status'):<10} job={run.get('job_id')}")
+    _rule("=")
+    return EXIT_OK
+
+
+def cmd_subagent_import(args: argparse.Namespace) -> int:
+    manager = _subagent_manager(args)
+    manifest = manager.import_target(args.agent_id, args.source, name=args.name or "", replace=args.replace)
+    if args.json:
+        _dump(manifest)
+        return EXIT_OK
+    _kv("Subagent", args.agent_id)
+    _kv("Ziel", manifest["name"])
+    _kv("Art", manifest["kind"])
+    _kv("Ablage", manifest["path"])
+    _kv("Dateien", f"{manifest['files']} ({manifest['bytes']} Bytes)")
+    _kv("sha256 (Wurzel)", manifest["sha256_root"])
+    if manifest["entries_truncated"]:
+        _say(f"[hinweis] Manifest auf {len(manifest['entries'])} Eintraege gekuerzt (Baum ist groesser).")
+    return EXIT_OK
+
+
+def cmd_subagent_install(args: argparse.Namespace) -> int:
+    manager = _subagent_manager(args)
+    outcome = manager.install(
+        args.agent_id,
+        source=args.source,
+        ref=args.ref,
+        with_pwntools=args.with_pwntools,
+        force=args.force,
+        build=not args.no_build,
+        repository=args.repository or "",
+        package_version=args.package_version or "",
+        deadline_s=args.deadline,
+        unlimited=not args.deadline,
+    )
+    _print_subagent_run(outcome, json_mode=args.json, sandbox=manager.rel(manager.sandbox(args.agent_id)))
+    return EXIT_OK if outcome.ok else EXIT_JOB_FAILED
+
+
+def cmd_subagent_run(args: argparse.Namespace) -> int:
+    manager = _subagent_manager(args)
+    params = _load_params(args.params, args.param)
+    time_kwargs = _time_kwargs(args)
+    for key in ("on_expiry", "on_failure", "tick_s", "max_ticks", "schedule"):
+        time_kwargs.pop(key, None)
+    outcome = manager.run(
+        args.agent_id,
+        goal=args.goal,
+        operation=args.op,
+        params=params,
+        allow_network=bool(args.allow_network),
+        dry_run=bool(args.dry_run),
+        on_failure=args.on_failure,
+        title=args.title or "",
+        objective=args.objective or "",
+        acceptance=tuple(args.accept or ()),
+        auto_iterate=not args.no_auto_iterate,
+        **time_kwargs,
+    )
+    _print_subagent_run(outcome, json_mode=args.json, sandbox=manager.rel(manager.sandbox(args.agent_id)))
+    return EXIT_OK if outcome.ok else EXIT_JOB_FAILED
+
+
 def cmd_loop(args: argparse.Namespace) -> int:
     orch = _orchestrator(args)
     if args.watch:
@@ -1530,6 +1692,58 @@ def build_parser() -> argparse.ArgumentParser:
     p_loop.add_argument("--once", action="store_true", default=True, help="Ein Durchlauf (Default)")
     p_loop.add_argument("--watch", action="store_true", help="Dauerbetrieb (ab Phase 4)")
     p_loop.set_defaults(func=cmd_loop)
+
+    p_subagent = sub.add_parser(
+        "subagent",
+        help="Subagenten mit eigener Sandbox verwalten (create/list/status/import/install/run)",
+    )
+    sub_sub = p_subagent.add_subparsers(dest="subagent_cmd", required=True, parser_class=_NeuArgumentParser)
+
+    p_sa_create = sub_sub.add_parser("create", help="Sandbox + Zustand eines Subagenten anlegen (idempotent)")
+    p_sa_create.add_argument("agent_id", help="ID (a-z, 0-9, '.', '_', '-'; 2..48 Zeichen)")
+    p_sa_create.add_argument("--limb", default="rea", help="Ziel-Limb des Subagenten (Default: rea)")
+    p_sa_create.set_defaults(func=cmd_subagent_create)
+
+    p_sa_list = sub_sub.add_parser("list", help="Subagenten auflisten")
+    p_sa_list.set_defaults(func=cmd_subagent_list)
+
+    p_sa_status = sub_sub.add_parser("status", help="Zustand, Installation, Ziele und Laeufe anzeigen")
+    p_sa_status.add_argument("agent_id")
+    p_sa_status.set_defaults(func=cmd_subagent_status)
+
+    p_sa_import = sub_sub.add_parser("import", help="Ziel (Datei/Baum) gehashed in die Sandbox kopieren")
+    p_sa_import.add_argument("agent_id")
+    p_sa_import.add_argument("source", help="Pfad relativ zum Repo oder absolut")
+    p_sa_import.add_argument("--name", default="", help="Name unter targets/ (Default: Dateiname der Quelle)")
+    p_sa_import.add_argument("--replace", action="store_true", help="vorhandenes Ziel ersetzen")
+    p_sa_import.set_defaults(func=cmd_subagent_import)
+
+    p_sa_install = sub_sub.add_parser("install", help="Werkzeug (REA) in der Subagent-Sandbox installieren")
+    p_sa_install.add_argument("agent_id")
+    p_sa_install.add_argument("--source", choices=("git", "npm"), default="git", help="Quellbau (git) oder npm-Paket")
+    p_sa_install.add_argument("--ref", default="", help="Branch/Tag fuer source=git")
+    p_sa_install.add_argument("--repository", default="", help="Git-URL (Default: das Reverse-Engineer-anything-Repo)")
+    p_sa_install.add_argument("--package-version", default="", help="exakte Version fuer source=npm")
+    p_sa_install.add_argument("--with-pwntools", action="store_true", help="venv fuer den ELF-Provider anlegen")
+    p_sa_install.add_argument("--force", action="store_true", help="eigene Installation neu aufbauen")
+    p_sa_install.add_argument("--no-build", action="store_true", help="npm run build ueberspringen (source=git)")
+    p_sa_install.add_argument("--deadline", type=float, default=None, help="hartes Zeitbudget (Default: unbegrenzt)")
+    p_sa_install.set_defaults(func=cmd_subagent_install)
+
+    p_sa_run = sub_sub.add_parser("run", help="Auftrag im Subagenten ausfuehren (normaler Job, eigene Sandbox)")
+    p_sa_run.add_argument("agent_id")
+    p_sa_run.add_argument("--goal", required=True, help="Ziel des Laufs")
+    p_sa_run.add_argument("--op", required=True, help="Operation, z.B. rea.analyze")
+    p_sa_run.add_argument("--params", default=None, help="Parameter als JSON-Objekt oder @datei.json")
+    p_sa_run.add_argument("--param", action="append", default=[], help="Einzelparameter schluessel=wert (mehrfach)")
+    p_sa_run.add_argument("--allow-network", action="store_true", help="constraints.allow_network=true")
+    p_sa_run.add_argument("--dry-run", action="store_true", help="Limb soll nur planen, nicht ausfuehren")
+    p_sa_run.add_argument("--title", default=None)
+    p_sa_run.add_argument("--objective", default=None)
+    p_sa_run.add_argument("--accept", action="append", default=[], help="Acceptance-Kriterium (mehrfach)")
+    p_sa_run.add_argument("--no-auto-iterate", action="store_true")
+    _add_timer_flags(p_sa_run)
+    p_sa_run.set_defaults(func=cmd_subagent_run)
 
     p_scale = sub.add_parser("scale", help="Skalierungsprofil dauerhaft setzen (Constitution Guard: nur mit --approved-by human)")
     p_scale.add_argument("--profile", required=True, choices=tuple(SCALE_PROFILES))

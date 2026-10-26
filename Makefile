@@ -12,7 +12,7 @@ PYTHON ?= python3
 RUNTIME ?= $(CURDIR)/runtime
 
 .DEFAULT_GOAL := help
-.PHONY: help test test-core test-architect test-frontend ui-test test-verbose lint lint-fix types compile e2e check demo clean
+.PHONY: help test test-core test-architect test-frontend ui-test test-verbose lint lint-fix types compile e2e check demo clean rea-demo rea-recover rea-status rea-probe
 
 help:  ## Diese Uebersicht
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -48,6 +48,18 @@ compile:  ## Bytecode-Pruefung (Syntax), inkl. Architect/
 
 e2e:  ## End-to-End-Beweis 1.2: Zeit tracken statt begrenzen (ueber die CLI)
 	$(PYTHON) scripts/ci_e2e_unlimited.py
+
+rea-demo:  ## REA-Subagent: anlegen, installieren, Spiel analysieren, rekonstruieren
+	$(PYTHON) scripts/rea_demo.py
+
+rea-recover:  ## Akzeptanztest: Evidence -> Port -> Differenztest gegen das Original
+	$(PYTHON) scripts/rea_recover_orbit.py
+
+rea-status:  ## Zustand des REA-Subagenten (Installation, Ziele, Laeufe)
+	$(PYTHON) -m orchestrator subagent status rea-lab
+
+rea-probe:  ## Fremdes Spiel-Bundle holen, analysieren und rekonstruieren (Netz + Node)
+	$(PYTHON) scripts/rea_probe_tetris.py
 
 ui-test:  ## Frontend-UI-Tests (Zero-Dep-Harness: tsc + node --test, kein DOM)
 	@if [ ! -x frontend/node_modules/.bin/tsc ]; then \

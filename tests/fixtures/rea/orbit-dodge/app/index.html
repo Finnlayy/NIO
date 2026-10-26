@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Orbit Dodge</title>
+    <style>
+      html, body { margin: 0; background: #05070d; display: grid; place-items: center; min-height: 100vh; }
+      canvas { border-radius: 12px; box-shadow: 0 0 60px #0ea5e955; }
+    </style>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <script src="./game.min.js"></script>
+    <script>
+      window.OrbitDodge.mount(document.getElementById("stage"));
+    </script>
+  </body>
+</html>
