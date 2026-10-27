@@ -7,6 +7,21 @@ Datumsangaben in UTC.
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- `apollo/ciel/` — Ciel JIT-Tool-Orchestrator (NCM + Sandbox-Agent), rein
+  additiv ohne Änderung am Bestandscode: Modul A Cold-Storage Skill Registry
+  (In-Memory + SQLite/JSON-Cache, FastMCP-Interceptor), Modul B System-1 NCM
+  Gatekeeper (Direct Bypass ab Confidence ≥ 0.88 mit 0 Tokens, sonst JIT
+  Top-3), Modul C isolierter Sandbox-Agent (hart hinterlegter System-Prompt,
+  exakt ein Meta-Tool `request_additional_skill`, strikte
+  `asyncio.wait_for`-Timeouts), Modul D Macro-Skill Synthesizer (3×
+  hintereinander erfolgreiche Ketten → Makro-Tool). Inkl.
+  `tests/test_ciel_integration.py` (11 Tests, grün mit wie ohne pydantic) und
+  `docs/CIEL.md`. Optionales Extra `pip install -e '.[ciel]'` (pydantic v2);
+  ohne bleibt die Laufzeit Stdlib-only per Fallback.
+- `pyproject.toml`: `apollo`/`apollo.ciel` in `packages`, neues Extra `ciel`
+
 ### Dokumentation
 
 - `docs/INDEX.md` als Einstiegspunkt mit drei Lesepfaden und Statusmatrix
