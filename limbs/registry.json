@@ -81,6 +81,25 @@
         "rea.analyze"
       ],
       "description": "Subagent-Knoten mit eigener Sandbox: installiert und betreibt REA (Reverse Engineer Anything) und liefert Evidence statt Behauptungen. Spezifikation: prompts/limbs/rea_limb.md"
+    },
+    "trading": {
+      "entrypoint": "limbs/trading_limb.py",
+      "runtime": "python3",
+      "version": "1.0.0",
+      "phase": 5,
+      "status": "active",
+      "writes_files": true,
+      "operations": [
+        "trading.backtest_run",
+        "trading.install",
+        "trading.lake_compact",
+        "trading.lake_summary",
+        "trading.ping",
+        "trading.start",
+        "trading.status",
+        "trading.stop"
+      ],
+      "description": "Handels-Knoten: Sigma (TradingView-Scraper + tvremix/TradingView-MCP CSV + DuckDB/Parquet-Lake) laeuft als eigener Worker; dieser Limb liefert den Orchestrator, den Sigma verloren hat. Kein Fork: Sigmas 912 Tests bleiben der Vertrag. Spezifikation: prompts/limbs/trading_limb.md"
     }
   }
 }

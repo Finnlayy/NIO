@@ -1,7 +1,7 @@
 {
   "$comment": "NEU Operations-Register v1.1 -- normativ. 'phase' = Einfuehrungsphase, 'risk' = none|read|write|destructive|high, 'requires_elevation' = none|workspace|repo_write, 'path_params' = Parameter, die von core/policy.py gegen die Sandbox geprueft werden, 'implemented_by' = Limbs gemaess limbs/registry.json. Eine Operation gilt erst dann als verfuegbar, wenn ein Limb mit status='active' sie implementiert.",
   "version": "1.2",
-  "updated_at": "2026-10-25",
+  "updated_at": "2026-10-27",
   "operations": {
     "sys.ping": {
       "phase": 1,
@@ -277,6 +277,109 @@
         "out": "relativer Pfad (optional) -- Ablage des Rohbelegs, Default out/<command>-<zeit>.json",
         "summary_mode": "full | compact (optional)",
         "timeout_s": "number (optional)"
+      }
+    },
+    "trading.ping": {
+      "phase": 1,
+      "risk": "none",
+      "requires_elevation": "none",
+      "path_params": [],
+      "implemented_by": [
+        "trading"
+      ],
+      "description": "Lebenszeichen des Handels-Knotens: installiert? laeuft der Sigma-Worker?",
+      "params": {}
+    },
+    "trading.install": {
+      "phase": 2,
+      "risk": "write",
+      "requires_elevation": "none",
+      "path_params": [],
+      "implemented_by": [
+        "trading"
+      ],
+      "description": "Sigma auf gepinntem Commit klonen, venv anlegen, Abhaengigkeiten installieren.",
+      "params": {
+        "ref": "string (optional, Commit-SHA; Default = getesteter Commit)"
+      }
+    },
+    "trading.start": {
+      "phase": 1,
+      "risk": "none",
+      "requires_elevation": "none",
+      "path_params": [],
+      "implemented_by": [
+        "trading"
+      ],
+      "description": "Sigma-Worker als eigene Prozessgruppe starten und auf Health warten.",
+      "params": {
+        "port": "integer (optional, 1024..65535; Default 8731)"
+      }
+    },
+    "trading.stop": {
+      "phase": 1,
+      "risk": "none",
+      "requires_elevation": "none",
+      "path_params": [],
+      "implemented_by": [
+        "trading"
+      ],
+      "description": "Prozessgruppe des Workers beenden (SIGTERM, dann SIGKILL).",
+      "params": {}
+    },
+    "trading.status": {
+      "phase": 1,
+      "risk": "read",
+      "requires_elevation": "none",
+      "path_params": [],
+      "implemented_by": [
+        "trading"
+      ],
+      "description": "Health plus Lake-Kurzfassung als Betriebsnachweis.",
+      "params": {}
+    },
+    "trading.lake_summary": {
+      "phase": 1,
+      "risk": "read",
+      "requires_elevation": "none",
+      "path_params": [],
+      "implemented_by": [
+        "trading"
+      ],
+      "description": "Parquet-Inventar: Zeilen, Dateien, MB und Symbole.",
+      "params": {}
+    },
+    "trading.lake_compact": {
+      "phase": 1,
+      "risk": "write",
+      "requires_elevation": "none",
+      "path_params": [],
+      "implemented_by": [
+        "trading"
+      ],
+      "description": "Candle-Partitionen nach Parquet verdichten.",
+      "params": {
+        "symbol": "string (optional)",
+        "interval": "integer (optional)",
+        "day": "string YYYYMMDD (optional)"
+      }
+    },
+    "trading.backtest_run": {
+      "phase": 1,
+      "risk": "read",
+      "requires_elevation": "none",
+      "path_params": [],
+      "implemented_by": [
+        "trading"
+      ],
+      "description": "Backtest ueber den TradingView-MCP-CSV-Pfad.",
+      "params": {
+        "strategy": "string (optional)",
+        "pair": "string (optional, Default BTC/USD)",
+        "interval": "integer (optional, Minuten)",
+        "candleCount": "integer (optional, >=100)",
+        "initialBalance": "number (optional)",
+        "params": "object (optional)"
       }
     }
   }
