@@ -34,6 +34,7 @@ apollo/ciel/
   sandbox_agent.py  Modul C: Isolierter Sandbox-Agent (+ Meta-Tool)
   synthesizer.py    Modul D: Macro-Skill Synthesizer (3× → Makro-Tool)
   telemetry.py      Modul E: Graph-UI Telemetry (CielGraphEvent, non-blocking)
+  mcp_nodes.py      Externe MCP-Nodes (stdio/SSE) als Ciel-Skills (StalkChain)
   embeddings.py     ONNX- (optional) / Hash-Embedding (Default, stdlib-only)
   models.py         pydantic-v2-Modelle mit Stdlib-Fallback
   errors.py, bus.py Fehlertypen / Event-Bus-Anbindung
@@ -101,7 +102,28 @@ apollo/ciel/
   `runtime/telemetry.sock`). Jedes Tool trägt `node_id` (`ciel-node-<name>`,
   in `meta_json` persistiert — kein SQLite-Schema-Bruch).
 
-## 3. Schnellstart
+## 3. Externe MCP-Nodes (StalkChain)
+
+`mcp_config.json` (Repo-Root, Claude-style) registriert externe MCP-Server —
+z. B. StalkChain (`https://data.stalkchain.com/mcp`). `apollo/ciel/mcp_nodes.py`
+verbindet jeden Node und meldet seine Tools im Cold-Storage an (`<node>.<tool>`,
+Herkunft `mcp:<node>`), danach laufen sie durch Gate, JIT und Telemetry wie
+lokale Skills:
+
+- **Transporte:** `stdio` (Subprozess, z. B. `npx -y mcp-remote <url>`,
+  JSON-RPC mit `Content-Length`-Framing) oder `sse` (Remote direkt ohne Node,
+  GET-Stream + POST). `transport` wird inferiert (`url` ohne `command` → `sse`).
+- **Fail-closed je Node:** Toter Node → `errors`-Eintrag + `ciel.mcp.node_failed`,
+  andere Nodes laufen weiter. Timeouts überall (`wait_for`, Prozess-Kill).
+- **Secrets:** nie in die Datei — nur `${VAR}`-Referenzen
+  (`export STALKCHAIN_API_KEY=...`).
+- **Anbindung:** `build_ciel_layer(..., mcp_config="mcp_config.json")`
+  (Registrierungen unter `layer.mcp_nodes`, Shutdown via `await reg.aclose()`)
+  oder manuell `load_and_register_mcp_nodes(registry, path)`.
+- **Tests:** `tests/test_ciel_mcp_nodes.py` — 8 Tests gegen Fake-Stdio- (echter
+  Subprozess) und Fake-SSE-Server (lokales HTTP), komplett offline.
+
+## 4. Schnellstart
 
 ```python
 import asyncio
@@ -129,7 +151,7 @@ Events auf dem NEU-Bus: `ciel.registry.snapshot`, `ciel.gate.decision`,
 `build_ciel_layer(..., event_bus=bus, uds_socket="runtime/telemetry.sock")`
 verdrahtet Telemetry vollautomatisch (Cold-Sync inklusive).
 
-## 4. Technische Regeln (eingehalten)
+## 5. Technische Regeln (eingehalten)
 
 1. **Keine Brüche:** rein additives Paket; Wrapper/Interceptor-Pattern;
    Bestands-Suite 358/358 grün (s. u.).
@@ -143,7 +165,7 @@ verdrahtet Telemetry vollautomatisch (Cold-Sync inklusive).
    `close()` für Shutdown/Tests); volle Queue droppt gezählt, blockiert nie.
 
 ```bash
-python3 -m pytest tests/test_ciel_integration.py -q   # 14 passed
+python3 -m pytest tests/test_ciel_integration.py tests/test_ciel_mcp_nodes.py -q  # 22 passed
 python3 -m pytest tests/ -q                            # Bestand + Ciel grün
 pip install -e '.[ciel]'                               # optional: pydantic v2
 ```

@@ -39,4 +39,29 @@ class ToolTimeout(CielError):
         super().__init__(f"Tool {name!r} überschritt das Timeout von {timeout_sec:g}s")
 
 
-__all__ = ["CielConfigError", "CielError", "ToolNotExecutable", "ToolNotFound", "ToolTimeout"]
+class MCPTransportError(CielError):
+    """Transportfehler eines MCP-Nodes (Start, Framing, Timeout, EOF)."""
+
+    def __init__(self, node: str, message: str) -> None:
+        self.node = node
+        super().__init__(f"MCP-Node {node!r}: {message}")
+
+
+class MCPToolError(CielError):
+    """Ein MCP-Tool meldete ``isError`` oder JSON-RPC-``error``."""
+
+    def __init__(self, node: str, tool: str, message: str) -> None:
+        self.node = node
+        self.tool_name = tool
+        super().__init__(f"MCP-Tool {node!r}/{tool!r}: {message}")
+
+
+__all__ = [
+    "CielConfigError",
+    "CielError",
+    "MCPToolError",
+    "MCPTransportError",
+    "ToolNotExecutable",
+    "ToolNotFound",
+    "ToolTimeout",
+]

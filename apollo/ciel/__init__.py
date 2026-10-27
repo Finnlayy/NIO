@@ -29,13 +29,36 @@ Schnellstart::
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .bus import CIEL_EVENT_KINDS
 from .embeddings import AutoEmbeddingProvider, EmbeddingProvider, HashEmbeddingProvider, OnnxEmbeddingProvider, cosine_similarity
-from .errors import CielConfigError, CielError, ToolNotExecutable, ToolNotFound, ToolTimeout
+from .errors import (
+    CielConfigError,
+    CielError,
+    MCPToolError,
+    MCPTransportError,
+    ToolNotExecutable,
+    ToolNotFound,
+    ToolTimeout,
+)
+from .mcp_nodes import (
+    MCP_CLIENT_NAME,
+    MCP_PROTOCOL_VERSION,
+    MCPNodeClient,
+    MCPNodeConfig,
+    MCPNodeLoadResult,
+    MCPNodeRegistration,
+    MCPTool,
+    SSEMCPTransport,
+    StdioMCPTransport,
+    expand_env_vars,
+    load_and_register_mcp_nodes,
+    load_mcp_config,
+    register_mcp_node,
+)
 from .models import (
     HAVE_PYDANTIC,
     AgentResult,
@@ -91,6 +114,7 @@ class CielLayer:
     synthesizer: MacroSkillSynthesizer
     wrapper: CielFastMCPWrapper | None = None
     telemetry: CielTelemetryPublisher | None = None
+    mcp_nodes: list[MCPNodeRegistration] = field(default_factory=list)
 
 
 async def build_ciel_layer(
@@ -108,6 +132,7 @@ async def build_ciel_layer(
     bypass_threshold: float = BYPASS_THRESHOLD,
     top_k: int = JIT_TOP_K,
     max_turns: int = 6,
+    mcp_config: str | Path | None = None,
 ) -> CielLayer:
     """Baut und verdrahtet die komplette Ciel-Schicht (async, ein Aufruf).
 
@@ -119,6 +144,8 @@ async def build_ciel_layer(
     * ``telemetry``: eigener Publisher (Default: neu + Bus-Spiegelung, wenn
       ``event_bus`` gesetzt). ``uds_socket``: zusaetzlich UDS-Datagramme an
       ``runtime/telemetry.sock`` (fuer die SSE-Bruecke ins Dashboard).
+    * ``mcp_config``: Pfad zu ``mcp_config.json`` — externe MCP-Nodes werden
+      verbunden und ihre Tools registriert (fail-closed je Node).
     """
     active_embedder = embedder or HashEmbeddingProvider()
     publisher = telemetry
@@ -146,6 +173,10 @@ async def build_ciel_layer(
                 registry.register(record, origin="limb", persist=False)
         if registry.cache_path is not None:
             registry.save_cache(registry.cache_path)
+    mcp_registrations: list[MCPNodeRegistration] = []
+    if mcp_config is not None:
+        mcp_loaded = await load_and_register_mcp_nodes(registry, mcp_config, event_bus=event_bus)
+        mcp_registrations = mcp_loaded.registrations
     active_executor: ToolExecutor = executor or RegistryFunctionExecutor(registry)
     gate = NCMGate(
         registry,
@@ -161,7 +192,15 @@ async def build_ciel_layer(
     )
     synthesizer = MacroSkillSynthesizer(registry, event_bus=event_bus, telemetry=publisher, persist_path=synth_path)
     registry.publish_cold_state_sync()
-    return CielLayer(registry=registry, gate=gate, agent=agent, synthesizer=synthesizer, wrapper=wrapper, telemetry=publisher)
+    return CielLayer(
+        registry=registry,
+        gate=gate,
+        agent=agent,
+        synthesizer=synthesizer,
+        wrapper=wrapper,
+        telemetry=publisher,
+        mcp_nodes=mcp_registrations,
+    )
 
 
 __all__ = [
@@ -171,6 +210,8 @@ __all__ = [
     "HAVE_PYDANTIC",
     "JIT_TOP_K",
     "MACRO_PREFIX",
+    "MCP_CLIENT_NAME",
+    "MCP_PROTOCOL_VERSION",
     "META_TOOL_NAME",
     "NODE_COLD",
     "NODE_HOT",
@@ -196,6 +237,13 @@ __all__ = [
     "GateDecision",
     "HashEmbeddingProvider",
     "LLMClient",
+    "MCPNodeClient",
+    "MCPNodeConfig",
+    "MCPNodeLoadResult",
+    "MCPNodeRegistration",
+    "MCPTool",
+    "MCPToolError",
+    "MCPTransportError",
     "MacroSkillSynthesizer",
     "MacroSynthesis",
     "NCMGate",
@@ -204,9 +252,11 @@ __all__ = [
     "OpenAICompatLLMClient",
     "RegistryFunctionExecutor",
     "RoutingMode",
+    "SSEMCPTransport",
     "SandboxAgent",
     "ScoredTool",
     "ScriptedLLMClient",
+    "StdioMCPTransport",
     "ToolCall",
     "ToolExecutor",
     "ToolNotExecutable",
@@ -220,9 +270,13 @@ __all__ = [
     "cold_state_sync_event",
     "cosine_similarity",
     "estimate_tokens",
+    "expand_env_vars",
     "jit_reload_event",
+    "load_and_register_mcp_nodes",
+    "load_mcp_config",
     "macro_evolution_event",
     "node_id_for",
+    "register_mcp_node",
     "routing_event",
     "run_handler",
 ]
