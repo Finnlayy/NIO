@@ -45,8 +45,11 @@ export function DomainsGrid({
         {DOMAIN_CLUSTERS.map(({ filter, nodes, domainNode, topics, links }) => {
           const color = palette[filter.color] ?? palette.slate;
           const idle = nodes.length === 0;
-          const selected = domainNode?.id === selectedId || topics.some((t) => t.id === selectedId);
-          const dimmed = nodes.length > 0 && !nodes.some((node) => visibleIds.has(node.id));
+          const selected =
+            domainNode?.id === selectedId ||
+            topics.some((t) => t.id === selectedId);
+          const dimmed =
+            nodes.length > 0 && !nodes.some((node) => visibleIds.has(node.id));
 
           return (
             <Tile
@@ -55,9 +58,7 @@ export function DomainsGrid({
               selected={selected}
               dimmed={dimmed}
               onClick={
-                domainNode
-                  ? () => onSelectNode(domainNode.id)
-                  : undefined
+                domainNode ? () => onSelectNode(domainNode.id) : undefined
               }
               className="p-3.5"
             >
@@ -79,7 +80,8 @@ export function DomainsGrid({
               <p className="text-[11px] text-slate-400 mt-2 leading-relaxed min-h-[32px]">
                 {idle
                   ? "Standby — no knowledge nodes registered yet."
-                  : domainNode?.description ?? "Cluster node pending registration."}
+                  : (domainNode?.description ??
+                    "Cluster node pending registration.")}
               </p>
 
               {topics.length > 0 && (
@@ -97,8 +99,13 @@ export function DomainsGrid({
               )}
 
               <div className="flex items-center gap-3 mt-3 pt-2.5 border-t border-white/[0.05] text-[10px] text-slate-400">
-                <span>{nodes.length} nodes</span>
-                <span>{links} links</span>
+                <span>
+                  <span className="font-mono tabular-nums">{nodes.length}</span>{" "}
+                  nodes
+                </span>
+                <span>
+                  <span className="font-mono tabular-nums">{links}</span> links
+                </span>
               </div>
             </Tile>
           );
@@ -126,12 +133,10 @@ function TopicChip({
         event.stopPropagation();
         onSelect(topic.id);
       }}
-      className={`px-2 py-1 rounded-md text-[10px] font-medium border transition-colors ${
+      className={`px-2 py-1 rounded-md text-[10px] font-medium border border-white/[0.08] bg-white/[0.03] transition-colors ${
         dimmed ? "opacity-40" : "hover:border-current"
       }`}
       style={{
-        borderColor: "rgba(255,255,255,0.08)",
-        background: "rgba(255,255,255,0.03)",
         color,
       }}
     >
