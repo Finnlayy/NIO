@@ -21,7 +21,8 @@ from .bus import emit
 from .errors import ToolNotExecutable, ToolNotFound
 from .models import AgentResult, AssistantMessage, ToolCall, ToolResult
 from .ncm_gate import JIT_TOP_K, NCMGate, RegistryFunctionExecutor, ToolExecutor
-from .registry import ColdStorageRegistry
+from .registry import ColdStorageRegistry, cluster_for, node_id_for
+from .telemetry import NODE_WARM, CielTelemetryPublisher, jit_reload_event
 
 #: Fest im Code hinterlegter System-Prompt des Sandbox-Agenten.
 SANDBOX_SYSTEM_PROMPT: Final[str] = """You are Ciel, an isolated sandbox sub-agent of the NIO/Apollo orchestrator.
@@ -116,6 +117,7 @@ class SandboxAgent:
         llm: LLMClient | None = None,
         executor: ToolExecutor | None = None,
         event_bus: Any | None = None,
+        telemetry: CielTelemetryPublisher | None = None,
         max_turns: int = 6,
         default_timeout_sec: float = 30.0,
     ) -> None:
@@ -124,6 +126,8 @@ class SandboxAgent:
         self._llm = llm or NoOpLLMClient()
         self._executor = executor or self._gate.executor or RegistryFunctionExecutor(registry)
         self._bus = event_bus
+        # Faellt auf die Gate-Telemetrie zurueck: eine Schicht, ein Publisher.
+        self._telemetry = telemetry if telemetry is not None else self._gate.telemetry
         self._max_turns = max(1, max_turns)
         self._default_timeout = default_timeout_sec
 
@@ -138,6 +142,10 @@ class SandboxAgent:
     @property
     def llm(self) -> LLMClient:
         return self._llm
+
+    @property
+    def telemetry(self) -> CielTelemetryPublisher | None:
+        return self._telemetry
 
     # -- Prompt-Aufbau -----------------------------------------------------
 
@@ -333,6 +341,19 @@ class SandboxAgent:
         del loaded[32:]  # Hygiene-Deckel für die Arbeitsmenge
         schema = self._registry.to_prompt_schemas([skill.name])[0]
         emit(self._bus, "ciel.sandbox.skill_reloaded", {"tool": skill.name, "score": round(skill.score, 4), "query": query})
+        if self._telemetry is not None:
+            self._telemetry.publish(
+                jit_reload_event(
+                    {
+                        "node_id": skill.record.node_id or node_id_for(skill.name),
+                        "tool": skill.name,
+                        "confidence_score": round(skill.score, 4),
+                        "status": NODE_WARM,
+                        "cluster": cluster_for(skill.record.origin, skill.record.meta),
+                    },
+                    query=query,
+                )
+            )
         return ToolResult(
             call_id=call.id,
             name=call.name,

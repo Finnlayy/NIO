@@ -40,6 +40,7 @@ CIEL_EVENT_KINDS: tuple[str, ...] = (
     "ciel.sandbox.skill_reloaded",  # Meta-Tool request_additional_skill hat nachgeladen
     "ciel.synth.macro_created",  # Synthesizer hat ein Makro-Tool registriert
     "ciel.synth.chain_observed",  # Synthesizer: erfolgreiche Kette geloggt
+    "ciel.graph.event",  # Modul E: typisiertes Graph-Telemetry-Event (Payload traegt den Typ)
 )
 
 

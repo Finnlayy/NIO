@@ -180,6 +180,7 @@ class ToolSchema(BaseModel):
     timeout_sec: float = 30.0
     concept_anchor: list[float] = Field(default_factory=list)
     origin: str = "fastmcp"
+    node_id: str = ""
     meta: dict[str, Any] = Field(default_factory=dict)
 
 

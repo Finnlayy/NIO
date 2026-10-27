@@ -1,4 +1,4 @@
-"""TDD-Verifikation des Ciel JIT-Tool-Orchestrators (Module A-D).
+"""TDD-Verifikation des Ciel JIT-Tool-Orchestrators (Module A-E).
 
 Beweist (Pflichtregel 4):
 
@@ -6,9 +6,13 @@ Beweist (Pflichtregel 4):
    im LLM-Prompt-Payload.
 2. Der System-1 Bypass feuert bei hoher Confidence ohne LLM-Aufruf.
 3. Das Nachladen via ``request_additional_skill`` funktioniert zur Laufzeit.
+4. Die ``CielGraphEvent``-Payloads (``SYSTEM_1_BYPASS``, ``SYSTEM_2_JIT``,
+   ``CIEL_MACRO_EVOLUTION`` inkl. ``saved_tokens_estimate``) werden korrekt
+   auf dem Event-Bus emittiert.
 
-Dazu: Makro-Synthese (Modul D), SQLite-Cache-Roundtrip, FastMCP-Wrapper-
-Kompatibilität, Timeout-Safety und Event-Bus-Anbindung.
+Dazu: Makro-Synthese (Modul D), Graph-Telemetry (Modul E),
+SQLite-Cache-Roundtrip, FastMCP-Wrapper-Kompatibilität, Timeout-Safety und
+Event-Bus-Anbindung.
 
 Alle Tests laufen mit Plain-pytest (``asyncio.run`` in sync Tests) und sind
 grün — mit wie ohne installiertem pydantic/onnxruntime.
@@ -21,12 +25,18 @@ import time
 from typing import Any
 
 from apollo.ciel import (
+    GRAPH_EVENT_KIND,
     META_TOOL_NAME,
     CielFastMCPWrapper,
+    CielGraphEvent,
+    CielGraphEventType,
+    CielTelemetryPublisher,
     ColdStorageRegistry,
+    EventBusGraphSubscriber,
     MacroSkillSynthesizer,
     NCMGate,
     RegistryFunctionExecutor,
+    RoutingMode,
     SandboxAgent,
     ScriptedLLMClient,
     ToolCall,
@@ -491,3 +501,181 @@ def test_ciel_emits_events_on_nio_event_bus() -> None:
     kinds = sink.kinds()
     assert "ciel.gate.decision" in kinds
     assert "ciel.gate.bypass_executed" in kinds
+
+
+# ---------------------------------------------------------------------------
+# Modul E: CielGraphEvent-Payloads auf dem Event-Bus (TDD-Forderung 4)
+# ---------------------------------------------------------------------------
+
+
+def _graph_payloads(sink: Any) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for record in sink.records:
+        if record.get("kind") != GRAPH_EVENT_KIND:
+            continue
+        payload = record.get("payload", {})
+        grouped.setdefault(str(payload.get("event", "?")), []).append(payload)
+    return grouped
+
+
+def test_graph_telemetry_cold_sync_and_routing_modes() -> None:
+    from orchestrator.events import CollectingSink, EventBus
+
+    sink = CollectingSink()
+    bus = EventBus([sink])
+    publisher = CielTelemetryPublisher()
+    publisher.add_sync_subscriber(EventBusGraphSubscriber(bus))
+
+    registry = ColdStorageRegistry(event_bus=bus, telemetry=publisher)
+    for i in range(150):
+        registry.register(_dummy_tool(i))
+    registry.register(
+        {
+            "name": "get_weather",
+            "description": "Get the current weather for a city.",
+            "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]},
+            "handler": _weather_handler,
+        },
+        required_state_keys=["city"],
+        is_deterministic=True,
+    )
+    assert len(registry) == 151
+    assert registry.publish_cold_state_sync()  # CIEL_COLD_STATE_SYNC (non-blocking)
+
+    gate = NCMGate(registry, event_bus=bus, telemetry=publisher)
+    bypass = asyncio.run(gate.route(registry.anchor_text("get_weather"), {"city": "Bitburg"}))
+    assert bypass.path == "system1_bypass"
+    jit = asyncio.run(gate.route("Escalate the invoice bookkeeping chores for archival"))
+    assert jit.path == "system2_jit"
+    asyncio.run(publisher.drain())
+    asyncio.run(publisher.close())
+
+    grouped = _graph_payloads(sink)
+
+    # 1. CIEL_COLD_STATE_SYNC: alle Tool-Nodes als COLD inkl. Cluster + node_id.
+    cold = grouped[CielGraphEventType.COLD_STATE_SYNC.value][0]
+    assert len(cold["active_nodes"]) == 151
+    assert {n["status"] for n in cold["active_nodes"]} == {"COLD"}
+    assert all(n["node_id"].startswith("ciel-node-") and n["cluster"] for n in cold["active_nodes"])
+    assert cold["detail"]["cold_tokens_total"] == registry.cold_tokens_total > 0
+
+    # 2. CIEL_NCM_ROUTING im Bypass-Modus: 1 injiziertes Schema, Rest gespart.
+    routed = grouped[CielGraphEventType.NCM_ROUTING.value]
+    assert len(routed) == 2
+    bypass_event = next(p for p in routed if p["mode"] == RoutingMode.SYSTEM_1_BYPASS.value)
+    assert bypass_event["active_nodes"][0]["tool"] == "get_weather"
+    assert bypass_event["active_nodes"][0]["status"] == "HOT"
+    assert bypass_event["active_nodes"][0]["confidence_score"] >= 0.88
+    assert bypass_event["detail"]["injected"] == ["get_weather"]
+
+    # 3. CIEL_NCM_ROUTING im JIT-Modus: Top-3 mit Confidence-Kanten.
+    jit_event = next(p for p in routed if p["mode"] == RoutingMode.SYSTEM_2_JIT.value)
+    assert len(jit_event["active_nodes"]) == 3
+    assert all("confidence_score" in n and n["node_id"] for n in jit_event["active_nodes"])
+
+    # 4. saved_tokens_estimate: Cold (151) minus injiziert — Bypass spart mehr als JIT.
+    assert bypass_event["saved_tokens_estimate"] > jit_event["saved_tokens_estimate"] > 0
+
+    # Payloads validieren gegen das typsichere Schema (pydantic wie Fallback).
+    for payload in (cold, bypass_event, jit_event):
+        assert CielGraphEvent.model_validate(payload).event == payload["event"]
+
+
+def test_graph_telemetry_jit_reload_and_macro_evolution() -> None:
+    from orchestrator.events import CollectingSink, EventBus
+
+    sink = CollectingSink()
+    bus = EventBus([sink])
+    publisher = CielTelemetryPublisher()
+    publisher.add_sync_subscriber(EventBusGraphSubscriber(bus))
+
+    registry = ColdStorageRegistry(event_bus=bus, telemetry=publisher)
+    for i in range(3):
+        registry.register(
+            {
+                "name": f"summarize_report_{i}",
+                "description": f"Summarize the quarterly financial report section {i} for management review.",
+                "parameters": {"type": "object", "properties": {"section": {"type": "string"}}, "required": []},
+                "handler": _echo_handler,
+            }
+        )
+    registry.register(
+        {
+            "name": "translate_text",
+            "description": "Translate English text to French language.",
+            "parameters": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
+            "handler": _echo_handler,
+        }
+    )
+    gate = NCMGate(registry, event_bus=bus, telemetry=publisher)
+    llm = ScriptedLLMClient(
+        [
+            {
+                "content": "Need translation first.",
+                "tool_calls": [{"id": "c1", "name": META_TOOL_NAME, "arguments": {"intent_query": "translate english text to french"}}],
+            },
+            {"content": "Done.", "tool_calls": []},
+        ]
+    )
+    agent = SandboxAgent(registry=registry, gate=gate, llm=llm)  # Telemetrie via Gate-Fallback
+    assert agent.telemetry is publisher
+    result = asyncio.run(agent.run("Summarize the quarterly financial report for management"))
+    assert result.path == "system2_jit"
+
+    synth = MacroSkillSynthesizer(registry, event_bus=bus, telemetry=publisher)
+    asyncio.run(synth.log_execution(["summarize_report_0", "translate_text"], success=True))
+    asyncio.run(synth.log_execution(["summarize_report_0", "translate_text"], success=True))
+    third = asyncio.run(synth.log_execution(["summarize_report_0", "translate_text"], success=True))
+    assert third is not None and third.created
+    asyncio.run(publisher.drain())
+    asyncio.run(publisher.close())
+
+    grouped = _graph_payloads(sink)
+
+    # CIEL_JIT_RELOAD: Nachlade-Kante mit Query + Score.
+    reload = grouped[CielGraphEventType.JIT_RELOAD.value][0]
+    assert reload["active_nodes"][0]["tool"] == "translate_text"
+    assert reload["active_nodes"][0]["status"] == "WARM"
+    assert reload["detail"]["query"] == "translate english text to french"
+
+    # CIEL_MACRO_EVOLUTION: neuer Super-Node (HOT) + verschmolzene Parents (WARM).
+    evolution = grouped[CielGraphEventType.MACRO_EVOLUTION.value][0]
+    assert evolution["active_nodes"][0]["tool"] == third.macro_name
+    assert evolution["active_nodes"][0]["status"] == "HOT"
+    assert [n["tool"] for n in evolution["active_nodes"][1:]] == ["summarize_report_0", "translate_text"]
+    assert {n["status"] for n in evolution["active_nodes"][1:]} == {"WARM"}
+    assert CielGraphEvent.model_validate(evolution).event == CielGraphEventType.MACRO_EVOLUTION.value
+
+
+def test_telemetry_publish_never_blocks() -> None:
+    event = CielGraphEvent(event=CielGraphEventType.NCM_ROUTING.value, mode=RoutingMode.SYSTEM_2_JIT.value)
+
+    # Volle Queue ohne Worker: put_nowait droppt gezaehlt, statt zu warten.
+    tight = CielTelemetryPublisher(queue_size=2)
+    assert tight.publish(event) is True
+    assert tight.publish(event) is True
+    assert tight.publish(event) is False  # voll → Drop, kein Hang
+    assert tight.dropped == 1 and tight.published == 2
+
+    # Lifecycle mit Sync- + Async-Subscriber: drain/close liefern deterministisch.
+    async def main() -> tuple[list[CielGraphEvent], list[CielGraphEvent], CielTelemetryPublisher]:
+        publisher = CielTelemetryPublisher()
+        seen_sync: list[CielGraphEvent] = []
+        seen_async: list[CielGraphEvent] = []
+
+        async def record_async(evt: CielGraphEvent) -> None:
+            seen_async.append(evt)
+
+        publisher.add_sync_subscriber(seen_sync.append)
+        publisher.add_async_subscriber(record_async)
+        assert publisher.publish(event) is True
+        await publisher.drain()
+        await asyncio.sleep(0.05)  # create_task-Fanout abwarten
+        await publisher.close()
+        return seen_sync, seen_async, publisher
+
+    seen_sync, seen_async, publisher = asyncio.run(main())
+    assert len(seen_sync) == 1 and seen_sync[0].mode == RoutingMode.SYSTEM_2_JIT.value
+    assert len(seen_async) == 1
+    assert publisher.dispatched == 1 and publisher.errors == 0
+    assert seen_sync[0].ts  # Zeitstempel wurde beim Publish gesetzt

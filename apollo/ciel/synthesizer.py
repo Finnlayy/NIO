@@ -19,7 +19,8 @@ from typing import Any
 
 from .bus import emit
 from .models import MacroSynthesis, ToolSchema
-from .registry import ColdStorageRegistry, utc_now_iso
+from .registry import ColdStorageRegistry, cluster_for, utc_now_iso
+from .telemetry import NODE_HOT, NODE_WARM, CielTelemetryPublisher, macro_evolution_event
 
 #: Ab wie vielen aufeinanderfolgenden Erfolgen synthetisiert wird.
 SYNTHESIS_THRESHOLD = 3
@@ -40,11 +41,13 @@ class MacroSkillSynthesizer:
         *,
         threshold: int = SYNTHESIS_THRESHOLD,
         event_bus: Any | None = None,
+        telemetry: CielTelemetryPublisher | None = None,
         persist_path: str | Path | None = None,
     ) -> None:
         self._registry = registry
         self._threshold = max(2, threshold)
         self._bus = event_bus
+        self._telemetry = telemetry if telemetry is not None else registry.telemetry
         self._persist_path = Path(persist_path) if persist_path is not None else None
         self._streaks: dict[str, int] = {}
         if self._persist_path is not None and self._persist_path.is_file():
@@ -57,6 +60,10 @@ class MacroSkillSynthesizer:
     @property
     def threshold(self) -> int:
         return self._threshold
+
+    @property
+    def telemetry(self) -> CielTelemetryPublisher | None:
+        return self._telemetry
 
     @property
     def streaks(self) -> dict[str, int]:
@@ -148,6 +155,29 @@ class MacroSkillSynthesizer:
             timeout_sec=float(timeout),
         )
         emit(self._bus, "ciel.synth.macro_created", {"macro": macro, "chain": names})
+        if self._telemetry is not None:
+            self._telemetry.publish(
+                macro_evolution_event(
+                    {
+                        "node_id": record.node_id,
+                        "tool": record.name,
+                        "confidence_score": 1.0,
+                        "status": NODE_HOT,
+                        "cluster": cluster_for(record.origin, record.meta),
+                    },
+                    [
+                        {
+                            "node_id": parent.node_id,
+                            "tool": parent.name,
+                            "confidence_score": 1.0,
+                            "status": NODE_WARM,
+                            "cluster": cluster_for(parent.origin, parent.meta),
+                        }
+                        for parent in records
+                    ],
+                    detail={"macro": macro, "runs_observed": self._streaks.get(self.chain_key(names), self._threshold)},
+                )
+            )
         return record
 
     def reset(self, chain: Sequence[str] | None = None) -> None:
