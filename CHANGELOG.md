@@ -9,6 +9,15 @@ Datumsangaben in UTC.
 
 ### Hinzugefügt
 
+- `apollo/ciel/mcp_nodes.py` + `mcp_config.json` — externe MCP-Nodes als
+  Ciel-Skills (u. a. StalkChain `https://data.stalkchain.com/mcp`, via
+  `npx mcp-remote` oder direkt per SSE ohne Node). Stdio-JSON-RPC- und
+  SSE-Transport (Stdlib-only, strikte Timeouts), Claude-style Config-Loader
+  mit `${VAR}`-Expansion, Registrierung als `<node>.<tool>` im Cold-Storage,
+  fail-closed je Node (`ciel.mcp.node_failed`), `mcp_config`-Parameter in
+  `build_ciel_layer`. 8 neue Offline-Tests in
+  `tests/test_ciel_mcp_nodes.py` (Fake-Stdio-Subprozess + Fake-SSE-Server,
+  grün mit wie ohne pydantic).
 - `apollo/ciel/telemetry.py` — Modul E: Real-Time Graph-UI Telemetry.
   Typsichere `CielGraphEvent`-Payloads (`CIEL_COLD_STATE_SYNC`,
   `CIEL_NCM_ROUTING` mit `SYSTEM_1_BYPASS`/`SYSTEM_2_JIT`, `CIEL_JIT_RELOAD`,

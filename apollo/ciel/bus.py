@@ -41,6 +41,8 @@ CIEL_EVENT_KINDS: tuple[str, ...] = (
     "ciel.synth.macro_created",  # Synthesizer hat ein Makro-Tool registriert
     "ciel.synth.chain_observed",  # Synthesizer: erfolgreiche Kette geloggt
     "ciel.graph.event",  # Modul E: typisiertes Graph-Telemetry-Event (Payload traegt den Typ)
+    "ciel.mcp.node_registered",  # MCP-Node verbunden, Tools im Cold-Storage
+    "ciel.mcp.node_failed",  # MCP-Node scheiterte (fail-closed, andere laufen weiter)
 )
 
 
