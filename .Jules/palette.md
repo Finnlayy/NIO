@@ -1,3 +1,7 @@
 ## 2026-09-12 - Keyboard Shortcut and Modal Close Accessibility
 **Learning:** We realized that global keyboard shortcuts in the dashboard were hijacking inputs for users trying to use forms (specifically in elements with `isContentEditable` set). Additionally, drawer/modal components were missing standard Escape key listeners, forcing users to click close buttons or the backdrop, thus limiting keyboard navigation.
 **Action:** Always verify `document.activeElement?.isContentEditable` alongside input and textarea tags when writing custom keyboard shortcut hooks. Furthermore, all overlay menus must pair with an `Escape` key close listener to support non-mouse accessibility.
+
+## 2026-10-27 - Retaining layout and focusing disabled buttons
+**Learning:** Native `disabled` attributes on buttons prevent them from receiving focus, making their tooltips inaccessible to keyboard and screen reader users. Additionally, conditionally rendering keyboard hints (like `<kbd>`) based on the disabled/loading state causes jarring layout shifts during interaction.
+**Action:** Replace `disabled` attributes with `aria-disabled="true"` to ensure elements remain focusable, and manually guard their `onClick` handlers. When styling, append `[aria-disabled="true"]` to `:disabled` styles and exclude it from hover rules. Always maintain the rendering of internal keyboard hints across all button states to preserve layout stability.
