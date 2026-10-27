@@ -32,6 +32,9 @@ dependencies = []  # bewusst leer: Stdlib-only ist eine Architekturentscheidung
 
 [project.optional-dependencies]
 dev = ["ruff>=0.16", "mypy>=1.11"]
+# Ciel JIT-Tool-Orchestrator (apollo/ciel): nutzt pydantic v2, wenn vorhanden,
+# läuft ohne aber per Stdlib-Fallback weiter (Tests sind in beiden Modi grün).
+ciel = ["pydantic>=2"]
 
 [project.scripts]
 neu = "orchestrator.cli:main"
@@ -41,7 +44,7 @@ Homepage = "https://github.com/Finnlayy/NIO"
 
 [tool.setuptools]
 # Nur die Python-Pakete; src/, evals/, frontend/ gehoeren zum Legacy-Harness.
-packages = ["core", "orchestrator", "limbs"]
+packages = ["core", "orchestrator", "limbs", "apollo", "apollo.ciel"]
 
 # ----------------------------------------------------------------------------
 # Lint / Format: ruff
