@@ -23,7 +23,8 @@ from .bus import emit
 from .embeddings import EmbeddingProvider, cosine_similarity
 from .errors import ToolNotExecutable, ToolNotFound, ToolTimeout
 from .models import GateDecision, ScoredTool
-from .registry import ColdStorageRegistry, ToolHandler
+from .registry import ColdStorageRegistry, ToolHandler, cluster_for, node_id_for
+from .telemetry import NODE_COLD, NODE_HOT, NODE_WARM, CielTelemetryPublisher, RoutingMode, routing_event
 
 #: Default-Schwelle für den System-1 Direct Bypass (Cosine-Confidence).
 BYPASS_THRESHOLD = 0.88
@@ -136,6 +137,7 @@ class NCMGate:
         embedder: EmbeddingProvider | None = None,
         executor: ToolExecutor | None = None,
         event_bus: Any | None = None,
+        telemetry: CielTelemetryPublisher | None = None,
         bypass_threshold: float = BYPASS_THRESHOLD,
         top_k: int = JIT_TOP_K,
     ) -> None:
@@ -143,6 +145,7 @@ class NCMGate:
         self._embedder = embedder or registry.embedder
         self._executor = executor or RegistryFunctionExecutor(registry)
         self._bus = event_bus
+        self._telemetry = telemetry
         self._threshold = bypass_threshold
         self._top_k = top_k
 
@@ -161,6 +164,10 @@ class NCMGate:
     @property
     def top_k(self) -> int:
         return self._top_k
+
+    @property
+    def telemetry(self) -> CielTelemetryPublisher | None:
+        return self._telemetry
 
     def match_text(self, intent: str, event_payload: Mapping[str, Any] | None = None) -> str:
         """Kombiniert Intent + Event-Bus-Payload zum NCM-Abfragetext."""
@@ -208,6 +215,7 @@ class NCMGate:
         if not matches:
             decision = GateDecision(path="system2_jit", confidence=0.0, reason="leere Registry — kein Matching möglich")
             emit(self._bus, "ciel.gate.decision", decision.model_dump())
+            self._publish_routing(intent, [], RoutingMode.SYSTEM_2_JIT.value, [])
             return decision
         best = matches[0]
         top_names = [hit.name for hit in matches]
@@ -232,6 +240,7 @@ class NCMGate:
                 reason=reason,
             )
             emit(self._bus, "ciel.gate.decision", decision.model_dump())
+            self._publish_routing(intent, matches, RoutingMode.SYSTEM_2_JIT.value, top_names)
             return decision
         arguments = {key: current_state[key] for key in required}
         try:
@@ -251,6 +260,7 @@ class NCMGate:
                 reason="bypass_timeout_fallback",
             )
             emit(self._bus, "ciel.gate.decision", decision.model_dump())
+            self._publish_routing(intent, matches, RoutingMode.SYSTEM_2_JIT.value, top_names)
             return decision
         except Exception as exc:
             decision = GateDecision(
@@ -264,6 +274,7 @@ class NCMGate:
                 reason="bypass_failed_fallback",
             )
             emit(self._bus, "ciel.gate.decision", decision.model_dump())
+            self._publish_routing(intent, matches, RoutingMode.SYSTEM_2_JIT.value, top_names)
             return decision
         decision = GateDecision(
             path="system1_bypass",
@@ -277,7 +288,47 @@ class NCMGate:
         )
         emit(self._bus, "ciel.gate.decision", decision.model_dump())
         emit(self._bus, "ciel.gate.bypass_executed", {"tool": best.name, "confidence": round(best.score, 4)})
+        self._publish_routing(intent, matches, RoutingMode.SYSTEM_1_BYPASS.value, [best.name])
         return decision
+
+    def _publish_routing(
+        self,
+        intent: str,
+        matches: list[ScoredTool],
+        mode: str,
+        injected: list[str],
+        *,
+        trace_id: str = "",
+    ) -> None:
+        """Publiziert ``CIEL_NCM_ROUTING`` (Top-3 + Confidence-Kanten + Token-Saver).
+
+        Non-blocking (Queue-``put_nowait``); ohne verdrahteten Publisher No-Op.
+        Bypass-Ziel laeuft als HOT, JIT-Kandidaten als WARM, Rest bleibt COLD.
+        """
+        if self._telemetry is None:
+            return
+        injected_set = set(injected)
+        bypass = mode == RoutingMode.SYSTEM_1_BYPASS.value
+        nodes = [
+            {
+                "node_id": hit.record.node_id or node_id_for(hit.name),
+                "tool": hit.name,
+                "confidence_score": round(hit.score, 4),
+                "status": (NODE_HOT if bypass and idx == 0 else NODE_WARM) if hit.name in injected_set else NODE_COLD,
+                "cluster": cluster_for(hit.record.origin, hit.record.meta),
+            }
+            for idx, hit in enumerate(matches)
+        ]
+        self._telemetry.publish(
+            routing_event(
+                nodes,
+                mode=mode,
+                intent=intent,
+                trace_id=trace_id,
+                saved_tokens_estimate=self._registry.saved_tokens_estimate(injected),
+                detail={"cold_tools": len(self._registry), "injected": list(injected)},
+            )
+        )
 
     def _jit_reason(self, best: ScoredTool, missing: list[str]) -> str:
         if best.score < self._threshold:

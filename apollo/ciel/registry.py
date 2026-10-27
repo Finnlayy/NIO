@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 import sqlite3
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
@@ -26,6 +27,7 @@ from .bus import emit
 from .embeddings import EmbeddingProvider, HashEmbeddingProvider, cosine_similarity
 from .errors import CielConfigError, ToolNotFound
 from .models import ScoredTool, ToolSchema
+from .telemetry import NODE_COLD, CielTelemetryPublisher, cold_state_sync_event, estimate_tokens
 
 #: Ein Handler bekommt die Tool-Argumente und liefert ein JSON-fähiges Ergebnis.
 ToolHandler = Callable[..., Any]
@@ -48,6 +50,31 @@ CREATE TABLE IF NOT EXISTS ciel_tools (
 
 def utc_now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+_NODE_SANITIZE_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
+
+
+def node_id_for(tool_name: str) -> str:
+    """Deterministische Graph-Node-ID eines Tools (UI-Graph, Modul E)."""
+    safe = _NODE_SANITIZE_RE.sub("-", tool_name.strip()).strip("-") or "unnamed"
+    return f"ciel-node-{safe}"[:120]
+
+
+def cluster_for(origin: str, meta: Mapping[str, Any] | None = None) -> str:
+    """Cluster-Zugehoerigkeit eines Tools (UI-Graph; Default: Herkunft)."""
+    if meta:
+        cluster = meta.get("cluster")
+        if isinstance(cluster, str) and cluster.strip():
+            return cluster.strip()[:60]
+    return (origin or "fastmcp").strip()[:60] or "fastmcp"
+
+
+def _meta_tokens(meta: Mapping[str, Any] | None) -> int:
+    if not meta:
+        return 0
+    tokens = meta.get("tokens_estimate", 0)
+    return int(tokens) if isinstance(tokens, (int, float)) and tokens > 0 else 0
 
 
 def normalize_tool_candidate(candidate: Any) -> dict[str, Any]:
@@ -134,11 +161,14 @@ class ColdStorageRegistry:
         embedder: EmbeddingProvider | None = None,
         cache_path: str | Path | None = None,
         event_bus: Any | None = None,
+        telemetry: CielTelemetryPublisher | None = None,
     ) -> None:
         self._embedder: EmbeddingProvider = embedder or HashEmbeddingProvider()
         self._records: dict[str, ToolSchema] = {}
         self._handlers: dict[str, ToolHandler] = {}
         self._bus = event_bus
+        self._telemetry = telemetry
+        self._cold_tokens_total = 0
         self._cache_path = Path(cache_path) if cache_path is not None else None
         if self._cache_path is not None and self._cache_path.is_file():
             self.load_cache(self._cache_path)
@@ -179,6 +209,60 @@ class ColdStorageRegistry:
         record = self.require(name)
         return f"{record.name} {record.description}".strip()
 
+    @property
+    def telemetry(self) -> CielTelemetryPublisher | None:
+        return self._telemetry
+
+    @property
+    def cold_tokens_total(self) -> int:
+        """Geschaetzte Tokens aller Cold-Storage-Schemas (laufend mitgezaehlt)."""
+        return self._cold_tokens_total
+
+    def saved_tokens_estimate(self, injected: Iterable[str]) -> int:
+        """Differenz Cold-Schemas vs. injizierte Schemas (Live-Token-Saver-Counter)."""
+        injected_tokens = 0
+        for name in injected:
+            record = self._records.get(name)
+            if record is not None:
+                injected_tokens += _meta_tokens(record.meta)
+        return max(0, self._cold_tokens_total - injected_tokens)
+
+    def to_graph_nodes(self, names: Iterable[str] | None = None, *, status: str = NODE_COLD) -> list[dict[str, Any]]:
+        """Projiziert Tools auf UI-Graph-Nodes (node_id, tool, status, cluster)."""
+        selected = list(names) if names is not None else list(self._records)
+        nodes: list[dict[str, Any]] = []
+        for name in selected:
+            record = self._records.get(name)
+            if record is None:
+                continue
+            nodes.append(
+                {
+                    "node_id": record.node_id or node_id_for(record.name),
+                    "tool": record.name,
+                    "confidence_score": 0.0,
+                    "status": status,
+                    "cluster": cluster_for(record.origin, record.meta),
+                }
+            )
+        return nodes
+
+    def publish_cold_state_sync(self, *, intent: str = "", trace_id: str = "") -> bool:
+        """Publiziert ``CIEL_COLD_STATE_SYNC`` (alle Nodes als COLD, non-blocking).
+
+        Gibt ``False`` zurueck, wenn kein Telemetry-Publisher verdrahtet ist
+        oder die Queue voll war — die Pipeline laeuft unbeeinflusst weiter.
+        """
+        if self._telemetry is None:
+            return False
+        return self._telemetry.publish(
+            cold_state_sync_event(
+                self.to_graph_nodes(status=NODE_COLD),
+                intent=intent,
+                trace_id=trace_id,
+                detail={"tools": len(self._records), "cold_tokens_total": self._cold_tokens_total},
+            )
+        )
+
     # -- Registrierung ----------------------------------------------------
 
     def register(
@@ -210,6 +294,11 @@ class ColdStorageRegistry:
         timeout = data.get("timeout_sec", 30.0) if timeout_sec is None else timeout_sec
         description = str(data.get("description") or "")
         anchor = self._embedder.embed(f"{name} {description}".strip())
+        meta = dict(data.get("meta") or {})
+        node_id = str(data.get("node_id") or meta.get("node_id") or node_id_for(name))
+        meta["node_id"] = node_id  # persistiert node_id im bestehenden meta_json (kein Schema-Bruch)
+        tokens = estimate_tokens({"name": name, "description": description, "parameters": parameters})
+        meta["tokens_estimate"] = tokens
         record = ToolSchema(
             name=name,
             description=description,
@@ -219,10 +308,15 @@ class ColdStorageRegistry:
             timeout_sec=float(timeout),
             concept_anchor=list(anchor),
             origin=str(data.get("origin") or origin),
-            meta=dict(data.get("meta") or {}),
+            node_id=node_id,
+            meta=meta,
         )
         resolved_handler = handler if handler is not None else data.get("handler")
+        previous = self._records.get(name)
+        if previous is not None:
+            self._cold_tokens_total -= _meta_tokens(previous.meta)
         self._records[name] = record
+        self._cold_tokens_total += tokens
         if callable(resolved_handler):
             self._handlers[name] = resolved_handler
         else:
@@ -248,7 +342,10 @@ class ColdStorageRegistry:
 
     def unregister(self, name: str) -> bool:
         """Entfernt ein Tool (bei Bedarf inkl. Cache-Zeile)."""
-        existed = self._records.pop(name, None) is not None
+        removed = self._records.pop(name, None)
+        existed = removed is not None
+        if removed is not None:
+            self._cold_tokens_total = max(0, self._cold_tokens_total - _meta_tokens(removed.meta))
         self._handlers.pop(name, None)
         if existed and self._cache_path is not None:
             try:
@@ -357,6 +454,7 @@ class ColdStorageRegistry:
                 continue
             if not record.concept_anchor:
                 record = record.model_copy(update={"concept_anchor": self._embedder.embed(f"{record.name} {record.description}".strip())})
+            record = self._adopt_cached_record(record)
             self._records[name] = record
             loaded += 1
         if loaded:
@@ -386,11 +484,29 @@ class ColdStorageRegistry:
             record = ToolSchema.model_validate(entry)
             if not record.concept_anchor:
                 record = record.model_copy(update={"concept_anchor": self._embedder.embed(f"{record.name} {record.description}".strip())})
+            record = self._adopt_cached_record(record)
             self._records[record.name] = record
             count += 1
         if count:
             emit(self._bus, "ciel.registry.cache_loaded", {"tools": count, "cache": str(path)})
         return count
+
+    def _adopt_cached_record(self, record: ToolSchema) -> ToolSchema:
+        """Normalisiert einen Cache-/JSON-Record (node_id + Token-Buchhaltung)."""
+        node_id = record.node_id or str((record.meta or {}).get("node_id") or node_id_for(record.name))
+        tokens = _meta_tokens(record.meta)
+        meta = dict(record.meta or {})
+        meta["node_id"] = node_id
+        if tokens <= 0:
+            tokens = estimate_tokens({"name": record.name, "description": record.description, "parameters": record.parameters})
+            meta["tokens_estimate"] = tokens
+        previous = self._records.get(record.name)
+        if previous is not None:
+            self._cold_tokens_total -= _meta_tokens(previous.meta)
+        self._cold_tokens_total += tokens
+        if record.node_id == node_id and _meta_tokens(record.meta) == tokens:
+            return record
+        return record.model_copy(update={"node_id": node_id, "meta": meta})
 
     def _write_through(self, name: str) -> None:
         if self._cache_path is None:
@@ -408,6 +524,7 @@ class ColdStorageRegistry:
         embedder: EmbeddingProvider | None = None,
         cache_path: str | Path | None = None,
         event_bus: Any | None = None,
+        telemetry: CielTelemetryPublisher | None = None,
     ) -> ColdStorageRegistry:
         """Fängt alle Tools einer FastMCP(-ähnlichen) Server-Instanz beim Start ab.
 
@@ -416,10 +533,11 @@ class ColdStorageRegistry:
         ``server.tools`` — als Dict oder Iterable. Das Server-Objekt selbst
         wird nicht verändert.
         """
-        registry = cls(embedder=embedder, cache_path=cache_path, event_bus=event_bus)
+        registry = cls(embedder=embedder, cache_path=cache_path, event_bus=event_bus, telemetry=telemetry)
         tools = _extract_fastmcp_tools(server)
         registry.register_many(tools, origin="fastmcp")
         emit(event_bus, "ciel.registry.snapshot", {"tools": len(registry), "origin": "fastmcp"})
+        registry.publish_cold_state_sync()
         return registry
 
     @classmethod
@@ -430,13 +548,14 @@ class ColdStorageRegistry:
         embedder: EmbeddingProvider | None = None,
         cache_path: str | Path | None = None,
         event_bus: Any | None = None,
+        telemetry: CielTelemetryPublisher | None = None,
     ) -> ColdStorageRegistry:
         """Spiegelt NEU-Limb-Operations als Cold-Storage-Tools (Brücke, lesend).
 
         Nutzt nur öffentliche Accessoren (``active()``/``names()``/``get()``);
         das übergebene ``LimbRegistry`` wird nicht verändert.
         """
-        registry = cls(embedder=embedder, cache_path=cache_path, event_bus=event_bus)
+        registry = cls(embedder=embedder, cache_path=cache_path, event_bus=event_bus, telemetry=telemetry)
         specs: list[Any] = []
         try:
             active = limb_registry.active() if callable(getattr(limb_registry, "active", None)) else ()
@@ -468,6 +587,7 @@ class ColdStorageRegistry:
         if registry.cache_path is not None:
             registry.save_cache(registry.cache_path)
         emit(event_bus, "ciel.registry.snapshot", {"tools": mirrored, "origin": "limb"})
+        registry.publish_cold_state_sync()
         return registry
 
 
@@ -583,6 +703,7 @@ class CielFastMCPWrapper:
         tools = await extract_fastmcp_tools_async(self._server)
         self._registry.register_many(tools, origin="fastmcp")
         emit(self._registry._bus, "ciel.registry.snapshot", {"tools": len(tools), "origin": "fastmcp"})
+        self._registry.publish_cold_state_sync()
         return len(tools)
 
     def tool(self, *dargs: Any, **dkwargs: Any) -> Any:
@@ -677,7 +798,9 @@ __all__ = [
     "CielFastMCPWrapper",
     "ColdStorageRegistry",
     "ToolHandler",
+    "cluster_for",
     "extract_fastmcp_tools_async",
+    "node_id_for",
     "normalize_tool_candidate",
     "utc_now_iso",
 ]

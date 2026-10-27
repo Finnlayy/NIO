@@ -14,6 +14,9 @@ ausführenden Sandbox-Agenten:
   (``request_additional_skill``) zum JIT-Nachladen.
 * **Modul D** (``synthesizer``): Macro-Skill Synthesizer — verschmilzt
   3x hintereinander erfolgreiche Ketten zu einem Makro-Tool.
+* **Modul E** (``telemetry``): Real-Time Graph-UI Telemetry — typisierte
+  ``CielGraphEvent`` (Cold-Sync, NCM-Routing, JIT-Reload, Makro-Evolution),
+  non-blocking via Queue + Worker-Task auf Event-Bus / UDS-Datagramm.
 
 Schnellstart::
 
@@ -46,7 +49,7 @@ from .models import (
     ToolSchema,
 )
 from .ncm_gate import BYPASS_THRESHOLD, JIT_TOP_K, NCMGate, RegistryFunctionExecutor, ToolExecutor, run_handler
-from .registry import CielFastMCPWrapper, ColdStorageRegistry
+from .registry import CielFastMCPWrapper, ColdStorageRegistry, cluster_for, node_id_for
 from .sandbox_agent import (
     META_TOOL_NAME,
     REQUEST_ADDITIONAL_SKILL_SCHEMA,
@@ -58,17 +61,36 @@ from .sandbox_agent import (
     ScriptedLLMClient,
 )
 from .synthesizer import MACRO_PREFIX, SYNTHESIS_THRESHOLD, MacroSkillSynthesizer
+from .telemetry import (
+    GRAPH_EVENT_KIND,
+    NODE_COLD,
+    NODE_HOT,
+    NODE_WARM,
+    CielGraphEvent,
+    CielGraphEventType,
+    CielGraphNode,
+    CielTelemetryPublisher,
+    EventBusGraphSubscriber,
+    RoutingMode,
+    UDSDatagramSubscriber,
+    cold_state_sync_event,
+    estimate_tokens,
+    jit_reload_event,
+    macro_evolution_event,
+    routing_event,
+)
 
 
 @dataclass
 class CielLayer:
-    """Verdrahtete Ciel-Schicht (Registry + Gate + Agent + Synthesizer)."""
+    """Verdrahtete Ciel-Schicht (Registry + Gate + Agent + Synthesizer + Telemetry)."""
 
     registry: ColdStorageRegistry
     gate: NCMGate
     agent: SandboxAgent
     synthesizer: MacroSkillSynthesizer
     wrapper: CielFastMCPWrapper | None = None
+    telemetry: CielTelemetryPublisher | None = None
 
 
 async def build_ciel_layer(
@@ -78,6 +100,8 @@ async def build_ciel_layer(
     llm: LLMClient | None = None,
     executor: ToolExecutor | None = None,
     event_bus: Any | None = None,
+    telemetry: CielTelemetryPublisher | None = None,
+    uds_socket: str | Path | None = None,
     embedder: EmbeddingProvider | None = None,
     cache_path: str | Path | None = None,
     synth_path: str | Path | None = None,
@@ -92,9 +116,19 @@ async def build_ciel_layer(
       Cold-Storage übernommen.
     * ``limb_registry``: NEU-``LimbRegistry`` wird lesend als Tools gespiegelt.
     * Beide ``None``: leere Registry (Tools via ``registry.register*``).
+    * ``telemetry``: eigener Publisher (Default: neu + Bus-Spiegelung, wenn
+      ``event_bus`` gesetzt). ``uds_socket``: zusaetzlich UDS-Datagramme an
+      ``runtime/telemetry.sock`` (fuer die SSE-Bruecke ins Dashboard).
     """
     active_embedder = embedder or HashEmbeddingProvider()
-    registry = ColdStorageRegistry(embedder=active_embedder, cache_path=cache_path, event_bus=event_bus)
+    publisher = telemetry
+    if publisher is None and (event_bus is not None or uds_socket is not None):
+        publisher = CielTelemetryPublisher()
+    if publisher is not None and event_bus is not None:
+        publisher.add_sync_subscriber(EventBusGraphSubscriber(event_bus))
+    if publisher is not None and uds_socket is not None:
+        publisher.add_sync_subscriber(UDSDatagramSubscriber(uds_socket))
+    registry = ColdStorageRegistry(embedder=active_embedder, cache_path=cache_path, event_bus=event_bus, telemetry=publisher)
     wrapper: CielFastMCPWrapper | None = None
     if fastmcp_server is not None:
         inner = fastmcp_server.wrapped if isinstance(fastmcp_server, CielFastMCPWrapper) else fastmcp_server
@@ -118,21 +152,29 @@ async def build_ciel_layer(
         embedder=active_embedder,
         executor=active_executor,
         event_bus=event_bus,
+        telemetry=publisher,
         bypass_threshold=bypass_threshold,
         top_k=top_k,
     )
-    agent = SandboxAgent(registry=registry, gate=gate, llm=llm, executor=active_executor, event_bus=event_bus, max_turns=max_turns)
-    synthesizer = MacroSkillSynthesizer(registry, event_bus=event_bus, persist_path=synth_path)
-    return CielLayer(registry=registry, gate=gate, agent=agent, synthesizer=synthesizer, wrapper=wrapper)
+    agent = SandboxAgent(
+        registry=registry, gate=gate, llm=llm, executor=active_executor, event_bus=event_bus, telemetry=publisher, max_turns=max_turns
+    )
+    synthesizer = MacroSkillSynthesizer(registry, event_bus=event_bus, telemetry=publisher, persist_path=synth_path)
+    registry.publish_cold_state_sync()
+    return CielLayer(registry=registry, gate=gate, agent=agent, synthesizer=synthesizer, wrapper=wrapper, telemetry=publisher)
 
 
 __all__ = [
     "BYPASS_THRESHOLD",
     "CIEL_EVENT_KINDS",
+    "GRAPH_EVENT_KIND",
     "HAVE_PYDANTIC",
     "JIT_TOP_K",
     "MACRO_PREFIX",
     "META_TOOL_NAME",
+    "NODE_COLD",
+    "NODE_HOT",
+    "NODE_WARM",
     "REQUEST_ADDITIONAL_SKILL_SCHEMA",
     "SANDBOX_SYSTEM_PROMPT",
     "SYNTHESIS_THRESHOLD",
@@ -143,9 +185,14 @@ __all__ = [
     "CielConfigError",
     "CielError",
     "CielFastMCPWrapper",
+    "CielGraphEvent",
+    "CielGraphEventType",
+    "CielGraphNode",
     "CielLayer",
+    "CielTelemetryPublisher",
     "ColdStorageRegistry",
     "EmbeddingProvider",
+    "EventBusGraphSubscriber",
     "GateDecision",
     "HashEmbeddingProvider",
     "LLMClient",
@@ -156,6 +203,7 @@ __all__ = [
     "OnnxEmbeddingProvider",
     "OpenAICompatLLMClient",
     "RegistryFunctionExecutor",
+    "RoutingMode",
     "SandboxAgent",
     "ScoredTool",
     "ScriptedLLMClient",
@@ -166,7 +214,15 @@ __all__ = [
     "ToolResult",
     "ToolSchema",
     "ToolTimeout",
+    "UDSDatagramSubscriber",
     "build_ciel_layer",
+    "cluster_for",
+    "cold_state_sync_event",
     "cosine_similarity",
+    "estimate_tokens",
+    "jit_reload_event",
+    "macro_evolution_event",
+    "node_id_for",
+    "routing_event",
     "run_handler",
 ]

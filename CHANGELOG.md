@@ -9,6 +9,21 @@ Datumsangaben in UTC.
 
 ### Hinzugefügt
 
+- `apollo/ciel/telemetry.py` — Modul E: Real-Time Graph-UI Telemetry.
+  Typsichere `CielGraphEvent`-Payloads (`CIEL_COLD_STATE_SYNC`,
+  `CIEL_NCM_ROUTING` mit `SYSTEM_1_BYPASS`/`SYSTEM_2_JIT`, `CIEL_JIT_RELOAD`,
+  `CIEL_MACRO_EVOLUTION`), inkl. `active_nodes` mit Confidence-Scores,
+  `saved_tokens_estimate` (Cold minus injiziert) und `node_id` je Tool.
+  Non-blocking via begrenzter `asyncio.Queue` + Worker-Task
+  (`drain()`/`close()`), Subscriber auf Event-Bus (`ciel.graph.event`) und
+  optional direkt als UDS-Datagramm an `runtime/telemetry.sock` (Pfad ins
+  Dashboard: UDS → `telemetryBridge` → SSE `/api/telemetry/stream`).
+  Verdrahtung in Registry/Gate/Agent/Synthesizer/`build_ciel_layer` (neue
+  optionale Parameter, Default `None` = altes Verhalten), 3 neue Tests
+  (14/14 grün mit wie ohne pydantic).
+
+### Hinzugefügt (Ciel A–D, PR #249)
+
 - `apollo/ciel/` — Ciel JIT-Tool-Orchestrator (NCM + Sandbox-Agent), rein
   additiv ohne Änderung am Bestandscode: Modul A Cold-Storage Skill Registry
   (In-Memory + SQLite/JSON-Cache, FastMCP-Interceptor), Modul B System-1 NCM

@@ -1,4 +1,4 @@
-# Ciel JIT-Tool-Orchestrator (NCM + Sandbox-Agent)
+# Ciel JIT-Tool-Orchestrator (NCM + Sandbox-Agent + Graph-UI Telemetry)
 
 Zweistufige Orchestrator-Schicht zwischen Apollo, FastMCP und den ausführenden
 Sandbox-Agenten. Löst das Kontext-Skalierungsproblem (alle Tool-Schemas im
@@ -15,6 +15,7 @@ Untersucht am 2026-10-27 auf `main` (`a5bf808`):
 | FastMCP-Integration (Python)? | **Keine** — FastMCP kommt nur in Docs und im Frontend-Katalog (`frontend/src/apollo/catalog.ts`) vor. Ciel bringt daher einen duck-typed `CielFastMCPWrapper` mit (passt auf echte FastMCP-Server wie auf Dummies). |
 | System-1 / JEV / ONNX-Anbindung? | **Kein JEV, kein NCM** im Runtime-Pfad. Einzig: `Architect/models/weights/omega_regime_16d.onnx` (Regime-Klassifikator, bleibt unberührt) + deterministische hashed-BoW-Logistic-Regression in `Architect/core/learning/preference_model_updater.py` (stdlib-only, dokumentierte Divergence). |
 | Event-Bus | `orchestrator/events.py::EventBus` (synchron, validiert Kinds bewusst **nicht**). |
+| WebSocket-/Event-Broadcaster | **Kein WebSocket** — Pfad: `orchestrator/uds.py::UDSBroadcastSink` (AF_UNIX/SOCK_DGRAM, `runtime/bus.sock`/`runtime/telemetry.sock`) → `frontend/src/server/telemetryBridge.ts` → SSE `GET /api/telemetry/stream` → Dashboard. |
 
 **Konsequenz:** Ciel wurde als neues, rein additives Paket `apollo/ciel/`
 gebaut — keine einzige Zeile Bestandscode wurde geändert (außer `pyproject.toml`:
@@ -32,6 +33,7 @@ apollo/ciel/
   ncm_gate.py       Modul B: System-1 NCM Gatekeeper (Bypass ≥0.88 | JIT Top-3)
   sandbox_agent.py  Modul C: Isolierter Sandbox-Agent (+ Meta-Tool)
   synthesizer.py    Modul D: Macro-Skill Synthesizer (3× → Makro-Tool)
+  telemetry.py      Modul E: Graph-UI Telemetry (CielGraphEvent, non-blocking)
   embeddings.py     ONNX- (optional) / Hash-Embedding (Default, stdlib-only)
   models.py         pydantic-v2-Modelle mit Stdlib-Fallback
   errors.py, bus.py Fehlertypen / Event-Bus-Anbindung
@@ -82,6 +84,23 @@ apollo/ciel/
   in `meta`, deterministisch wenn alle Schritte deterministisch) — künftige
   Aufrufe laufen in einem Turn, ggf. per System-1 Bypass.
 
+### Modul E — Graph-Telemetry (`telemetry.py`)
+
+- `CielGraphEvent` (pydantic v2 + Stdlib-Fallback): `event`-Typ, `mode`
+  (`SYSTEM_1_BYPASS`/`SYSTEM_2_JIT`), `active_nodes` (je mit `node_id`,
+  `confidence_score`, `status` COLD/WARM/HOT, `cluster`), `saved_tokens_estimate`.
+- Event-Typen: `CIEL_COLD_STATE_SYNC` (Start: alle Nodes COLD + Cluster),
+  `CIEL_NCM_ROUTING` (Top-3 + Modus + Token-Saver), `CIEL_JIT_RELOAD`
+  (Nachlade-Kante), `CIEL_MACRO_EVOLUTION` (Super-Node HOT + Parents WARM).
+- `saved_tokens_estimate` = Cold-Tokens (aller Schemas, laufend mitgezählt)
+  minus injizierte Schemas — Bypass (1 Schema) spart messbar mehr als JIT (3).
+- **Non-blocking:** `publish()` = Queue-`put_nowait` (begrenzt, Drop statt
+  Warten); Worker-Task + `create_task`-Fanout; loop-robust bei `asyncio.run`.
+- Subscriber: `EventBusGraphSubscriber` (Kind `ciel.graph.event` → UDS → SSE →
+  Dashboard) und optional `UDSDatagramSubscriber` (direkt an
+  `runtime/telemetry.sock`). Jedes Tool trägt `node_id` (`ciel-node-<name>`,
+  in `meta_json` persistiert — kein SQLite-Schema-Bruch).
+
 ## 3. Schnellstart
 
 ```python
@@ -106,7 +125,9 @@ die NEU-Limb-Operations; ganz ohne Argumente startet eine leere Registry
 Events auf dem NEU-Bus: `ciel.registry.snapshot`, `ciel.gate.decision`,
 `ciel.gate.bypass_executed`, `ciel.sandbox.turn`, `ciel.sandbox.tool_call`,
 `ciel.sandbox.skill_reloaded`, `ciel.synth.chain_observed`,
-`ciel.synth.macro_created` (Liste auch als `CIEL_EVENT_KINDS`).
+`ciel.synth.macro_created`, `ciel.graph.event` (Liste auch als `CIEL_EVENT_KINDS`).
+`build_ciel_layer(..., event_bus=bus, uds_socket="runtime/telemetry.sock")`
+verdrahtet Telemetry vollautomatisch (Cold-Sync inklusive).
 
 ## 4. Technische Regeln (eingehalten)
 
@@ -116,11 +137,13 @@ Events auf dem NEU-Bus: `ciel.registry.snapshot`, `ciel.gate.decision`,
    damit die Stdlib-only-Laufzeit nie bricht), vollständige Python-3.11+-Hints.
 3. **Sandbox-Safety:** `asyncio.wait_for` + Error-Catching pro Tool-Call
    (`sandbox_agent.execute_tool`, Gate-Bypass, Makro-Pipeline).
-4. **TDD:** `tests/test_ciel_integration.py` — 11 Tests, grün **mit wie ohne**
+4. **TDD:** `tests/test_ciel_integration.py` — 14 Tests, grün **mit wie ohne**
    pydantic (Fallback per Import-Blockade verifiziert).
+5. **Non-Blocking Telemetry:** Graph-Events via Queue + Worker (`drain()`/
+   `close()` für Shutdown/Tests); volle Queue droppt gezählt, blockiert nie.
 
 ```bash
-python3 -m pytest tests/test_ciel_integration.py -q   # 11 passed
+python3 -m pytest tests/test_ciel_integration.py -q   # 14 passed
 python3 -m pytest tests/ -q                            # Bestand + Ciel grün
 pip install -e '.[ciel]'                               # optional: pydantic v2
 ```
