@@ -15,6 +15,11 @@ neural-orchestrator/
 ├── evals/tests/                      # Pytest-Integrationssuite
 ├── src/                              # TypeScript-Middleware
 │   └── learning/                     # Continuous-Learning-Engine
+├── core/                             # NEU: Protokoll, Policy, Kernel, Job
+├── orchestrator/                     # NEU: Planner, Runner, Scheduler, UDS
+├── limbs/                            # NEU: echo, bootstrap, rea, trading
+├── protocol/                         # NEU: PROTOCOL.md + JSON-Schemas
+├── docs/                             # Dokumentation — Einstieg: docs/INDEX.md
 └── dist/                             # Kompilierte JavaScript-Ausgabe
 ```
 
@@ -194,11 +199,61 @@ CLI). `/ops` bleibt als Widget-Grid erreichbar.
 ```bash
 cd frontend
 npx next dev -H 0.0.0.0 -p 4001   # Apollo-Bühne
-node scripts/ui-test.mjs          # 65 Tests (node --test, ohne Framework)
+node scripts/ui-test.mjs          # 69 Tests (node --test, ohne Framework)
 npx tsc --noEmit && npm run build
 ```
 
 Details: [`docs/APOLLO-CORE.md`](docs/APOLLO-CORE.md)
+
+## Trading-Limb: Sigma als Handels-Knoten
+
+Sigma ([Finnlayy/Sigma](https://github.com/Finnlayy/Sigma)) ist die
+deterministische Handels-Engine: TradingView-Scraper, tvremix/TradingView-MCP
+mit CSV-Interchange, DuckDB/Parquet-Lake und 912 grüne Tests. Was Sigma nicht
+hat, ist ein Orchestrator — genau das, was NEU besitzt.
+
+Der Limb `trading` ist die Naht, **kein Fork**: Am Donor wird nichts gepatcht,
+Sigmas Suite bleibt der Vertrag. Der Limb pinnt einen Commit und spricht nur
+öffentliche `/api/*`-Routen an.
+
+```
+Intent  →  trading_limb  →  stdlib urllib  →  Sigma-Worker (uvicorn)
+        ←  Result        ←                   ←
+```
+
+| Operation | Wirkung |
+|---|---|
+| `trading.ping` | installiert? läuft der Worker? |
+| `trading.install` | Sparse-Clone auf Pin, venv, Dependencies |
+| `trading.start` / `trading.stop` | Worker als eigene Prozessgruppe |
+| `trading.status` | Health + Lake-Inventar |
+| `trading.lake_summary` / `trading.lake_compact` | Parquet-Lake |
+| `trading.backtest_run` | Backtest über den TV-MCP-CSV-Pfad |
+
+```bash
+python3 limbs/trading_limb.py --intent <intent.json>
+```
+
+Die Installation holt **2,2 MB statt 818 MB** (`--filter=blob:none --sparse`)
+und dauert ~32 s; der Worker startet in ~2 s. Details, Nachweise und die
+Fehlerbilder: [`docs/TRADING-LIMB.md`](docs/TRADING-LIMB.md).
+
+## Dokumentation
+
+| Einstieg | Inhalt |
+|---|---|
+| [`docs/INDEX.md`](docs/INDEX.md) | **Beginnen Sie hier** — Lesepfade und Statusmatrix |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Schichten, Grenzen, Entscheidungslog |
+| [`docs/NEU.md`](docs/NEU.md) | Kern, Orchestrator, Limbs |
+| [`docs/APOLLO-CORE.md`](docs/APOLLO-CORE.md) | Orb, Neuralgraph, Deck, Terminal |
+| [`docs/OPS-GRID.md`](docs/OPS-GRID.md) | Widget-Grid unter `/ops` |
+| [`docs/DATA-FLOW.md`](docs/DATA-FLOW.md) | Marktdaten, Telemetrie, Speicherformate |
+| [`docs/TRADING-LIMB.md`](docs/TRADING-LIMB.md) | Sigma-Worker |
+| [`docs/API.md`](docs/API.md) | HTTP-Routen und Fehlerverträge |
+| [`docs/TESTING.md`](docs/TESTING.md) | 360 + 69 Tests, Audit, Merge-Gates |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Ports, Env, Prozesse, Troubleshooting |
+| [`protocol/PROTOCOL.md`](protocol/PROTOCOL.md) | **normativ**: Intent/Result 1.2 |
+| [`CHANGELOG.md`](CHANGELOG.md) | Änderungen je Merge |
 
 ## Continuous Learning Loop
 

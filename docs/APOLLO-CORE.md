@@ -103,7 +103,7 @@ into `.test-build/` and runs the plain-JS tests under `node --test`:
 
 ```bash
 cd frontend
-node scripts/ui-test.mjs     # 65 tests (Apollo + existing ops suite)
+node scripts/ui-test.mjs     # 69 tests (Apollo + existing ops suite)
 npx tsc --noEmit
 npm run build
 ```
@@ -141,3 +141,122 @@ opaque, scrollable two-column node board with the corner HUD and the axon legend
 hidden (they belong to the radial scene). Before the `ResizeObserver` reports a
 size the graph assumes a nominal 1440 × 720 scene, so the server and the first
 client render agree and hydration stays clean.
+
+## Interaktion und Barrierefreiheit
+
+Diese Punkte sind nicht offensichtlich im Code und wurden im Browser verifiziert.
+
+### Deck (Modal)
+
+`ApolloDeck.tsx` ist ein echter Dialog, kein gestylter Container:
+
+| Eigenschaft | Umsetzung |
+|---|---|
+| Fokus beim Öffnen | `dialog.focus()` — der Dialog ist `tabIndex={-1}` |
+| Fokusfalle | Capture-Phase-`keydown` auf **Tab** *und* **Shift+Tab**, inklusive Fokus-Wiederherstellung, falls der Fokus entwischt |
+| Schließen | Escape **oder** Klick auf den Scrim |
+| Fokus danach | zurück auf den Trigger (den Orb) |
+| Tabs | `role="tablist"` mit roving `tabIndex`, Pfeiltasten wechseln |
+
+Zwei Fehler, die dabei behoben wurden und leicht zurückkommen:
+
+1. **Backdrop.** Der Handler lag auf dem Overlay mit
+   `target === currentTarget`. Der unscharfe Scrim ist aber ein **eigenes
+   Kind**, also war `target` immer der Scrim und der Vergleich nie wahr.
+   Lösung: Handler am Scrim, `stopPropagation()` am Panel.
+2. **Fokusfalle.** Die Trap-Logik war korrekt; der Fokus blieb nur auf dem
+   Trigger der Bühne, deshalb traf `activeElement === first/last` nie zu.
+   Lösung: Fokus beim Öffnen aktiv in den Dialog setzen.
+
+### Terminal
+
+| Eigenschaft | Wert |
+|---|---|
+| Autofokus | 40 ms nach dem Öffnen (nach der Einblend-Animation) |
+| Copy | `navigator.clipboard` mit `execCommand`-Fallback, danach ein „copied"-Badge |
+| Busy-Gate | während eines Turns sind Senden und `/clear` gesperrt; die Fußzeile zeigt `mid-turn · command held` |
+| Verlauf | ↑/↓, Tab vervollständigt Kommandos |
+
+Das Busy-Gate ist Absicht: ein `/clear` mitten im Turn zerstörte den Kontext,
+aus dem die Antwort gerade gebaut wurde.
+
+### Regler im Deck
+
+**Regel: kein Deck-Regler darf eine Live-Action aufrufen.** Bis auf wenige
+Ausnahmen editieren alle Regler einen **Entwurf** und übernehmen ihn erst mit
+*Apply & hot-reload*. Ein Regler, der live schreibt, während sein `value` aus
+dem unveränderten Entwurf kommt, zeigt einen Thumb, der nicht zur Zahl passt —
+und Escape verwirft dann nichts, weil es nichts zu verwerfen gibt.
+
+Die Routing-Gewichte folgen dem: `patchRouting({ weights: … })` auf den
+Entwurf, normalisierte Vorschau (`rel 29% · spe 14% · int 57%`), Neusortierung
+der Rangliste sofort sichtbar, Escape verwirft, Apply schreibt in den Router.
+
+Ausnahme: der **Quota-Drain** ist bewusst live (er simuliert den Verbrauch),
+schreibt aber nur den Router — nicht `config`.
+
+### Der Update-Depth-Fehler
+
+`store.setQuota` schrieb den Quotienten zusätzlich nach `config`. Der
+Seed-Effect des Decks war auf `config` geschlüsselt — jeder Slider-Tick
+erzeugte also ein neues `config`-Objekt, setzte den Entwurf zurück und löste
+einen zusätzlichen synchronen Render aus. Nach ~40–60 Tastatur-Wiederholungen
+überschritt React sein Verschachtelungslimit:
+
+```
+Maximum update depth exceeded
+forceStoreRerender → setState → setQuota → onChange
+```
+
+Behoben durch zwei Änderungen: `setQuota` und `restorePrimary` fassen `config`
+nicht mehr an, und der Seed-Effect ist auf `[open, config]` geschlüsselt statt
+nur auf `open`.
+
+**Warum das lange unentdeckt blieb:** Einzelne Schritte (`a9c`, `a9d`) waren
+immer grün. Erst **60 Ticks in Folge** lösten den Fehler aus. `a9f-bisect.mjs`
+ist deshalb das Regressionstor — wer es entfernt, verliert die einzige
+Abdeckung für diese Klasse.
+
+## Geometrie des Rings
+
+| Größe | Wert |
+|---|---|
+| Karte | 196 × 96 px (Hover: 202 × 132) |
+| Ring | `RING {rx: 0.405, ry: 0.355}` der kurzen Kante |
+| Klemmung | `w/2 − 112`, `h/2 − 62` |
+| Kompakt | unter 720 px Breite: Spalte, Axone entfallen |
+| Board | wenn selbst die kleinste Kartenstufe kollidiert |
+
+Die Kartenstufen sind 196 → 180 → 165 → 149 px. Skaliert wird eine **innere**
+Box, nicht die positionierte: eine Skalierung der äußeren Box verschiebt die
+Karte zusätzlich um den `translate`-Anteil und ließ sie ~98 px neben ihrem
+Ringplatz landen.
+
+## HUD-Klemmung
+
+Die Ecken-Chips weichen dem Orb aus, statt ihn zu überdecken. Gemessene Werte
+(Orb-Breite / verfügbarer Platz):
+
+| Viewport | Orb | Platz |
+|---|---:|---:|
+| 1440×900 | 930 | 1170 |
+| 1100×800 | 760 | 1000 |
+| 1000×900 | 710 | 950 |
+| 900×900 | 644 | 884 |
+| 834×1112 | 578 | 818 |
+| 768×1024 | 512 | 752 |
+| 390×844 | 134 | 374 |
+
+Der Orb ist `min(78vmin, 520px, 84vw)`.
+
+## Terminal-Ausgabe
+
+Der Terminal-Log ist **kein** Chatprotokoll, sondern eine Mischung:
+
+| Ansicht | Inhalt |
+|---|---|
+| Unified | Chat-Blasen (du / Apollo), Dispatch-Zeilen, Node-Ereignisse |
+| Raw log | dieselben Einträge ohne Gruppierung, mit Zeitstempel und Origin |
+
+Fehlerhafte Kommandos bekommen einen `hint` („did you mean `/router`?") und
+werden einklappbar angezeigt, statt die Sitzung zu fluten.
