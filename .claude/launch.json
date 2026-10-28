@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "nio-api",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["dist/server.js"],
+      "env": { "HOST": "127.0.0.1", "PORT": "4000" },
+      "port": 4000
+    },
+    {
+      "name": "nio-ui",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "port": 4001
+    }
+  ]
+}

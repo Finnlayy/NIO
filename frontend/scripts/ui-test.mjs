@@ -36,6 +36,7 @@ const entries = [
   "ops/widgets/NewsSentiment.tsx",
   "ops/hotkeys.ts",
   "ops/hooks/useMarketData.ts",
+  "server/telemetryBridge.ts",
   "data/network.ts",
   /* Apollo core: pure router/layout/command modules + the zustand store. */
   "apollo/catalog.ts",
