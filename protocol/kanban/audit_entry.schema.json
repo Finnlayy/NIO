@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AuditEntry",
+  "type": "object",
+  "properties": {
+    "seq": {
+      "type": "integer"
+    },
+    "ts": {
+      "type": "string"
+    },
+    "actor": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "subject": {
+      "type": "string"
+    },
+    "payload": {
+      "type": "object"
+    },
+    "prev_hash": {
+      "type": "string"
+    },
+    "entry_hash": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "seq",
+    "ts",
+    "actor",
+    "action",
+    "category",
+    "subject",
+    "payload",
+    "prev_hash",
+    "entry_hash"
+  ],
+  "additionalProperties": false
+}
