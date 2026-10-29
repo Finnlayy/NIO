@@ -159,6 +159,12 @@ def _iso_ms_z_fast() -> str:
 #: aber Tests, Doku und die CLI ziehen diese Liste heran. Die ``timer.*``-Kinds
 #: ab ``timer.armed`` gehoeren zu Protokoll 1.2 (Zeit-Tracking + Trigger).
 VALID_EVENT_KINDS: tuple[str, ...] = (
+    "board.created",
+    "task.created",
+    "task.transition",
+    "task.completed",
+    "task.blocked",
+    "worker.created",
     "job.created",
     "job.finished",
     "job.aborted",
