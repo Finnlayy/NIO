@@ -35,6 +35,8 @@ dev = ["ruff>=0.16", "mypy>=1.11"]
 # Ciel JIT-Tool-Orchestrator (apollo/ciel): nutzt pydantic v2, wenn vorhanden,
 # läuft ohne aber per Stdlib-Fallback weiter (Tests sind in beiden Modi grün).
 ciel = ["pydantic>=2"]
+# Optionale Kanban-Adapter: fastapi/uvicorn für die API und asyncpg für Postgres.
+kanban = ["asyncpg>=0.29", "fastapi>=0.110", "uvicorn>=0.29", "pydantic>=2"]
 
 [project.scripts]
 neu = "orchestrator.cli:main"
@@ -44,7 +46,10 @@ Homepage = "https://github.com/Finnlayy/NIO"
 
 [tool.setuptools]
 # Nur die Python-Pakete; src/, evals/, frontend/ gehoeren zum Legacy-Harness.
-packages = ["core", "orchestrator", "limbs", "apollo", "apollo.ciel"]
+packages = ["core", "orchestrator", "orchestrator.kanban", "limbs", "apollo", "apollo.ciel"]
+
+[tool.setuptools.package-data]
+"orchestrator.kanban" = ["sql/*.sql"]
 
 # ----------------------------------------------------------------------------
 # Lint / Format: ruff

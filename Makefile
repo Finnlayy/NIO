@@ -12,7 +12,7 @@ PYTHON ?= python3
 RUNTIME ?= $(CURDIR)/runtime
 
 .DEFAULT_GOAL := help
-.PHONY: help test test-core test-architect test-frontend ui-test test-verbose lint lint-fix types compile e2e check demo clean rea-demo rea-recover rea-status rea-probe rust-test
+.PHONY: help test test-core test-architect test-frontend ui-test test-verbose lint lint-fix types compile e2e check demo clean rea-demo rea-recover rea-status rea-probe rust-test e2e-kanban
 
 help:  ## Diese Uebersicht
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -67,6 +67,9 @@ ui-test:  ## Frontend-UI-Tests (Zero-Dep-Harness: tsc + node --test, kein DOM)
 	else \
 		node frontend/scripts/ui-test.mjs; \
 	fi
+
+e2e-kanban:  ## End-to-End-Beweis fuer Kanban (WP-09)
+	$(PYTHON) scripts/ci_e2e_kanban.py
 
 check: compile lint types test ui-test e2e  ## Das volle Tor (wie in CI)
 	@echo "check: alles gruen"
