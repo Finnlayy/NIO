@@ -20,6 +20,7 @@ export function TechnicalGauge({ data, symbol }: { data: Record<string, unknown>
     { symbol: toTvSymbol(symbol), interval: "60" },
     sim,
     180_000,
+    data.refreshedAt,
   );
   const g = live;
   if (!g) return null;

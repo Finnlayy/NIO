@@ -1,16 +1,16 @@
 /* ------------------------------------------------------------------ */
-/* tvremix MCP client — Streamable HTTP transport (server-side only)   */
-/* Talks JSON-RPC to the hosted MCP endpoint. The API key never leaves  */
-/* the server; browsers talk to /api/market/* routes instead.          */
+/* TradingView MCP client — Streamable HTTP transport (server-side)    */
+/* Talks JSON-RPC to the official MCP (mcp.tradingview.com). Auth is   */
+/* an OAuth bearer from ./oauth; the token never leaves the server,    */
+/* browsers talk to /api/market/* routes instead.                      */
 /* ------------------------------------------------------------------ */
 
-const MCP_URL = process.env.TVREMIX_MCP_URL ?? "https://tvremix.xyz/api/mcp/v1";
-const API_KEY = process.env.TVREMIX_API_KEY ?? "";
+import { MCP_URL, clearTokens, getAccessToken, refreshAccessToken } from "./oauth";
 
 let sessionId: string | null = null;
 let initPromise: Promise<void> | null = null;
 
-/** Minimal TTL cache so the 20/min · 200/hr · 1500/day limits are respected. */
+/** Minimal TTL cache so upstream rate limits are respected. */
 const cache = new Map<string, { at: number; ttl: number; value: unknown }>();
 
 export function cachedGet<T>(key: string): T | undefined {
@@ -53,13 +53,14 @@ function parseMcpBody(raw: string): any | null {
   }
 }
 
-async function rpc(method: string, params: Record<string, unknown>): Promise<any> {
-  if (!API_KEY) {
-    throw new McpError(503, "TVREMIX_API_KEY not configured");
+async function rpc(method: string, params: Record<string, unknown>, retried = false): Promise<any> {
+  const token = await getAccessToken();
+  if (!token) {
+    throw new McpError(503, "TradingView not connected — open /api/market/oauth/start");
   }
 
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${API_KEY}`,
+    Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
     Accept: "application/json, text/event-stream",
   };
@@ -71,6 +72,18 @@ async function rpc(method: string, params: Record<string, unknown>): Promise<any
     body: JSON.stringify({ jsonrpc: "2.0", id: Math.floor(Math.random() * 1e9), method, params }),
     cache: "no-store",
   });
+
+  // Expired token: refresh once and replay; a refused refresh means re-login.
+  if (res.status === 401 && !retried) {
+    if (await refreshAccessToken()) return rpc(method, params, true);
+    clearTokens();
+    throw new McpError(401, "TradingView session expired — open /api/market/oauth/start");
+  }
+  // Unknown session (server restarted): drop it so the next call re-initializes.
+  if (res.status === 404 && sessionId) {
+    sessionId = null;
+    initPromise = null;
+  }
 
   const newSession = res.headers.get("mcp-session-id");
   if (newSession) sessionId = newSession;
@@ -88,6 +101,24 @@ async function rpc(method: string, params: Record<string, unknown>): Promise<any
   return payload.result;
 }
 
+/** Spec handshake step 2; stateless servers may ignore it, so failures are swallowed. */
+async function notifyInitialized() {
+  const token = await getAccessToken();
+  if (!token) return;
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+  };
+  if (sessionId) headers["Mcp-Session-Id"] = sessionId;
+  await fetch(MCP_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+    cache: "no-store",
+  }).catch(() => undefined);
+}
+
 /** Lazily initialize the MCP session once per server process. */
 async function ensureSession() {
   if (sessionId) return;
@@ -96,11 +127,7 @@ async function ensureSession() {
       protocolVersion: "2025-03-26",
       capabilities: {},
       clientInfo: { name: "nio-ops-grid", version: "1.0.0" },
-    }).then((result) => {
-      if (result?.serverInfo) {
-        // notifications/initialized is optional for stateless servers; ignore failures.
-      }
-    });
+    }).then(() => notifyInitialized());
   }
   try {
     await initPromise;
@@ -127,9 +154,11 @@ export async function callTool(
   name: string,
   args: Record<string, unknown>,
   ttlMs = 60_000,
+  fresh = false,
 ): Promise<unknown> {
   const cacheKey = `tool:${name}:${JSON.stringify(args)}`;
-  const cached = cachedGet<unknown>(cacheKey);
+  // fresh: a manual widget refresh skips the read but still refills the cache.
+  const cached = fresh ? undefined : cachedGet<unknown>(cacheKey);
   if (cached !== undefined) return cached;
 
   await ensureSession();

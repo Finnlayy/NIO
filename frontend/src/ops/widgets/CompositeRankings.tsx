@@ -9,6 +9,7 @@ export function CompositeRankings({ data }: { data: Record<string, unknown> }) {
     { market: "crypto", limit: "10" },
     simRows,
     300_000,
+    data.refreshedAt,
   );
 
   return (

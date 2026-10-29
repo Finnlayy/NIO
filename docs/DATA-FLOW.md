@@ -5,7 +5,7 @@ ein toter Feed darf nie durch einen gesunden maskiert werden — jedes Widget
 zeigt sein eigenes Badge.
 
 ```
-tvremix MCP  ──►  /api/market/[tool]  ──►  useMarketData()  ──►  SVG-Widgets
+TradingView MCP ─► /api/market/[tool]  ──►  useMarketData()  ──►  SVG-Widgets
 (Preise)          (Adapter, TTL)            (Merge mit Sim)
 
 Python-Engine ──►  runtime/telemetry.sock ──► /api/telemetry/stream ──► SSE
@@ -15,55 +15,75 @@ Python-Engine ──►  runtime/telemetry.sock ──► /api/telemetry/stream 
 
 ---
 
-## 1. Preisdaten: tvremix MCP
+## 1. Preisdaten: offizieller TradingView-MCP
 
-### Transport
+### Transport und Anmeldung
 
-Die Route spricht **serverseitig** JSON-RPC 2.0 über „Streamable HTTP". Der
-API-Key verlässt den Server nie.
+Die Route spricht **serverseitig** JSON-RPC 2.0 über „Streamable HTTP" mit
+`https://mcp.tradingview.com/mcp` (überschreibbar per `TRADINGVIEW_MCP_URL`).
+Der Server verlangt **OAuth 2.1** statt eines API-Keys
+(`src/server/tradingview/oauth.ts`):
+
+1. Discovery: `/.well-known/oauth-protected-resource/mcp` → Autorisierungsserver
+   `https://www.tradingview.com` → dessen RFC-8414-Metadaten.
+2. Einmalige Dynamic Client Registration (öffentlicher Client, PKCE).
+3. Login im Browser: `GET /api/market/oauth/start` → TradingView →
+   `GET /api/market/oauth/callback` → zurück auf `/ops?tradingview=connected`.
+   Beide Routen antworten nur über `localhost` (die Redirect-URI ist für diese
+   Maschine registriert).
+4. Access- und Refresh-Token liegen in `frontend/.tradingview-oauth.json`
+   (Modus 0600, gitignoriert; Pfad per `TRADINGVIEW_OAUTH_STORE`). Ablaufende
+   Tokens werden automatisch erneuert; ein abgelehnter Refresh löscht sie, dann
+   ist ein neuer Login nötig.
 
 ```http
-POST https://tvremix.xyz/api/mcp/v1
-Authorization: Bearer $TVREMIX_API_KEY
+POST https://mcp.tradingview.com/mcp
+Authorization: Bearer <OAuth-Access-Token>
 Accept: application/json, text/event-stream
 Mcp-Session-Id: <vom Server zurückgegeben>
 Content-Type: application/json
 
-{"jsonrpc":"2.0","id":12345,"method":"tools/call","params":{"name":"get_ohlcv","arguments":{…}}}
+{"jsonrpc":"2.0","id":12345,"method":"tools/call","params":{"name":"mcp-tv-get-ohlcv","arguments":{…}}}
 ```
 
-Zwei Eigenheiten, die der Client abfängt (`src/server/tvremix/client.ts`):
+Der Client (`src/server/tradingview/client.ts`) akzeptiert Antworten als JSON
+oder SSE (`data:`-Zeilen), wiederholt bei 401 einmal nach einem Refresh und
+verwirft die Session bei 404 (Server-Neustart).
 
-1. **Die Antwort darf SSE sein.** `parseMcpBody()` akzeptiert sowohl reines
-   JSON als auch `data:`-Zeilen (Streamable-HTTP erlaubt beides).
-2. **Die Argumentnamen sind nicht fest.** `smartCall()`
-   (`server/tvremix/args.ts`) liest das `inputSchema` des Tools und bildet die
-   kanonischen Parameter auf die tatsächlich deklarierten ab:
+### Tool-Zuordnung
 
-   | kanonisch | akzeptierte Server-Namen (Regex) |
-   |---|---|
-   | `symbol` | `symbol`, `ticker`, `instrument`, `pair`, `security`, `s` |
-   | `interval` | `interval`, `timeframe`, `resolution`, `period`, `tf`, `barsize` |
-   | `limit` | `limit`, `bars`, `count`, `n`, `maxbars`, `rows`, `quantity` |
-   | `market` | `market`, `assetclass`, `asset_class`, `type`, `exchange`, `universe` |
+Feste Namen aus `src/server/tradingview/tools.ts`:
 
-### Rohe Antwort ist untypisiert
+| Route | MCP-Tool | Argumente |
+|---|---|---|
+| `quote` | `mcp-tv-get-symbol-data` | `symbol` |
+| `quotes` | `mcp-tv-get-symbol-data-batch` | `symbols` (≤ 50, ein Aufruf) |
+| `ohlcv` | `mcp-tv-get-ohlcv` | `symbol`, `interval`, `count` |
+| `technicals` | `mcp-tv-get-technicals-rating` | `symbol`, `interval` |
+| `news` | `mcp-tv-get-news` | `symbol`, `limit` |
+| `screener` | `mcp-tv-run-screener` | `market=crypto`, `filter_preset=relative_strength` |
 
-Der Adapter (`server/tvremix/adapters.ts`) probiert mehrere Feldnamen, weil die
-Upstream-Form nicht garantiert ist:
+Intervalle im alten Chart-Format (`60`, `240`, `D`) werden auf das MCP-Vokabular
+(`1h`, `4h`, `1D`) abgebildet. Der generische Durchreich (`/api/market/<tool>`)
+erreicht **nur Lese-Tools** (`mcp-tv-get-*`, `-list-*`, `-search-*`); Alarm- und
+Watchlist-Schreibtools antworten mit 403, weil sie das TradingView-Konto ändern.
 
-```ts
-raw.bars ?? raw.ohlcv ?? raw.candles ?? raw.data ?? raw      // Balkenliste
-bar.close ?? bar.c ?? bar.closePrice ?? bar.price             // Schlusskurs
-```
+### Rohe Antwort
+
+Der Adapter (`server/tradingview/adapters.ts`) liest die Formen des offiziellen
+Servers (`bars[].c`, `summary.recommendation`/`value`, `headlines[]`,
+`rows[]` mit `Recommend.All`) und fällt für ältere Formen auf mehrere Feldnamen
+zurück. Liefert der Server keine Kauf-/Verkaufs-Zählung, berechnet
+`countSignals()` sie aus den Roh-Indikatoren (Preis vs. gleitende Durchschnitte,
+Oszillator-Schwellen).
 
 ### Was beim Browser ankommt
 
 Jede Route liefert denselben Umschlag:
 
 ```jsonc
-{ "ok": true,  "source": "tvremix", "data": { … } }
-{ "ok": false, "source": "error",   "error": "TVREMIX_API_KEY not configured" }
+{ "ok": true,  "source": "tradingview", "data": { … } }
+{ "ok": false, "source": "error",       "error": "TradingView not connected — open /api/market/oauth/start" }
 ```
 
 | Route | `data` |
@@ -249,8 +269,8 @@ Speicherformat — und bewusst nicht Teil des Trading-Limbs.
 
 | Symptom | Ursache | Abhilfe |
 |---|---|---|
-| Alle Widgets zeigen `SIM` | `TVREMIX_API_KEY` fehlt | Key setzen; MCP-Limits beachten |
-| `503 TVREMIX_API_KEY not configured` | erwartet ohne Key | fail-closed, kein Bug |
+| Alle Widgets zeigen `SIM` | TradingView nicht verbunden | `/api/market/oauth/start` öffnen (Badge auf `/ops` anklicken) |
+| `503 TradingView not connected` | erwartet ohne Login | fail-closed, kein Bug |
 | `502 No live quotes returned` | alle Einzelquotes scheiterten | Netz oder Limit prüfen |
 | `502 upstream_not_openai_compatible` (Apollo) | Endpoint antwortet, aber nicht als OpenAI-Completion | Endpoint-URL prüfen |
 | Telemetrie dauerhaft `stale` | Produzent läuft nicht | `Architect/limbs/telemetry_feed.py` starten |

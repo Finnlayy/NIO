@@ -137,7 +137,8 @@ export default function OpsGridPage() {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <span
+          <a
+            href={dataSource === "sim" ? "/api/market/oauth/start" : undefined}
             className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wide border ${
               dataSource === "live"
                 ? "text-emerald-300 border-emerald-400/25 bg-emerald-400/10"
@@ -147,10 +148,10 @@ export default function OpsGridPage() {
             }`}
             title={
               dataSource === "live"
-                ? "Live TradingView data via tvremix MCP"
+                ? "Live data via the official TradingView MCP"
                 : dataSource === "sim"
-                  ? "tvremix unreachable — showing simulated data"
-                  : "Checking tvremix connection…"
+                  ? "TradingView not connected — click to sign in; showing simulated data"
+                  : "Checking TradingView connection…"
             }
           >
             <span
@@ -158,8 +159,8 @@ export default function OpsGridPage() {
                 dataSource === "live" ? "bg-emerald-400 pulse-dot" : dataSource === "sim" ? "bg-amber-400" : "bg-slate-500 animate-pulse"
               }`}
             />
-            {dataSource === "live" ? "tvremix · Live" : dataSource === "sim" ? "Simulated" : "Connecting"}
-          </span>
+            {dataSource === "live" ? "TradingView · Live" : dataSource === "sim" ? "Simulated" : "Connecting"}
+          </a>
           <Link
             href="/apollo"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-cyan-400/25 bg-cyan-400/[0.07] text-cyan-200 hover:bg-cyan-400/15 transition-colors"

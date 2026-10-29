@@ -198,7 +198,8 @@ export function dispatchRefresh(widget: WidgetInstance) {
     title: widget.title,
     symbol: widget.symbol,
     span: widget.span,
-    data: tpl.dataFactory(),
+    // refreshedAt is the refreshKey live widgets hand to useMarketData.
+    data: { ...tpl.dataFactory(), refreshedAt: Date.now() },
   });
 }
 

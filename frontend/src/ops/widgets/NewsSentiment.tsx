@@ -15,6 +15,7 @@ export function NewsSentiment({ data, symbol }: { data: Record<string, unknown>;
     { symbol: toTvSymbol(symbol), limit: "8" },
     simItems,
     300_000,
+    data.refreshedAt,
   );
   const items = liveItems.length ? liveItems : simItems;
 

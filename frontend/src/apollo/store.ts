@@ -158,7 +158,7 @@ export const DEFAULT_CONFIG: ApolloConfiguration = {
     providers: SEED_KEYS.map((key) => ({ ...key })),
     fallbackChain: SEED_CANDIDATES.map((candidate) => ({ ...candidate })),
   },
-  activeMcpServers: ["tvremix", "filesystem", "neu-limb"],
+  activeMcpServers: ["tradingview", "filesystem", "neu-limb"],
   systemDirective:
     "Operate as NIO's Apollo core: decompose the objective, dispatch only to nodes that can produce evidence, keep the context handoff note under 900 characters, and synthesise results instead of opinions.",
 };
