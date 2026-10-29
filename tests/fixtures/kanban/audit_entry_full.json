@@ -1,0 +1,13 @@
+{
+  "seq": 2,
+  "ts": "2026-10-29T16:15:12.224Z",
+  "actor": "a",
+  "action": "a",
+  "category": "c",
+  "subject": "s",
+  "payload": {
+    "x": 1
+  },
+  "prev_hash": "p",
+  "entry_hash": "e"
+}
