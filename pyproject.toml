@@ -93,3 +93,8 @@ pretty = true
 [[tool.mypy.overrides]]
 module = ["tests.*"]
 ignore_errors = true
+
+# Optionale Kanban-Adapter (Extra ``kanban``): werden nur lazy importiert.
+[[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*", "uvicorn"]
+ignore_missing_imports = true
