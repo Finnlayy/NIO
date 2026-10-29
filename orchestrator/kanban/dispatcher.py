@@ -14,7 +14,7 @@ from .breaker import CircuitBreaker
 from .bus import HeartbeatStore, LockManager, TokenStore
 from .config import KanbanConfig
 from .decomposer import Decomposer
-from .models import KanbanEvent, KanbanTask, TaskStatus, Worker, WorkerStatus
+from .models import KanbanEvent, KanbanTask, TaskStatus, Worker, WorkerStatus, new_id
 from .sandbox import SandboxRunner, SandboxSpec
 from .store import KanbanStore
 from .sync import sync_back
@@ -80,7 +80,7 @@ class Dispatcher:
                     deps = list(task.dependencies)
 
                 child = KanbanTask(
-                    id=f"{task.id}-{id(spec)}",
+                    id=new_id("t"),
                     title=spec.title,
                     description=spec.description,
                     status=TaskStatus.BACKLOG,
@@ -92,7 +92,8 @@ class Dispatcher:
                 children.append(child)
 
             await self.store.apply_decomposition(task.id, children)
-            await self.service.ledger.append(actor="system", action="task.decomposed", category="task", payload={"task_id": task.id})
+            await self.service.ledger.append(actor="system", action="task.decomposed", category="task", subject=task.id,
+                                              payload={"children": [c.id for c in children]})
             report.decomposed += 1
 
         # 2. Promote

@@ -7,6 +7,7 @@ schreibt die Erfahrung in den Kanban-Store und spiegelt alles in den Obsidian Va
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -124,9 +125,8 @@ async def sync_back(
         try:
             if soul_file.stat().st_size <= 256 * 1024:
                 soul_md = soul_file.read_text("utf-8")
-        except OSError:
-            import logging
-            logging.getLogger(__name__).warning("Vault sync failed due to OSError")
+        except OSError as e:
+            logging.getLogger(__name__).warning("out/SOUL.md nicht lesbar: %s", e)
 
     worker_changes: dict[str, Any] = {}
     if soul_md is not None:
@@ -164,9 +164,11 @@ async def sync_back(
         vault.write_task(task)
 
         await store.mark_vault_synced(exp.id)
-    except OSError:
-        import logging
-        logging.getLogger(__name__).warning("Vault sync failed due to OSError")
+    except (OSError, ValueError) as e:
+        # Der Lauf ist in der DB bereits verbucht; der Vault ist nur Spiegel. Ein
+        # Fehler hier darf den Task nicht scheitern lassen -- der Reaper holt
+        # unsynchronisierte Experiences spaeter nach.
+        logging.getLogger(__name__).warning("Vault-Sync fuer %s ausstehend: %s", exp.id, e)
 
     return RunOutcome(
         status=status,

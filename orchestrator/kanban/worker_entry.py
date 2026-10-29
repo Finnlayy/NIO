@@ -15,7 +15,6 @@ import signal
 import subprocess
 import sys
 import threading
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -130,16 +129,18 @@ def main() -> int:
     signal.signal(signal.SIGTERM, sigterm_handler)
 
     # Heartbeat Daemon
-    def heartbeat_loop() -> None:
-        while True:
-            try:
-                ts = utc_now_iso().encode("utf-8")
-                _atomic_write(ctx.out_dir / "heartbeat", ts)
-            except Exception:
-                pass
-            time.sleep(ctx.heartbeat_s)
+    # Geordnet beenden statt Daemon-Abbruch: sonst kann der Prozess mitten im
+    # Schreiben enden und ``heartbeat.tmp`` liegen lassen.
+    hb_stop = threading.Event()
 
-    threading.Thread(target=heartbeat_loop, daemon=True).start()
+    def heartbeat_loop() -> None:
+        while not hb_stop.is_set():
+            with contextlib.suppress(Exception):
+                _atomic_write(ctx.out_dir / "heartbeat", utc_now_iso().encode("utf-8"))
+            hb_stop.wait(ctx.heartbeat_s)
+
+    hb_thread = threading.Thread(target=heartbeat_loop, daemon=True)
+    hb_thread.start()
 
     try:
         # Inputs lesen
@@ -229,6 +230,8 @@ def main() -> int:
         ctx.experience_lessons.append(str(e))
 
     finally:
+        hb_stop.set()
+        hb_thread.join(timeout=5)
         if ctx.interrupted:
             ctx.status = "interrupted"
             ctx.reason = "SIGTERM"

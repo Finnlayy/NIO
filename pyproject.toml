@@ -98,3 +98,9 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = ["asyncpg", "asyncpg.*", "uvicorn"]
 ignore_missing_imports = true
+
+# Transitiv ueber fastapi/pydantic erreichbare GUI-Stubs (PIL.ImageQt -> PyQt6) sind
+# nicht unser Code und unter neueren Pythons syntaktisch kaputt: nicht verfolgen.
+[[tool.mypy.overrides]]
+module = ["PyQt6", "PyQt6.*", "PyQt5", "PyQt5.*", "PySide6", "PySide6.*", "PIL.ImageQt"]
+follow_imports = "skip"

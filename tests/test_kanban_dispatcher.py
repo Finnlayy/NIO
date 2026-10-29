@@ -116,6 +116,8 @@ class TestDispatcher(unittest.IsolatedAsyncioTestCase):
         tasks = await self.store.list_tasks(board_id=t1.board_id)
         self.assertEqual(len(tasks), 2)
         child = next(c for c in tasks if c.parent_id == t1.id)
+        # Kind-IDs muessen dem normalen Task-ID-Format folgen (der Vault lehnt alles andere ab).
+        self.assertRegex(child.id, r"^t-[0-9a-f]{12}$")
         self.assertEqual((await self.store.get_task(child.id)).status, TaskStatus.READY)
         parent = await self.store.get_task(t1.id)
         self.assertEqual(parent.status, TaskStatus.BACKLOG)

@@ -13,16 +13,17 @@ from typing import TYPE_CHECKING
 
 from core.atomic import atomic_write_bytes
 
+from .models import UID_PATTERN
+
 if TYPE_CHECKING:
     from .models import Experience, KanbanTask
 
 __all__ = ["ObsidianVault", "WorkerHome"]
 
-_UID_PATTERN = re.compile(r"^[a-z0-9-]{3,64}$")
 _TASK_PATTERN = re.compile(r"^t-[0-9a-f]{12}$")
 
 def check_uid(uid: str) -> None:
-    if not _UID_PATTERN.match(uid):
+    if not UID_PATTERN.match(uid):
         raise ValueError(f"Ungültige UID: {uid}")
 
 def check_task_id(task_id: str) -> None:
