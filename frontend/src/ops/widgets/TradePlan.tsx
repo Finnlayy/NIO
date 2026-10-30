@@ -25,10 +25,10 @@ export function TradePlan({ data, symbol }: { data: Record<string, unknown>; sym
         <div className="absolute inset-x-0 top-0 h-[46%] bg-emerald-500/[0.06]" />
         <div className="absolute inset-x-0 bottom-0 h-[30%] bg-rose-500/[0.08]" />
 
-        <Ladder y="8%" label="T2" price={plan.t2} plan={plan} color="#34d399" dashed />
-        <Ladder y="38%" label="T1" price={plan.t1} plan={plan} color="#34d399" dashed />
-        <Ladder y="58%" label="Entry" price={plan.entry} plan={plan} color="#60a5fa" solid dot />
-        <Ladder y="92%" label="Stop" price={plan.stop} plan={plan} color="#f87171" dashed />
+        <Ladder y="8%" label="T2" price={plan.t2} plan={plan} tone="emerald" dashed />
+        <Ladder y="38%" label="T1" price={plan.t1} plan={plan} tone="emerald" dashed />
+        <Ladder y="58%" label="Entry" price={plan.entry} plan={plan} tone="blue" solid dot />
+        <Ladder y="92%" label="Stop" price={plan.stop} plan={plan} tone="rose" dashed />
       </div>
 
       <div className="space-y-0">
@@ -42,12 +42,36 @@ export function TradePlan({ data, symbol }: { data: Record<string, unknown>; sym
   );
 }
 
+const toneMap = {
+  emerald: {
+    text: "text-emerald-400",
+    border: "border-emerald-400/40",
+    borderSolid: "border-emerald-400/30",
+    line: "border-emerald-400/60",
+    dot: "bg-emerald-400",
+  },
+  blue: {
+    text: "text-blue-400",
+    border: "border-blue-400/40",
+    borderSolid: "border-blue-400/30",
+    line: "border-blue-400/60",
+    dot: "bg-blue-400",
+  },
+  rose: {
+    text: "text-rose-400",
+    border: "border-rose-400/40",
+    borderSolid: "border-rose-400/30",
+    line: "border-rose-400/60",
+    dot: "bg-rose-400",
+  },
+};
+
 function Ladder({
   y,
   label,
   price,
   plan,
-  color,
+  tone,
   dashed,
   solid,
   dot,
@@ -56,27 +80,26 @@ function Ladder({
   label: string;
   price: number;
   plan: TradePlanData;
-  color: string;
+  tone: "emerald" | "blue" | "rose";
   dashed?: boolean;
   solid?: boolean;
   dot?: boolean;
 }) {
+  const styles = toneMap[tone];
+
   return (
     <div className="absolute inset-x-0 flex -translate-y-1/2 items-center" style={{ top: y }}>
       <span
-        className="px-1.5 py-0.5 rounded text-[9px] font-bold border shrink-0 z-10"
-        style={{ color, borderColor: `${color}66`, background: "rgba(9,11,18,0.9)" }}
+        className={`px-1.5 py-0.5 rounded text-[9px] font-bold border shrink-0 z-10 bg-[#0a0a0c]/80 backdrop-blur-md ${styles.text} ${styles.border}`}
       >
         {label}
       </span>
       <span
-        className={`flex-1 ${dashed ? "border-t border-dashed" : solid ? "border-t-2" : ""}`}
-        style={{ borderColor: `${color}aa` }}
+        className={`flex-1 ${dashed ? "border-t border-dashed" : solid ? "border-t-2" : ""} ${styles.line}`}
       />
-      {dot && <span className="w-2 h-2 rounded-full mr-1" style={{ background: color }} />}
+      {dot && <span className={`w-2 h-2 rounded-full mr-1 ${styles.dot}`} />}
       <span
-        className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold shrink-0 z-10"
-        style={{ color, border: `1px solid ${color}55`, background: "rgba(9,11,18,0.9)" }}
+        className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold shrink-0 z-10 border bg-[#0a0a0c]/80 backdrop-blur-md ${styles.text} ${styles.borderSolid}`}
       >
         {fmt(price, plan.decimals)}
       </span>
