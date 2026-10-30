@@ -167,6 +167,7 @@ export default function OpsGridPage() {
           >
             <GitBranch className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Apollo stage</span>
+            <span className="sr-only sm:hidden">Apollo stage</span>
           </Link>
           <button
             onClick={() => setConsoleOpen(!consoleOpen)}
@@ -178,6 +179,7 @@ export default function OpsGridPage() {
           >
             <Radio className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">MCP Bus <kbd className="ml-1 opacity-50 font-sans">Ctrl/⌘K</kbd></span>
+            <span className="sr-only sm:hidden">MCP Bus</span>
           </button>
           <button
             onClick={exportLayout}
@@ -185,6 +187,7 @@ export default function OpsGridPage() {
           >
             <Download className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Export</span>
+            <span className="sr-only sm:hidden">Export</span>
           </button>
           <button
             onClick={() => setGalleryOpen(true)}
