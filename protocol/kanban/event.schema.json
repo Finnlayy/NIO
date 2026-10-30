@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KanbanEvent",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "board_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "worker_uid": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "payload": {
+      "type": "object"
+    },
+    "ts": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "task_id",
+    "board_id",
+    "status",
+    "worker_uid",
+    "payload",
+    "ts"
+  ],
+  "additionalProperties": false
+}

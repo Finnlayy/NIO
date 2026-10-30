@@ -1750,6 +1750,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_scale.add_argument("--approved-by", default="core", choices=("core", "human"))
     p_scale.set_defaults(func=cmd_scale)
 
+    from orchestrator.kanban.cli import add_kanban_parser
+    add_kanban_parser(sub, _NeuArgumentParser)
+
     return parser
 
 

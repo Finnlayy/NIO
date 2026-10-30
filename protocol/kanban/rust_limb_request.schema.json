@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RustLimbRequest",
+  "type": "object",
+  "properties": {
+    "request_id": {
+      "type": "string"
+    },
+    "operation": {
+      "type": "string"
+    },
+    "params": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "request_id",
+    "operation",
+    "params"
+  ],
+  "additionalProperties": false
+}
