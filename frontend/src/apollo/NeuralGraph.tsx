@@ -437,7 +437,7 @@ function NodeCard({
       />
 
       <div
-        className={`relative ${fluid ? "w-full" : "w-[196px]"} rounded-xl border px-3 py-2.5 backdrop-blur-md transition-all duration-500 ${
+        className={`relative ${fluid ? "w-full" : "w-[196px]"} rounded-xl border px-3 py-2.5 backdrop-blur-md transition duration-500 ${
           spawning ? "apollo-crystallise" : "opacity-100"
         }`}
         style={{
