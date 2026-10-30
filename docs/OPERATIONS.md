@@ -10,7 +10,7 @@ antwortet.
 | Dienst | Port | Bindung | Start |
 |---|---:|---|---|
 | Next-UI (Apollo-Bühne, `/ops`) | **4001** | `0.0.0.0` | `npm run ui:dev` |
-| Orchestrator-API | 4000 | `127.0.0.1` | `npm run start` (nach `npm run build`) |
+| Orchestrator-API | 4000 | `127.0.0.1` | `HOST=127.0.0.1 npm run start` (Default-Host im Code: `0.0.0.0`, ohne Auth) |
 | Sigma-Worker (Trading-Limb) | **8731** | `127.0.0.1` | `trading.start` |
 | Sigma-Scraper (Sidecar) | 8001 | `127.0.0.1` | im Worker erwartet, nicht gestartet |
 
