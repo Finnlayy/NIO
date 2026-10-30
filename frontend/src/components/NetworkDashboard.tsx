@@ -79,7 +79,9 @@ export default function NetworkDashboard() {
       networkNodes
         .filter((node) => {
           const matchesFilter =
-            activeFilter === "all" || node.domain === activeFilter || node.kind === "core";
+            activeFilter === "all" ||
+            node.domain === activeFilter ||
+            node.kind === "core";
           const matchesSearch =
             query.length === 0 ||
             node.label.toLowerCase().includes(query) ||
@@ -91,22 +93,20 @@ export default function NetworkDashboard() {
     );
   }, [activeFilter, search]);
 
-  const selectNode = useCallback(
-    (nodeId: string) => {
-      setSelectedId(nodeId);
-      const preset = taskPresets[nodeId];
-      if (preset) {
-        setTaskText(preset.taskDescription);
-        setIsComplex(preset.isComplexWorkflow);
-      }
-    },
-    [],
-  );
+  const selectNode = useCallback((nodeId: string) => {
+    setSelectedId(nodeId);
+    const preset = taskPresets[nodeId];
+    if (preset) {
+      setTaskText(preset.taskDescription);
+      setIsComplex(preset.isComplexWorkflow);
+    }
+  }, []);
 
   function changeFilter(id: DomainId | "all") {
     setActiveFilter(id);
     if (id !== "all") {
-      const label = domainFilters.find((filter) => filter.id === id)?.label ?? id;
+      const label =
+        domainFilters.find((filter) => filter.id === id)?.label ?? id;
       log({ label: "Domain filter applied", detail: label, status: "trace" });
     }
   }
@@ -152,8 +152,11 @@ export default function NetworkDashboard() {
         status: "success",
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not reach API";
-      setResult(`API error: ${message}. Start the backend with npm start in the repo root.`);
+      const message =
+        error instanceof Error ? error.message : "Could not reach API";
+      setResult(
+        `API error: ${message}. Start the backend with npm start in the repo root.`,
+      );
       setRunState("error");
       log({ label: "Routing failed", detail: message, status: "error" });
     } finally {
@@ -207,16 +210,28 @@ export default function NetworkDashboard() {
             onRun={() => void runTask()}
           />
           <div className="md:col-span-2 xl:col-span-1">
-            <InspectorTile node={selectedNode} dimmed={false} hasPreset={Boolean(selectedPreset)} />
+            <InspectorTile
+              node={selectedNode}
+              dimmed={false}
+              hasPreset={Boolean(selectedPreset)}
+            />
           </div>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
           <div className="xl:col-span-2">
-            <DomainsGrid visibleIds={visibleIds} selectedId={selectedId} onSelectNode={selectNode} />
+            <DomainsGrid
+              visibleIds={visibleIds}
+              selectedId={selectedId}
+              onSelectNode={selectNode}
+            />
           </div>
           <div className="space-y-4">
-            <AgentsTile visibleIds={visibleIds} selectedId={selectedId} onSelect={selectNode} />
+            <AgentsTile
+              visibleIds={visibleIds}
+              selectedId={selectedId}
+              onSelect={selectNode}
+            />
             <ActivityFeed events={events} />
           </div>
         </div>

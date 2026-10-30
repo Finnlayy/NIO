@@ -16,7 +16,10 @@ export function Header({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isTypingTarget(document.activeElement)) {
-        if (e.key === "Escape" && document.activeElement === searchInputRef.current) {
+        if (
+          e.key === "Escape" &&
+          document.activeElement === searchInputRef.current
+        ) {
           searchInputRef.current?.blur();
         }
         return;
