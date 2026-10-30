@@ -1,0 +1,541 @@
+diff --git a/app/core/blueprint.py b/app/core/blueprint.py
+index 3d5538a..1ba0d12 100644
+--- a/app/core/blueprint.py
++++ b/app/core/blueprint.py
+@@ -1215,7 +1215,7 @@ LLM_TOOLS: Mapping[str, str] = MappingProxyType({
+     "query_kausal_autopsy": "strategy_id, symbol, timeframe",
+     "trigger_emergency_action": "KILL_SWITCH | CANCEL_ALL_ORDERS | FLIGHT_TO_CASH",
+ })
+-LLM_TOOLS_REQUIRING_CONFIRMATION: Tuple[str, ...] = ("trigger_emergency_action",)
++LLM_TOOLS_REQUIRING_CONFIRMATION: Tuple[str, ...] = ("update_risk_settings", "control_bot", "edit_pine_strategy_code")
+ PINE_EDIT_MODES: Tuple[str, ...] = (
+     "FULL_REPLACE", "DIFF_PATCH", "INJECT_TIME_STOP", "ADJUST_PARAMETERS",
+ )
+@@ -1223,7 +1223,7 @@ PINE_VERSION_HEADER = "//@version=6"
+ LLM_STREAM_ROUTE = "/api/v1/llm/stream"
+ LLM_STREAM_SENDERS: Tuple[str, ...] = ("USER", "ASSISTANT", "SYSTEM", "TOOL_EXECUTOR")
+ LLM_UI_TRIGGERS: Tuple[str, ...] = ("REFRESH_BOT_DECK", "RELOAD_CHART", "OPEN_INSPECTOR")
+-LLM_TOOL_STATUSES: Tuple[str, ...] = ("SUCCESS", "FAILED", "CONFIRMATION_REQUIRED")
++LLM_TOOL_STATUSES: Tuple[str, ...] = ("SUCCESS", "FAILED", "CONFIRMATION_REQUIRED", "APPROVAL_REQUIRED")
+ 
+ # =============================================================================
+ # 35. Exact TradingView CSV Roundtrip (§35, Axiom 13)
+diff --git a/app/llm/approval_gate.py b/app/llm/approval_gate.py
+new file mode 100644
+index 0000000..eb499a4
+--- /dev/null
++++ b/app/llm/approval_gate.py
+@@ -0,0 +1,79 @@
++"""Synchrones, einmalig verwendbares Operator-Freigabeticket fuer Sigma."""
++from __future__ import annotations
++
++import hashlib
++import json
++import threading
++import time
++import uuid
++from typing import Any, Literal
++
++from pydantic import BaseModel, Field
++
++
++def _hash(arguments: dict[str, Any]) -> str:
++    args = {key: value for key, value in arguments.items() if key != "approval_ticket_id"}
++    return hashlib.sha256(json.dumps(args, sort_keys=True, default=str).encode()).hexdigest()
++
++
++class ApprovalTicket(BaseModel):
++    ticket_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
++    tool_name: str
++    arguments: dict[str, Any]
++    arguments_sha256: str
++    status: Literal["PENDING", "APPROVED", "REJECTED", "EXPIRED", "CONSUMED"] = "PENDING"
++    created_at_ms: int
++    expires_at_ms: int
++    operator_id: str = ""
++    decision_reason: str = ""
++
++
++class ApprovalGate:
++    """Schuetzt Ticket-Status und Verbrauch gegen parallele Aufrufe."""
++
++    def __init__(self, ttl_s: float = 300) -> None:
++        self.ttl_s = ttl_s
++        self._lock = threading.Lock()
++        self._tickets: dict[str, ApprovalTicket] = {}
++
++    def _expire(self, ticket: ApprovalTicket) -> None:
++        if ticket.status in ("PENDING", "APPROVED") and time.time() * 1000 >= ticket.expires_at_ms:
++            ticket.status = "EXPIRED"
++
++    def require(self, tool_name: str, arguments: dict[str, Any]) -> ApprovalTicket:
++        now = int(time.time() * 1000)
++        args = {key: value for key, value in arguments.items() if key != "approval_ticket_id"}
++        ticket = ApprovalTicket(tool_name=tool_name, arguments=args, arguments_sha256=_hash(args),
++                                created_at_ms=now, expires_at_ms=now + int(self.ttl_s * 1000))
++        with self._lock:
++            self._tickets[ticket.ticket_id] = ticket.model_copy(deep=True)
++        return ticket.model_copy(deep=True)
++
++    def resolve(self, ticket_id: str, approved: bool, operator_id: str, reason: str = "") -> ApprovalTicket:
++        with self._lock:
++            ticket = self._tickets.get(ticket_id)
++            if ticket is None:
++                raise KeyError(ticket_id)
++            self._expire(ticket)
++            if ticket.status != "PENDING":
++                raise ValueError("Ticket ist nicht mehr offen")
++            ticket.status = "APPROVED" if approved else "REJECTED"
++            ticket.operator_id, ticket.decision_reason = operator_id, reason
++            return ticket.model_copy(deep=True)
++
++    def consume(self, ticket_id: str, tool_name: str, arguments: dict[str, Any]) -> bool:
++        with self._lock:
++            ticket = self._tickets.get(ticket_id)
++            if ticket is None:
++                return False
++            self._expire(ticket)
++            if ticket.status != "APPROVED" or ticket.tool_name != tool_name or ticket.arguments_sha256 != _hash(arguments):
++                return False
++            ticket.status = "CONSUMED"
++            return True
++
++    def pending(self) -> list[ApprovalTicket]:
++        with self._lock:
++            for ticket in self._tickets.values():
++                self._expire(ticket)
++            return [ticket.model_copy(deep=True) for ticket in self._tickets.values() if ticket.status == "PENDING"]
+diff --git a/app/llm/schemas_llm.py b/app/llm/schemas_llm.py
+index 105150b..e691956 100644
+--- a/app/llm/schemas_llm.py
++++ b/app/llm/schemas_llm.py
+@@ -7,8 +7,8 @@ Knoten:     Jaune (Carrera-Engine) / LLM
+ =========================================================
+ 
+ Das offline laufende Ollama (:11434) steuert Sigma **ausschliesslich** ueber
+-typisierte Tool-Contracts — kein Freitext-Execution. Irreversible Tools
+-(``trigger_emergency_action``) verlangen ``confirmation_confirmed: true``.
++typisierte Tool-Contracts — kein Freitext-Execution. Risikoerhoehende
++Aktionen verlangen eine externe Operator-Freigabe.
+ """
+ from __future__ import annotations
+ 
+@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field, field_validator
+ 
+ from app.core import blueprint as bp
+ 
+-ToolStatus = Literal["SUCCESS", "FAILED", "CONFIRMATION_REQUIRED"]
++ToolStatus = Literal["SUCCESS", "FAILED", "CONFIRMATION_REQUIRED", "APPROVAL_REQUIRED"]
+ PineEditMode = Literal["FULL_REPLACE", "DIFF_PATCH", "INJECT_TIME_STOP",
+                        "ADJUST_PARAMETERS"]
+ BotAction = Literal["START", "PAUSE", "STOP", "QUARANTINE"]
+@@ -94,7 +94,7 @@ class QueryKausalAutopsyParams(BaseModel):
+ 
+ class TriggerEmergencyActionParams(BaseModel):
+     action: EmergencyAction
+-    confirmation_confirmed: bool = False
++    confirmation_confirmed: bool = Field(default=False, deprecated=True)
+     reason: str = "llm"
+ 
+ 
+@@ -157,8 +157,7 @@ _TOOL_DESCRIPTIONS: Dict[str, str] = {
+                                "kompiliert ihn optional auf TradingView.",
+     "query_kausal_autopsy": "Liefert die kausale Autopsie (Verlustursachen) einer "
+                             "Strategie.",
+-    "trigger_emergency_action": "Irreversible Notfallaktion — erfordert "
+-                                "confirmation_confirmed=true.",
++    "trigger_emergency_action": "Sofortige risikosenkende Notfallaktion.",
+ }
+ 
+ 
+diff --git a/app/llm/tool_executor.py b/app/llm/tool_executor.py
+index 7dd855f..b610041 100644
+--- a/app/llm/tool_executor.py
++++ b/app/llm/tool_executor.py
+@@ -10,9 +10,8 @@ Der Executor ist die einzige Bruecke zwischen Ollama und der Laufzeit:
+ 
+     ToolCallEnvelope -> Pydantic-Validierung -> Engine-Aufruf -> ToolResultEnvelope
+ 
+-Noir-Gate (§34.4): irreversible Tools liefern ohne
+-``confirmation_confirmed=true`` den Status ``CONFIRMATION_REQUIRED`` und
+-fassen die Laufzeit **nicht** an.
++Noir-Gate: Risikoerhoehende Tools verlangen ein extern genehmigtes,
++einmaliges Ticket. Schutzaktionen werden nicht verzoegert.
+ """
+ from __future__ import annotations
+ 
+@@ -29,6 +28,12 @@ from app.llm.schemas_llm import (ControlBotParams, PineCodePatchRequest,
+                                  TriggerEmergencyActionParams,
+                                  UpdateRiskSettingsParams, validate_arguments)
+ 
++from app.llm.approval_gate import ApprovalGate
++
++TOOL_TIERS = {"update_risk_settings": "approval", "control_bot": "conditional",
++              "edit_pine_strategy_code": "approval", "query_kausal_autopsy": "read",
++              "trigger_emergency_action": "protective"}
++
+ logger = logging.getLogger("app.llm.tool_executor")
+ 
+ 
+@@ -36,7 +41,8 @@ class LlmToolExecutor:
+     """Fuehrt Tool-Calls gegen die realen Engines aus (§34.1)."""
+ 
+     def __init__(self, *, lifecycle=None, safety=None, bridge=None, l4=None,
+-                 strategies_dir: str = "", tv_queue=None) -> None:
++                 strategies_dir: str = "", tv_queue=None, approval_gate=None) -> None:
++        self.approval_gate = approval_gate or ApprovalGate()
+         self._lifecycle = lifecycle
+         self._safety = safety
+         self._bridge = bridge
+@@ -78,11 +84,20 @@ class LlmToolExecutor:
+                 status=status, result_data=data or {}, error_message=error,
+                 execution_time_ms=int((time.perf_counter() - started) * 1000))
+ 
++        arguments = dict(envelope.arguments)
++        ticket_id = arguments.pop("approval_ticket_id", "")
+         try:
+-            params = validate_arguments(envelope.tool_name, envelope.arguments)
++            params = validate_arguments(envelope.tool_name, arguments)
+         except Exception as exc:
+             return done("FAILED", {"arguments": envelope.arguments}, str(exc))
+ 
++        needs_approval = (TOOL_TIERS.get(envelope.tool_name) == "approval" or
++                          envelope.tool_name == "control_bot" and params.action == "START")
++        if needs_approval and not self.approval_gate.consume(ticket_id, envelope.tool_name, arguments):
++            ticket = self.approval_gate.require(envelope.tool_name, arguments)
++            return done("APPROVAL_REQUIRED", {"ticket_id": ticket.ticket_id,
++                        "expires_at_ms": ticket.expires_at_ms, "arguments_sha256": ticket.arguments_sha256})
++
+         handler = {
+             "update_risk_settings": self._update_risk_settings,
+             "control_bot": self._control_bot,
+@@ -201,11 +216,6 @@ class LlmToolExecutor:
+                            "ui_component_trigger": "OPEN_INSPECTOR"}
+ 
+     def _emergency(self, p: TriggerEmergencyActionParams):
+-        if not p.confirmation_confirmed:
+-            return "CONFIRMATION_REQUIRED", {
+-                "action": p.action,
+-                "prompt": f"{p.action} ist irreversibel — bitte bestaetigen.",
+-                "confirm_field": "confirmation_confirmed"}
+         data: Dict[str, Any] = {"action": p.action, "reason": p.reason}
+         if p.action == "KILL_SWITCH":
+             self.safety.engage_kill_switch(p.reason)
+diff --git a/app/llm/tools_registry.json b/app/llm/tools_registry.json
+index c5ef96d..fab3b61 100644
+--- a/app/llm/tools_registry.json
++++ b/app/llm/tools_registry.json
+@@ -69,7 +69,7 @@
+         },
+         "x-sigma": {
+           "summary": "max_daily_loss_usd, kelly_fraction, max_open_positions, global_max_leverage",
+-          "requires_confirmation": false
++          "requires_confirmation": true
+         }
+       }
+     },
+@@ -123,7 +123,7 @@
+         },
+         "x-sigma": {
+           "summary": "START | PAUSE | STOP | QUARANTINE (+ adjusted_budget_eur)",
+-          "requires_confirmation": false
++          "requires_confirmation": true
+         }
+       }
+     },
+@@ -174,7 +174,7 @@
+         },
+         "x-sigma": {
+           "summary": "FULL_REPLACE | DIFF_PATCH | INJECT_TIME_STOP | ADJUST_PARAMETERS",
+-          "requires_confirmation": false
++          "requires_confirmation": true
+         }
+       }
+     },
+@@ -216,7 +216,7 @@
+       "type": "function",
+       "function": {
+         "name": "trigger_emergency_action",
+-        "description": "Irreversible Notfallaktion — erfordert confirmation_confirmed=true.",
++        "description": "Sofortige risikosenkende Notfallaktion.",
+         "parameters": {
+           "properties": {
+             "action": {
+@@ -230,6 +230,7 @@
+             },
+             "confirmation_confirmed": {
+               "default": false,
++              "deprecated": true,
+               "title": "Confirmation Confirmed",
+               "type": "boolean"
+             },
+@@ -246,7 +247,7 @@
+         },
+         "x-sigma": {
+           "summary": "KILL_SWITCH | CANCEL_ALL_ORDERS | FLIGHT_TO_CASH",
+-          "requires_confirmation": true
++          "requires_confirmation": false
+         }
+       }
+     }
+diff --git a/app/server/routes_sigma.py b/app/server/routes_sigma.py
+index 7b25ecd..dc7db33 100644
+--- a/app/server/routes_sigma.py
++++ b/app/server/routes_sigma.py
+@@ -10,12 +10,13 @@ Knoten:     Jaune (Carrera-Engine) / API
+ from __future__ import annotations
+ 
+ import asyncio
++import hmac
+ import logging
+ import os
+ import time
+ from typing import Any, Callable, Dict, List, Optional
+ 
+-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Header, HTTPException, Request
++from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Header, HTTPException, Request, Depends
+ from pydantic import BaseModel, Field
+ 
+ from app.core import blueprint as bp
+@@ -497,6 +498,39 @@ async def signal_pipeline_state():
+ # Safety / Ops
+ # =============================================================================
+ 
++def require_sigma_operator(authorization: Optional[str] = Header(default=None)) -> str:
++    """Freigaben und Entsperren nur mit konfiguriertem Operator-Token."""
++    expected = os.environ.get("SIGMA_OPERATOR_TOKEN", "")
++    if not expected:
++        raise HTTPException(503, "SIGMA_OPERATOR_TOKEN ist nicht gesetzt")
++    scheme, _, token = (authorization or "").partition(" ")
++    if scheme.lower() != "bearer" or not hmac.compare_digest(token.encode(), expected.encode()):
++        raise HTTPException(401, "ungueltiges Operator-Token")
++    return "operator"
++
++
++class ApprovalResolution(BaseModel):
++    approved: bool
++    reason: str = ""
++
++
++@router.get("/api/v1/approvals")
++async def approvals(actor: str = Depends(require_sigma_operator)):
++    from app.llm.tool_executor import get_tool_executor
++    return [ticket.model_dump() for ticket in get_tool_executor().approval_gate.pending()]
++
++
++@router.post("/api/v1/approvals/{ticket_id}/resolve")
++async def resolve_approval(ticket_id: str, body: ApprovalResolution, actor: str = Depends(require_sigma_operator)):
++    from app.llm.tool_executor import get_tool_executor
++    try:
++        return get_tool_executor().approval_gate.resolve(ticket_id, body.approved, actor, body.reason).model_dump()
++    except KeyError:
++        raise HTTPException(404, "Ticket nicht gefunden") from None
++    except ValueError as exc:
++        raise HTTPException(409, str(exc)) from None
++
++
+ @router.get("/api/v1/safety")
+ async def safety_state():
+     return get_safety_guard().snapshot()
+@@ -511,7 +545,7 @@ async def safety_kill(reason: str = "operator"):
+ 
+ 
+ @router.post("/api/v1/safety/release")
+-async def safety_release():
++async def safety_release(actor: str = Depends(require_sigma_operator)):
+     guard = get_safety_guard()
+     guard.release_kill_switch()
+     guard.release_pause()
+@@ -1069,7 +1103,8 @@ async def llm_pine_patch(body: Dict[str, Any]):
+         raise HTTPException(status_code=422, detail={
+             "code": "ERR_TV_PINE_COMPILE_ERROR", "reason": str(exc)})
+     result = get_tool_executor().execute(ToolCallEnvelope(
+-        tool_name="edit_pine_strategy_code", arguments=request.model_dump()))
++        tool_name="edit_pine_strategy_code", arguments={**request.model_dump(),
++            **({"approval_ticket_id": body["approval_ticket_id"]} if "approval_ticket_id" in body else {})}))
+     return result.model_dump()
+ 
+ 
+diff --git a/tests/test_approval_gate.py b/tests/test_approval_gate.py
+new file mode 100644
+index 0000000..18c9906
+--- /dev/null
++++ b/tests/test_approval_gate.py
+@@ -0,0 +1,47 @@
++"""Sicherheitsvertraege fuer das synchrone Sigma-Freigabegate."""
++import time
++
++from fastapi.testclient import TestClient
++
++from app.llm.approval_gate import ApprovalGate
++from app.llm.tool_executor import LlmToolExecutor, set_tool_executor
++from app.server.main import app
++
++
++def test_approval_one_use_and_argument_binding():
++    executor = LlmToolExecutor()
++    args = {"max_daily_loss_usd": 100}
++    first = executor.call("update_risk_settings", **args)
++    assert first.status == "APPROVAL_REQUIRED" and not executor.risk_overrides
++    ticket = first.result_data["ticket_id"]
++    assert executor.call("update_risk_settings", **args, approval_ticket_id=ticket).status == "APPROVAL_REQUIRED"
++    executor.approval_gate.resolve(ticket, True, "operator", "geprueft")
++    assert executor.call("update_risk_settings", max_daily_loss_usd=200, approval_ticket_id=ticket).status == "APPROVAL_REQUIRED"
++    assert executor.call("update_risk_settings", **args, approval_ticket_id=ticket).status == "SUCCESS"
++    assert executor.call("update_risk_settings", **args, approval_ticket_id=ticket).status == "APPROVAL_REQUIRED"
++
++
++def test_expiry_and_copies():
++    gate = ApprovalGate(ttl_s=0.01)
++    ticket = gate.require("x", {"value": [1]})
++    ticket.arguments["value"].append(2)
++    assert gate.pending()[0].arguments == {"value": [1]}
++    time.sleep(0.02)
++    assert not gate.consume(ticket.ticket_id, "x", {"value": [1]})
++    assert not gate.pending()
++
++
++def test_operator_routes_fail_closed(monkeypatch):
++    executor = LlmToolExecutor()
++    set_tool_executor(executor)
++    client = TestClient(app)
++    monkeypatch.delenv("SIGMA_OPERATOR_TOKEN", raising=False)
++    assert client.get("/api/v1/approvals").status_code == 503
++    monkeypatch.setenv("SIGMA_OPERATOR_TOKEN", "secret")
++    assert client.get("/api/v1/approvals").status_code == 401
++    assert client.post("/api/v1/safety/release").status_code == 401
++    ticket = executor.call("update_risk_settings", max_daily_loss_usd=100).result_data["ticket_id"]
++    headers = {"Authorization": "Bearer secret"}
++    assert client.post(f"/api/v1/approvals/{ticket}/resolve", headers=headers, json={"approved": True}).status_code == 200
++    assert executor.call("update_risk_settings", max_daily_loss_usd=100, approval_ticket_id=ticket).status == "SUCCESS"
++    set_tool_executor(None)
+diff --git a/tests/test_llm_contracts.py b/tests/test_llm_contracts.py
+index cb7120a..097c676 100644
+--- a/tests/test_llm_contracts.py
++++ b/tests/test_llm_contracts.py
+@@ -72,10 +72,10 @@ def executor(tmp_path):
+ # --------------------------------------------------------------- blueprint --
+ def test_blueprint_llm_constants():
+     assert set(bp.LLM_TOOLS) == set(TOOL_PARAM_MODELS)
+-    assert bp.LLM_TOOLS_REQUIRING_CONFIRMATION == ("trigger_emergency_action",)
++    assert bp.LLM_TOOLS_REQUIRING_CONFIRMATION == ("update_risk_settings", "control_bot", "edit_pine_strategy_code")
+     assert bp.LLM_STREAM_ROUTE == "/api/v1/llm/stream"
+     assert bp.PINE_VERSION_HEADER == "//@version=6"
+-    assert set(bp.LLM_TOOL_STATUSES) == {"SUCCESS", "FAILED", "CONFIRMATION_REQUIRED"}
++    assert set(bp.LLM_TOOL_STATUSES) == {"SUCCESS", "FAILED", "CONFIRMATION_REQUIRED", "APPROVAL_REQUIRED"}
+ 
+ 
+ def test_section_34_not_pending():
+@@ -144,7 +144,7 @@ def test_tool_registry_is_openai_compatible():
+         assert tool["function"]["description"]
+     emergency = next(t for t in tools
+                      if t["function"]["name"] == "trigger_emergency_action")
+-    assert emergency["function"]["x-sigma"]["requires_confirmation"] is True
++    assert emergency["function"]["x-sigma"]["requires_confirmation"] is False
+ 
+ 
+ def test_write_registry(tmp_path):
+@@ -158,9 +158,18 @@ def test_registry_file_shipped():
+     assert os.path.exists(registry_path())
+ 
+ 
++def approved_call(executor, name, **args):
++    """Simuliert die explizite Freigabe durch einen Operator."""
++    result = executor.call(name, **args)
++    assert result.status == "APPROVAL_REQUIRED"
++    ticket = result.result_data["ticket_id"]
++    executor.approval_gate.resolve(ticket, True, "operator", "test")
++    return executor.call(name, **args, approval_ticket_id=ticket)
++
++
+ # ---------------------------------------------------------------- executor --
+ def test_update_risk_settings(executor):
+-    result = executor.call("update_risk_settings", kelly_fraction=0.4,
++    result = approved_call(executor, "update_risk_settings", kelly_fraction=0.4,
+                            max_daily_loss_usd=500)
+     assert result.status == "SUCCESS"
+     assert result.result_data["applied"]["kelly_fraction"] == 0.4
+@@ -173,7 +182,7 @@ def test_update_risk_settings_rejects_out_of_range(executor):
+ 
+ 
+ def test_control_bot_actions(executor):
+-    assert executor.call("control_bot", strategy_id="s1",
++    assert approved_call(executor, "control_bot", strategy_id="s1",
+                          action="START", adjusted_budget_eur=250).status == "SUCCESS"
+     executor.call("control_bot", strategy_id="s1", action="PAUSE")
+     executor.call("control_bot", strategy_id="s1", action="STOP")
+@@ -185,9 +194,8 @@ def test_control_bot_actions(executor):
+ 
+ def test_emergency_requires_confirmation(executor):
+     result = executor.call("trigger_emergency_action", action="KILL_SWITCH")
+-    assert result.status == "CONFIRMATION_REQUIRED"
+-    assert result.result_data["confirm_field"] == "confirmation_confirmed"
+-    assert executor._safety.killed is None        # Laufzeit unangetastet
++    assert result.status == "SUCCESS"
++    assert executor._safety.killed == "llm"
+ 
+ 
+ def test_emergency_kill_switch_confirmed(executor):
+@@ -208,7 +216,7 @@ def test_emergency_cancel_all_and_flight_to_cash(executor):
+ 
+ 
+ def test_pine_patch_local_only_creates_backup(executor):
+-    result = executor.call("edit_pine_strategy_code", strategy_id="s1",
++    result = approved_call(executor, "edit_pine_strategy_code", strategy_id="s1",
+                            edit_mode="FULL_REPLACE", pine_source_code=PINE_OK,
+                            push_to_tradingview=False)
+     assert result.status == "SUCCESS"
+@@ -219,7 +227,7 @@ def test_pine_patch_local_only_creates_backup(executor):
+ 
+ 
+ def test_pine_patch_rollback_on_compile_error(executor):
+-    executor.call("edit_pine_strategy_code", strategy_id="s2",
++    approved_call(executor, "edit_pine_strategy_code", strategy_id="s2",
+                   edit_mode="FULL_REPLACE", pine_source_code=PINE_OK,
+                   push_to_tradingview=False)
+ 
+@@ -229,7 +237,7 @@ def test_pine_patch_rollback_on_compile_error(executor):
+ 
+     executor._tv_queue = FailingQueue()
+     broken = PINE_OK.replace("plot(close)", "plot(closeeee)")
+-    result = executor.call("edit_pine_strategy_code", strategy_id="s2",
++    result = approved_call(executor, "edit_pine_strategy_code", strategy_id="s2",
+                            edit_mode="DIFF_PATCH", pine_source_code=broken)
+     assert result.status == "FAILED"
+     assert result.result_data["status"] == "COMPILE_FAILED_ROLLBACK"
+@@ -244,7 +252,7 @@ def test_pine_patch_success_compiled(executor):
+             return {"status": "queued", "job_id": "j1"}
+ 
+     executor._tv_queue = OkQueue()
+-    result = executor.call("edit_pine_strategy_code", strategy_id="s3",
++    result = approved_call(executor, "edit_pine_strategy_code", strategy_id="s3",
+                            edit_mode="INJECT_TIME_STOP", pine_source_code=PINE_OK)
+     assert result.result_data["status"] == "SUCCESS_COMPILED"
+     assert result.result_data["ui_component_trigger"] == "RELOAD_CHART"
+@@ -276,7 +284,7 @@ def client(executor):
+ def test_api_tools(client):
+     body = client.get("/api/v1/llm/tools").json()
+     assert len(body["tools"]) == 5
+-    assert body["requires_confirmation"] == ["trigger_emergency_action"]
++    assert body["requires_confirmation"] == list(bp.LLM_TOOLS_REQUIRING_CONFIRMATION)
+     assert body["stream_route"] == bp.LLM_STREAM_ROUTE
+ 
+ 
+@@ -284,7 +292,7 @@ def test_api_tool_call_confirmation(client):
+     body = client.post("/api/v1/llm/tool-call", json={
+         "tool_name": "trigger_emergency_action",
+         "arguments": {"action": "FLIGHT_TO_CASH"}}).json()
+-    assert body["status"] == "CONFIRMATION_REQUIRED"
++    assert body["status"] == "SUCCESS"
+ 
+ 
+ def test_api_tool_call_invalid_envelope(client):
+@@ -305,7 +313,7 @@ def test_api_pine_patch_ok(client):
+     body = client.post("/api/v1/llm/pine-patch", json={
+         "strategy_id": "s9", "edit_mode": "FULL_REPLACE",
+         "pine_source_code": PINE_OK, "push_to_tradingview": False}).json()
+-    assert body["result_data"]["status"] == "SAVED_LOCAL_ONLY"
++    assert body["status"] == "APPROVAL_REQUIRED"
+ 
+ 
+ def test_websocket_tool_call_flow(client):
