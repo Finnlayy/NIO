@@ -437,7 +437,7 @@ function NodeCard({
       />
 
       <div
-        className={`relative ${fluid ? "w-full" : "w-[196px]"} rounded-xl border px-3 py-2.5 backdrop-blur-md transition-all duration-500 ${
+        className={`relative ${fluid ? "w-full" : "w-[196px]"} rounded-xl border px-3 py-2.5 backdrop-blur-md transition-[opacity,border-color,box-shadow,background] duration-500 ${
           spawning ? "apollo-crystallise" : "opacity-100"
         }`}
         style={{
@@ -487,10 +487,10 @@ function NodeCard({
           </div>
         )}
 
-        <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-white/5">
+        <div className="relative mt-1.5 h-[3px] overflow-hidden rounded-full bg-white/5">
           <div
-            className="h-full rounded-full transition-[width] duration-700"
-            style={{ width: `${Math.max(3, load)}%`, background: hexToRgba(style.color, 0.75) }}
+            className="absolute inset-y-0 left-0 h-full w-full origin-left rounded-full transition-transform duration-700"
+            style={{ transform: `scaleX(${Math.max(0.03, load / 100)})`, background: hexToRgba(style.color, 0.75) }}
           />
         </div>
 
