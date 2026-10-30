@@ -9,6 +9,17 @@ Datumsangaben in UTC.
 
 ### Hinzugefügt
 
+- `orchestrator/kanban/` — Hermes-Kanban Task-Management.
+  - Implementierung von Architektur-Layer 2 & 3: Dispatcher, Reaper, Event-Bus, Postgres/SQLite Store.
+  - Sichere Sandbox-Umgebung (Docker & Subprocess) mit strikten Limits (kein `shell=True`, kein Netzwerk per Default).
+  - Unveränderliches Audit-Ledger (Hash-Kette) mit append-only Triggern in SQLite/Postgres.
+  - API (via FastAPI/uvicorn) für Boards, Tasks, Worker und Sandbox-Tools mit Token-Autorisierung.
+  - CLI via `python3 -m orchestrator kanban` zur Steuerung und Überwachung.
+  - Neues Extra `kanban` in `pyproject.toml` (asyncpg, fastapi, uvicorn).
+  - Ende-zu-Ende-Abnahme via `scripts/ci_e2e_kanban.py` (Ziel `make e2e-kanban`).
+  - Umfassende Testabdeckung: 66 neue Tests unter `tests/test_kanban*.py` hinzugefügt.
+  - `docs/KANBAN.md` mit detaillierter Architektur, Zustandsmaschine und Konfigurationsübersicht.
+
 - `apollo/ciel/mcp_nodes.py` + `mcp_config.json` — externe MCP-Nodes als
   Ciel-Skills (u. a. StalkChain `https://data.stalkchain.com/mcp`, via
   `npx mcp-remote` oder direkt per SSE ohne Node). Stdio-JSON-RPC- und

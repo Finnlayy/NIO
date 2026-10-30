@@ -159,6 +159,16 @@ def _iso_ms_z_fast() -> str:
 #: aber Tests, Doku und die CLI ziehen diese Liste heran. Die ``timer.*``-Kinds
 #: ab ``timer.armed`` gehoeren zu Protokoll 1.2 (Zeit-Tracking + Trigger).
 VALID_EVENT_KINDS: tuple[str, ...] = (
+    # Hermes-Kanban (orchestrator/kanban): kommen ueber NeuEventBridge als
+    # ``kanban.<kind>`` auf diesen Bus; auf dem Kanban-Bus selbst ohne Praefix.
+    "kanban.board.created",
+    "kanban.task.created",
+    "kanban.task.transition",
+    "kanban.task.promoted",
+    "kanban.task.completed",
+    "kanban.task.blocked",
+    "kanban.task.reset",
+    "kanban.worker.created",
     "job.created",
     "job.finished",
     "job.aborted",
