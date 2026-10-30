@@ -70,23 +70,28 @@ export function TaskConsole({
       </label>
 
       <button
-        onClick={onRun}
-        disabled={isRunning || !taskText.trim()}
+        onClick={(e) => {
+          if (isRunning || !taskText.trim()) {
+            e.preventDefault();
+            return;
+          }
+          onRun();
+        }}
+        aria-disabled={isRunning || !taskText.trim()}
+        title={isRunning ? "Task is currently running" : !taskText.trim() ? "Enter a task description first" : undefined}
         className="primary-button w-full mt-3 flex items-center justify-center gap-2"
       >
         {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-        {isRunning ? "Routing through core …" : (
-          <span className="flex items-center gap-2">
-            Run through Neural Core
-            <span className="hidden sm:inline-flex items-center gap-0.5 text-[9px] font-mono text-cyan-200/50 bg-cyan-950/30 border border-cyan-800/30 px-1 py-0.5 rounded shadow-sm leading-none ml-1">
-              <kbd>⌘</kbd>
-              <span>/</span>
-              <kbd>Ctrl</kbd>
-              <span>+</span>
-              <kbd>Enter</kbd>
-            </span>
+        <span className="flex items-center gap-2">
+          {isRunning ? "Routing through core …" : "Run through Neural Core"}
+          <span className="hidden sm:inline-flex items-center gap-0.5 text-[9px] font-mono text-cyan-200/50 bg-cyan-950/30 border border-cyan-800/30 px-1 py-0.5 rounded shadow-sm leading-none ml-1">
+            <kbd>⌘</kbd>
+            <span>/</span>
+            <kbd>Ctrl</kbd>
+            <span>+</span>
+            <kbd>Enter</kbd>
           </span>
-        )}
+        </span>
       </button>
 
       <div
