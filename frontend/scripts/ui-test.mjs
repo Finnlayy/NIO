@@ -51,6 +51,13 @@ const entries = [
   "kanban/repository.ts",
   "kanban/store.ts",
   "kanban/hotkeys.ts",
+  "kanban/useKanbanStore.ts",
+  "kanban/dragState.ts",
+  "kanban/MoveMenu.tsx",
+  "kanban/TaskCard.tsx",
+  "kanban/KanbanColumn.tsx",
+  "kanban/BoardToolbar.tsx",
+  "kanban/KanbanBoard.tsx",
 ].filter((rel) => existsSync(path.join(srcDir, rel)));
 
 function walk(dir, out = []) {
