@@ -7,6 +7,24 @@ Datumsangaben in UTC.
 
 ## [Unreleased]
 
+### Geändert
+
+- Marktdaten (`/api/market/*`) laufen über den **offiziellen TradingView-MCP**
+  (`mcp.tradingview.com`) statt über das abgeschaltete tvremix. Anmeldung per
+  OAuth 2.1 (Dynamic Client Registration, PKCE, Refresh-Token) über
+  `/api/market/oauth/{start,callback,status}`; Tokens nur lokal in
+  `frontend/.tradingview-oauth.json`. Feste Tool-Zuordnung in
+  `src/server/tradingview/tools.ts`, Adapter für die neuen Antwortformen, der
+  generische Durchreich erreicht nur Lese-Tools. `TVREMIX_*` entfällt.
+
+### Behoben
+
+- Refresh-Buttons der Markt-Widgets luden nur neue Simulationsdaten; jetzt
+  holen sie sofort Live-Daten und umgehen dafür einmal den Server-Cache
+  (`refreshKey` in `useMarketData`, `?fresh=1`).
+- Technik-Gauge zeigte feste Platzhalter-Zählungen (3 Buy / 10 Sell) auch bei
+  „Strong Buy“; die Zählung kommt jetzt aus den echten Indikatoren.
+
 ### Hinzugefügt
 
 - `orchestrator/kanban/` — Hermes-Kanban Task-Management.

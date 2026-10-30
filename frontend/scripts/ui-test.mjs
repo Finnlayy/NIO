@@ -36,6 +36,9 @@ const entries = [
   "ops/widgets/NewsSentiment.tsx",
   "ops/hotkeys.ts",
   "ops/hooks/useMarketData.ts",
+  /* TradingView MCP: pure tool mapping + response adapters (no I/O). */
+  "server/tradingview/tools.ts",
+  "server/tradingview/adapters.ts",
   "data/network.ts",
   /* Apollo core: pure router/layout/command modules + the zustand store. */
   "apollo/catalog.ts",

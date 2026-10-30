@@ -110,7 +110,7 @@ Events **genau eine** Zeile neu rendert.
 
 | Beobachtung | Erklärung |
 |---|---|
-| Kurszahlen bleiben stehen, Badge `SIM` | `TVREMIX_API_KEY` fehlt — erwartet |
+| Kurszahlen bleiben stehen, Badge `SIM` | TradingView nicht verbunden — Badge oben rechts anklicken |
 | CVD-Heatmap sieht immer gleich aus | Template, weil der Produzent nicht läuft |
 | „Not investment advice. Simulated telemetry" | ehrlicher Hinweis der Sim-Quelle |
 | Konsole leer, Panel offen | geschlossene Panels abonnieren absichtlich nichts |

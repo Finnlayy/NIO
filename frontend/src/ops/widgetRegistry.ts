@@ -39,7 +39,7 @@ export const widgetTemplates: WidgetTemplate[] = [
   {
     id: "TPL_02",
     /* dataFactory is bootstrap/fallback only. At runtime EnvelopeChart layers two
-       live feeds over it: OHLCV via useMarketData (tvremix proxy) and the engine
+       live feeds over it: OHLCV via useMarketData (TradingView MCP proxy) and the engine
        read (V_total, L2 depth, imbalance, confidence, forbidden zone) via
        useEngineTelemetry on the UDS bus. While the bus is STALE/DISCONNECTED the
        engine cells render "—" rather than a frozen number. */

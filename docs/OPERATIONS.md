@@ -54,8 +54,9 @@ gelesen. Alle Secrets bleiben serverseitig.
 
 | Variable | Wirkung ohne sie |
 |---|---|
-| `TVREMIX_API_KEY` | `/api/market/*` → 503, Widgets zeigen `SIM` |
-| `TVREMIX_MCP_URL` | Default `https://tvremix.xyz/api/mcp/v1` |
+| *(kein Key)* | Anmeldung per OAuth: `http://localhost:4001/api/market/oauth/start` im eigenen Browser öffnen. Ohne Login → 503, Widgets zeigen `SIM` |
+| `TRADINGVIEW_MCP_URL` | Default `https://mcp.tradingview.com/mcp` |
+| `TRADINGVIEW_OAUTH_STORE` | Default `frontend/.tradingview-oauth.json` (Tokens, gitignoriert) |
 
 ### Apollo-Proxy
 
@@ -153,7 +154,7 @@ git diff --stat FETCH_HEAD          # leer = identisch
 |---|---|---|
 | UI lädt, aber nichts reagiert | Client-Chunks abgelehnt (Origin) | `allowedDevOrigins` muss `*.e2b.app` enthalten |
 | `next: command not found` | `node_modules` fehlt | `cd frontend && npm ci` |
-| Alle Widgets `SIM`, Konsole 503 | `TVREMIX_API_KEY` fehlt | Key setzen — kein Bug |
+| Alle Widgets `SIM`, Konsole 503 | TradingView nicht verbunden | `/api/market/oauth/start` öffnen — kein Bug |
 | Telemetrie dauerhaft `STALE` | Python-Produzent läuft nicht | `runtime/telemetry.sock` prüfen |
 | Hydration-Mismatch in der Konsole | Server- und Client-Render verschieden | einen `data-layout`-/Größen-Fallback prüfen |
 | Deck reagiert nicht auf Klick außerhalb | Backdrop-Handler liegt am falschen Element | Handler am Scrim, `stopPropagation` am Panel |
@@ -176,7 +177,7 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 | Antwort | Bedeutung |
 |---|---|
 | `200` + Daten | Feed gesund |
-| `503 TVREMIX_API_KEY not configured` | erwartet ohne Key |
+| `503 TradingView not connected` | erwartet ohne Login |
 | `502` | Upstream-Problem (Netz oder Limit) |
 | `000` | Dienst läuft nicht |
 

@@ -91,7 +91,7 @@ einen Test, der ohne Netz und ohne Handarbeit läuft.
 | `/ops` | ○ statisch | **stabil** |
 | `POST /api/apollo` | ƒ dynamisch | **stabil**, fail-closed |
 | `POST /api/sandbox` | ƒ dynamisch | **stabil**, Allowlist |
-| `GET /api/market/[tool]` | ƒ dynamisch | **stabil**, braucht `TVREMIX_API_KEY` |
+| `GET /api/market/[tool]` | ƒ dynamisch | **stabil**, braucht OAuth-Login beim TradingView-MCP |
 | `GET /api/telemetry/stream` | ƒ dynamisch | **stabil**, SSE |
 
 **69 UI-Tests** über `node scripts/ui-test.mjs` (kein Framework, siehe
@@ -103,7 +103,7 @@ Diese Punkte sind Absicht oder offen dokumentiert — keine Überraschungen:
 
 | Einschränkung | Warum |
 |---|---|
-| `/api/market/*` liefert **503/502** ohne `TVREMIX_API_KEY` | fail-closed; die Widgets zeigen `SIM`-Badges und synthetische Daten |
+| `/api/market/*` liefert **503/502** ohne TradingView-Login | fail-closed; die Widgets zeigen `SIM`-Badges und synthetische Daten |
 | Telemetrie-Stream meldet `state: "stale"` | Python-Produzent (`runtime/telemetry.sock`) läuft nicht immer |
 | Orb nutzt **Canvas2D** ohne WebGL | Software-Rendering in headless-Umgebungen; im Browser WebGL |
 | Kein Live-Broker | Trading-Limb exponiert keine Kraken-Routen |

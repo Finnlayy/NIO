@@ -205,7 +205,7 @@ export const PRIMARY_ENGINES = [
 ] as const;
 
 export const MCP_SERVERS = [
-  { id: "tvremix", label: "tvremix", detail: "market data · 12 tools", on: true },
+  { id: "tradingview", label: "TradingView", detail: "official MCP · OAuth", on: true },
   { id: "filesystem", label: "filesystem", detail: "read-only workspace jail", on: true },
   { id: "playwright", label: "playwright", detail: "browser automation", on: false },
   { id: "neu-limb", label: "neu-limb-bridge", detail: "orchestrator limbs", on: true },
