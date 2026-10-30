@@ -526,7 +526,7 @@ export function ApolloOrb({ className = "" }: { className?: string }) {
           minus half the card and a 16 px gutter", so the card always fits;
           below ~1000 px it simply overlaps the orb instead of leaving the page. */}
       <div
-        className={`pointer-events-none absolute left-1/2 top-1/2 z-20 w-[240px] transition-all duration-300 ${
+        className={`pointer-events-none absolute left-1/2 top-1/2 z-20 w-[240px] transition-opacity duration-300 ${
           hovered ? "opacity-100" : "opacity-0"
         }`}
         style={{ transform: "translate(min(30vmin, 210px, calc(50vw - 256px)), -50%)" }}
@@ -550,10 +550,10 @@ export function ApolloOrb({ className = "" }: { className?: string }) {
                 {quota}%
               </dd>
             </div>
-            <div className="h-1 overflow-hidden rounded-full bg-white/5">
+            <div className="relative h-1 overflow-hidden rounded-full bg-white/5">
               <div
-                className="h-full rounded-full transition-[width] duration-500"
-                style={{ width: `${Math.max(2, quota)}%`, background: quotaColor }}
+                className="absolute inset-y-0 left-0 h-full w-full origin-left rounded-full transition-transform duration-500"
+                style={{ transform: `scaleX(${Math.max(2, quota) / 100})`, background: quotaColor }}
               />
             </div>
             <div className="flex items-baseline justify-between gap-2">

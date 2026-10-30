@@ -252,10 +252,10 @@ export function TextInput({
 
 export function MiniBar({ value, color, height = 3 }: { value: number; color: string; height?: number }) {
   return (
-    <div className="overflow-hidden rounded-full bg-white/5" style={{ height }}>
+    <div className="relative overflow-hidden rounded-full bg-white/5" style={{ height }}>
       <div
-        className="h-full rounded-full transition-[width] duration-500"
-        style={{ width: `${Math.max(2, Math.min(100, value))}%`, background: color }}
+        className="absolute inset-y-0 left-0 h-full w-full origin-left rounded-full transition-transform duration-500"
+        style={{ transform: `scaleX(${Math.max(2, Math.min(100, value)) / 100})`, background: color }}
       />
     </div>
   );
