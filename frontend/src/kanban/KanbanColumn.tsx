@@ -83,6 +83,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
     <div 
       className="flex flex-col w-[280px] shrink-0 max-h-full min-h-0 snap-start bg-[#0c0e15] border border-white/[0.04] rounded-xl overflow-hidden"
       ref={colRef}
+      data-status={status}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
