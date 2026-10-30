@@ -57,6 +57,11 @@ const entries = [
   "kanban/TaskCard.tsx",
   "kanban/KanbanColumn.tsx",
   "kanban/BoardToolbar.tsx",
+  "kanban/dialogState.ts",
+  "kanban/useFocusTrap.ts",
+  "kanban/ChecklistEditor.tsx",
+  "kanban/TaskDialog.tsx",
+  "kanban/UndoToast.tsx",
   "kanban/KanbanBoard.tsx",
 ].filter((rel) => existsSync(path.join(srcDir, rel)));
 
