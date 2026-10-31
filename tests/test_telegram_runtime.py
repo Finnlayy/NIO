@@ -123,6 +123,12 @@ class TestFlow(Base):
         self.assertEqual(self.client.sent, [(BOT, suggestions[0].text)])
         self.assertEqual(await self.kanban.ledger.verify(), [])
 
+    async def test_status_reports_quota_of_paired_targets(self):
+        await self.tg.pair(FEED, BOT, actor="t")
+        await self.tg.store.record_send(BOT, self.tg.clock())
+        status = await self.tg.status()
+        self.assertEqual(status["send_quota"], [{"target": BOT, "used": 1, "limit": 6}])
+
     async def test_live_message_is_published(self):
         await self.tg.monitor(FEED, actor="t")
         self.tg.gather.attach_live()

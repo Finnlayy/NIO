@@ -128,7 +128,7 @@ def format_report(report: dict[str, Any]) -> str:
     if not report["total"]:
         return f"In den letzten {report['scanned']} Feed-Nachrichten kein Treffer."
     return (
-        f"**{report['symbol']} - Sentiment: {report['verdict']}** "
+        f"{report['symbol']} - Sentiment: {report['verdict']} "
         f"({report['bull']} bullish / {report['neutral']} neutral / {report['bear']} bearish in {report['total']} Meldungen) "
         f"Letzte Meldung: „{report['latest']}“"
     )

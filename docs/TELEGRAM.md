@@ -76,6 +76,25 @@ Alle Routen liegen unter `/api/v1/telegram`, verlangen den Operator-Bearer (`NIO
 
 Fehler beim Senden: 403 Ziel nicht erlaubt, 409 schon entschieden oder nicht eingeloggt, 429 Rate-Limit oder FloodWait mit `Retry-After`.
 
+## Oberfläche `/telegram`
+
+Die Seite ist nur per URL erreichbar, `/apollo` und `/ops` verlinken sie nicht. Sie zeigt Verbindung, Chats mit Mitlesen und Sendeerlaubnis, Feed-zu-Bot-Pairing, Live-Feed, Vorschläge mit Ziel und Restkontingent, Freigaben, Fragen an den Feed, Signale und den Abruf. Der Login bleibt in der CLI.
+
+In `frontend/.env.local`:
+
+```bash
+NIO_KANBAN_API_URL="http://127.0.0.1:8740"
+NIO_KANBAN_API_TOKEN="<gleicher Wert wie in der Hermes-API>"
+```
+
+Der Next-Proxy `/api/telegram/*` setzt das Token serverseitig, es erreicht den Browser nie. Er nimmt nur Anfragen an, deren Host Loopback ist (weitere per `NIO_TELEGRAM_UI_HOSTS`), lehnt fremde Herkunft ab und verlangt für Schreibzugriffe einen eigenen Header.
+
+**Wichtig:** Der Proxy kann einen Client im lokalen Netz nicht sicher erkennen, denn der Host-Header lässt sich fälschen. `npm run dev` lauscht auf allen Schnittstellen. Starte das Frontend deshalb nur auf Loopback, sobald das Token gesetzt ist:
+
+```bash
+npx next dev -H 127.0.0.1 -p 4001
+```
+
 ## Agenten-Tools
 
 `telegram_feed`, `telegram_ask`, `telegram_signals` sind nur lesend. Hermes-Worker erreichen sie über dieselben Routen wie die `kanban_*`-Tools (MCP-Shim mit Task-Token). `register_telegram_tools(registry, toolbox)` registriert sie für Ciel. Ein Sende-Tool gibt es absichtlich nicht.

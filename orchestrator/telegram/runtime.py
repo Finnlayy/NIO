@@ -17,9 +17,10 @@ import logging
 import sys
 from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
-from core.protocol import utc_now_iso
+from core.protocol import format_timestamp, parse_timestamp, utc_now_iso
 
 from .approvals import Approvals
 from .client import TelegramError, TelegramPort, TelethonClient
@@ -158,7 +159,14 @@ class TelegramRuntime:
             "llm_configured": self.llm is not None,
             "kanban_enabled": self.kanban_enabled,
             "send_rate_per_hour": self.config.send_rate_per_hour,
+            "send_quota": await self._send_quota(),
         }
+
+    async def _send_quota(self) -> list[dict[str, int]]:
+        since = format_timestamp(parse_timestamp(self.clock(), "clock") - timedelta(hours=1))
+        targets = sorted(set((await self.store.list_pairings()).values()))
+        limit = self.config.send_rate_per_hour
+        return [{"target": t, "used": await self.store.count_sends_since(t, since), "limit": limit} for t in targets]
 
     # -- Konfiguration zur Laufzeit --------------------------------------- #
     async def monitor(self, peer: int | str, *, actor: str) -> int:

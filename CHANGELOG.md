@@ -15,6 +15,7 @@ Datumsangaben in UTC.
   - Versand nur nach Freigabe, nur an Allowlist-Ziele, mit Rate-Limit und Audit.
   - API unter `/api/v1/telegram/*` mit SSE, CLI `neu telegram`, Nur-Lese-Tools für Ciel und Worker.
   - Start über `neu kanban serve`, neues Extra `telegram`, Abnahme via `scripts/ci_e2e_telegram.py` (`make e2e-telegram`).
+  - Oberfläche `/telegram` mit Server-Proxy: das Operator-Token erreicht nie den Browser.
   - `docs/TELEGRAM.md` mit Einrichtung, Konfiguration, API und Sicherheitsmodell.
 
 - `orchestrator/kanban/` — Hermes-Kanban Task-Management.
