@@ -67,6 +67,8 @@ class TelegramStore(Protocol):
     async def close(self) -> None: ...
     async def add_messages(self, msgs: Sequence[TgMessage]) -> list[TgMessage]: ...
     async def recent_messages(self, peers: list[int] | None, limit: int) -> list[TgMessage]: ...
+    async def unrouted_messages(self, peer: int, limit: int = 500) -> list[TgMessage]: ...
+    async def mark_routed(self, peer: int, msg_ids: Sequence[int]) -> None: ...
     async def get_cursor(self, peer: int) -> int: ...
     async def advance_cursor(self, peer: int, msg_id: int) -> None: ...
     async def add_monitored(self, peer: int) -> None: ...
@@ -80,7 +82,7 @@ class TelegramStore(Protocol):
     async def disallow(self, peer: int | str) -> None: ...
     async def is_allowed(self, peer: int | str) -> bool: ...
     async def list_allowed(self) -> list[int | str]: ...
-    async def add_suggestion(self, suggestion: Suggestion) -> None: ...
+    async def add_suggestion(self, suggestion: Suggestion) -> bool: ...
     async def get_suggestion(self, id: str) -> Suggestion | None: ...
     async def list_suggestions(self, status: SuggestionStatus | None = None, limit: int = 100) -> list[Suggestion]: ...
     async def cas_suggestion(self, id: str, expected_status: SuggestionStatus, changes: dict[str, Any]) -> Suggestion | None: ...
@@ -88,12 +90,13 @@ class TelegramStore(Protocol):
     async def get_approval(self, id: str) -> ApprovalRequest | None: ...
     async def list_approvals(self, status: ApprovalStatus | None = None) -> list[ApprovalRequest]: ...
     async def cas_approval(self, id: str, expected: ApprovalStatus, changes: dict[str, Any]) -> ApprovalRequest | None: ...
-    async def add_signal(self, signal: Signal) -> None: ...
+    async def add_signal(self, signal: Signal) -> bool: ...
     async def list_signals(self, limit: int = 100, symbol: str | None = None) -> list[Signal]: ...
     async def last_signal(self, symbol: str, direction: Direction) -> Signal | None: ...
     async def set_signal_task(self, id: str, kanban_task_id: str) -> None: ...
     async def record_send(self, peer: int, ts: str) -> None: ...
     async def count_sends_since(self, peer: int, since_iso: str) -> int: ...
+    async def send_times_since(self, peer: int, since_iso: str) -> list[str]: ...
 
 
 def _row_to_message(row: sqlite3.Row) -> TgMessage:
@@ -258,6 +261,32 @@ class SqliteTelegramStore:
 
         return await self._run(_do)
 
+    async def unrouted_messages(self, peer: int, limit: int = 500) -> list[TgMessage]:
+        """Noch nicht zugestellte Nachrichten, aufsteigend nach ``msg_id``."""
+
+        def _do(conn: sqlite3.Connection) -> list[TgMessage]:
+            rows = conn.execute(
+                "SELECT * FROM messages WHERE peer=? AND routed_at IS NULL ORDER BY msg_id LIMIT ?",
+                (peer, limit),
+            ).fetchall()
+            return [_row_to_message(r) for r in rows]
+
+        return await self._run(_do)
+
+    async def mark_routed(self, peer: int, msg_ids: Sequence[int]) -> None:
+        if not msg_ids:
+            return
+        now = utc_now_iso()
+
+        def _do(conn: sqlite3.Connection) -> None:
+            with self._tx(conn):
+                conn.executemany(
+                    "UPDATE messages SET routed_at=? WHERE peer=? AND msg_id=?",
+                    [(now, peer, msg_id) for msg_id in msg_ids],
+                )
+
+        await self._run(_do)
+
     async def get_cursor(self, peer: int) -> int:
         def _do(conn: sqlite3.Connection) -> int:
             row = conn.execute("SELECT last_msg_id FROM cursors WHERE peer=?", (peer,)).fetchone()
@@ -325,24 +354,28 @@ class SqliteTelegramStore:
         return await self._run(lambda c: [normalize_peer(r["peer"]) for r in c.execute("SELECT peer FROM allowlist ORDER BY added_at")])
 
     # -- Suggestions ------------------------------------------------------ #
-    async def add_suggestion(self, suggestion: Suggestion) -> None:
+    async def add_suggestion(self, suggestion: Suggestion) -> bool:
+        """Idempotent ueber die ID; ``True`` nur, wenn die Zeile neu ist."""
         s = suggestion
-        await self._run(
-            lambda c: c.execute(
-                "INSERT INTO suggestions (id, source_peer, target_peer, text, based_on_msg_id, origin, status,"
-                " created_at, decided_at, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    s.id,
-                    s.source_peer,
-                    s.target_peer,
-                    s.text,
-                    s.based_on_msg_id,
-                    s.origin,
-                    s.status.value,
-                    s.created_at,
-                    s.decided_at,
-                    s.error,
-                ),
+        return await self._run(
+            lambda c: (
+                c.execute(
+                    "INSERT OR IGNORE INTO suggestions (id, source_peer, target_peer, text, based_on_msg_id, origin, status,"
+                    " created_at, decided_at, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        s.id,
+                        s.source_peer,
+                        s.target_peer,
+                        s.text,
+                        s.based_on_msg_id,
+                        s.origin,
+                        s.status.value,
+                        s.created_at,
+                        s.decided_at,
+                        s.error,
+                    ),
+                ).rowcount
+                > 0
             )
         )
 
@@ -417,13 +450,17 @@ class SqliteTelegramStore:
         return row
 
     # -- Signale ---------------------------------------------------------- #
-    async def add_signal(self, signal: Signal) -> None:
+    async def add_signal(self, signal: Signal) -> bool:
+        """Idempotent ueber die ID; ``True`` nur, wenn die Zeile neu ist."""
         s = signal
-        await self._run(
-            lambda c: c.execute(
-                "INSERT INTO signals (id, symbol, direction, strength, peer, msg_id, evidence, created_at,"
-                " kanban_task_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (s.id, s.symbol, s.direction.value, s.strength, s.peer, s.msg_id, s.evidence, s.created_at, s.kanban_task_id),
+        return await self._run(
+            lambda c: (
+                c.execute(
+                    "INSERT OR IGNORE INTO signals (id, symbol, direction, strength, peer, msg_id, evidence, created_at,"
+                    " kanban_task_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (s.id, s.symbol, s.direction.value, s.strength, s.peer, s.msg_id, s.evidence, s.created_at, s.kanban_task_id),
+                ).rowcount
+                > 0
             )
         )
 
@@ -458,4 +495,10 @@ class SqliteTelegramStore:
         """Zeitstempel sind ``utc_now_iso``-Strings (gleiches Format), daher String-Vergleich."""
         return await self._run(
             lambda c: int(c.execute("SELECT COUNT(*) FROM sends WHERE peer=? AND ts >= ?", (peer, since_iso)).fetchone()[0])
+        )
+
+    async def send_times_since(self, peer: int, since_iso: str) -> list[str]:
+        """Sendezeitpunkte ab ``since_iso``, aelteste zuerst (fuer ``retry_after``)."""
+        return await self._run(
+            lambda c: [r["ts"] for r in c.execute("SELECT ts FROM sends WHERE peer=? AND ts >= ? ORDER BY ts", (peer, since_iso))]
         )

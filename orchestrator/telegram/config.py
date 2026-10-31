@@ -48,6 +48,15 @@ def _int_or_none(env: Mapping[str, str], key: str) -> int | None:
         raise ValueError(f"Ungueltiger numerischer Wert fuer {key}") from None
 
 
+def _first(env: Mapping[str, str], *keys: str) -> str:
+    """Erster nicht-leerer Wert: ``NIO_TELEGRAM_LLM_*`` vor ``OPENAI_*``."""
+    for key in keys:
+        value = env.get(key, "").strip()
+        if value:
+            return value
+    return ""
+
+
 def _parse_allowlist(raw: str) -> tuple[int | str, ...]:
     return tuple(normalize_peer(item) for item in raw.split(",") if item.strip())
 
@@ -64,10 +73,17 @@ class TelegramConfig:
     kanban_board: str
     kanban_min_strength: int
     kanban_cooldown_s: float
+    llm_base_url: str = ""
+    llm_model: str = ""
+    llm_api_key: str = field(default="", repr=False)
 
     @property
     def configured(self) -> bool:
         return self.api_id is not None and bool(self.api_hash)
+
+    @property
+    def llm_configured(self) -> bool:
+        return bool(self.llm_base_url and self.llm_model and self.llm_api_key)
 
     @property
     def session_path(self) -> Path:
@@ -130,4 +146,7 @@ class TelegramConfig:
             kanban_board=kanban_board,
             kanban_min_strength=kanban_min_strength,
             kanban_cooldown_s=kanban_cooldown_s,
+            llm_base_url=_first(env, "NIO_TELEGRAM_LLM_BASE_URL", "OPENAI_BASE_URL"),
+            llm_model=_first(env, "NIO_TELEGRAM_LLM_MODEL", "OPENAI_MODEL"),
+            llm_api_key=_first(env, "NIO_TELEGRAM_LLM_API_KEY", "OPENAI_API_KEY"),
         )

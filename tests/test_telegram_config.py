@@ -55,6 +55,31 @@ class TestTelegramConfig(unittest.TestCase):
         c2 = TelegramConfig.from_env({"NIO_TELEGRAM_DATA_DIR": "mydata"}, repo_root=root)
         self.assertEqual(c2.data_dir, root / "mydata")
 
+    def test_llm_prefers_telegram_values(self):
+        c = TelegramConfig.from_env(
+            {
+                "NIO_TELEGRAM_LLM_BASE_URL": "http://tg",
+                "NIO_TELEGRAM_LLM_MODEL": "tg-model",
+                "NIO_TELEGRAM_LLM_API_KEY": "tg-key",
+                "OPENAI_BASE_URL": "http://openai",
+                "OPENAI_MODEL": "gpt",
+                "OPENAI_API_KEY": "oa-key",
+            }
+        )
+        self.assertEqual((c.llm_base_url, c.llm_model, c.llm_api_key), ("http://tg", "tg-model", "tg-key"))
+        self.assertTrue(c.llm_configured)
+
+    def test_llm_falls_back_to_openai(self):
+        c = TelegramConfig.from_env({"OPENAI_BASE_URL": "http://openai", "OPENAI_MODEL": "gpt", "OPENAI_API_KEY": "oa-key"})
+        self.assertEqual((c.llm_base_url, c.llm_model, c.llm_api_key), ("http://openai", "gpt", "oa-key"))
+
+    def test_llm_needs_all_three(self):
+        self.assertFalse(TelegramConfig.from_env({}).llm_configured)
+        self.assertFalse(TelegramConfig.from_env({"OPENAI_API_KEY": "k", "OPENAI_MODEL": "m"}).llm_configured)
+
+    def test_repr_hides_llm_key(self):
+        self.assertNotIn("my-llm-key", repr(TelegramConfig.from_env({"NIO_TELEGRAM_LLM_API_KEY": "my-llm-key"})))
+
 
 if __name__ == "__main__":
     unittest.main()

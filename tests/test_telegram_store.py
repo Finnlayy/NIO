@@ -1,4 +1,5 @@
 import asyncio
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,7 +14,7 @@ from orchestrator.telegram.models import (
     SuggestionStatus,
     TgMessage,
 )
-from orchestrator.telegram.store import SqliteTelegramStore
+from orchestrator.telegram.store import SqliteTelegramStore, migration_scripts
 
 
 class TestTelegramStore(unittest.IsolatedAsyncioTestCase):
@@ -207,3 +208,60 @@ class TestTelegramStore(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    async def test_unrouted_and_mark_routed(self):
+        msgs = [TgMessage(1, i, "S", "T", "2023-01-01T00:00:00Z", False, False) for i in (3, 1, 2)]
+        msgs.append(TgMessage(2, 9, "S", "T", "2023-01-01T00:00:00Z", False, False))
+        await self.store.add_messages(msgs)
+        self.assertEqual([m.msg_id for m in await self.store.unrouted_messages(1)], [1, 2, 3])
+        self.assertEqual([m.msg_id for m in await self.store.unrouted_messages(1, limit=1)], [1])
+        await self.store.mark_routed(1, [1, 3])
+        await self.store.mark_routed(1, [])
+        self.assertEqual([m.msg_id for m in await self.store.unrouted_messages(1)], [2])
+        self.assertEqual([m.msg_id for m in await self.store.unrouted_messages(2)], [9])
+
+    async def test_add_suggestion_idempotent(self):
+        s = Suggestion("sug", 1, 2, "a", 1, "rules", SuggestionStatus.PENDING, "t", None, None)
+        self.assertTrue(await self.store.add_suggestion(s))
+        self.assertFalse(await self.store.add_suggestion(Suggestion("sug", 1, 2, "b", 1, "llm", SuggestionStatus.PENDING, "t", None, None)))
+        self.assertEqual((await self.store.get_suggestion("sug")).text, "a")
+
+    async def test_add_signal_idempotent(self):
+        sig = Signal("sig", "BTC", Direction.BULLISH, 4, 1, 1, "e", "t", None)
+        self.assertTrue(await self.store.add_signal(sig))
+        self.assertFalse(await self.store.add_signal(sig))
+        self.assertEqual(len(await self.store.list_signals()), 1)
+
+    async def test_send_times_since_sorted(self):
+        await self.store.record_send(1, "2026-01-01T00:02:00.000Z")
+        await self.store.record_send(1, "2026-01-01T00:01:00.000Z")
+        await self.store.record_send(1, "2025-01-01T00:00:00.000Z")
+        await self.store.record_send(2, "2026-01-01T00:03:00.000Z")
+        times = await self.store.send_times_since(1, "2026-01-01T00:00:00.000Z")
+        self.assertEqual(times, ["2026-01-01T00:01:00.000Z", "2026-01-01T00:02:00.000Z"])
+
+
+class TestMigration(unittest.IsolatedAsyncioTestCase):
+    async def test_v1_database_is_upgraded_and_keeps_data(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "v1.db"
+            sql = dict(migration_scripts())[1]
+            conn = sqlite3.connect(path)
+            try:
+                conn.executescript(sql)
+                conn.execute("CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)")
+                conn.execute("INSERT INTO schema_version VALUES (1, 't')")
+                conn.execute("INSERT INTO messages (peer, msg_id, sender, text, ts, outgoing, is_bot) VALUES (1, 1, 's', 'alt', 't', 0, 0)")
+                conn.commit()
+            finally:
+                conn.close()
+
+            store = SqliteTelegramStore(path)
+            await store.init()
+            try:
+                [msg] = await store.unrouted_messages(1)
+                self.assertEqual(msg.text, "alt")
+                await store.mark_routed(1, [1])
+                self.assertEqual(await store.unrouted_messages(1), [])
+            finally:
+                await store.close()
