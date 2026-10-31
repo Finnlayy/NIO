@@ -550,10 +550,10 @@ export function ApolloOrb({ className = "" }: { className?: string }) {
                 {quota}%
               </dd>
             </div>
-            <div className="h-1 overflow-hidden rounded-full bg-white/5">
+            <div className="relative h-1 overflow-hidden rounded-full bg-white/5">
               <div
-                className="h-full rounded-full transition-[width] duration-500"
-                style={{ width: `${Math.max(2, quota)}%`, background: quotaColor }}
+                className="absolute inset-y-0 left-0 h-full w-full rounded-full transition-transform duration-500"
+                style={{ transform: `scaleX(${Math.max(2, quota) / 100})`, transformOrigin: "left", background: quotaColor }}
               />
             </div>
             <div className="flex items-baseline justify-between gap-2">
