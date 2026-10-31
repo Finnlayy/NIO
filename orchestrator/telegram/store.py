@@ -86,6 +86,7 @@ class TelegramStore(Protocol):
     async def get_suggestion(self, id: str) -> Suggestion | None: ...
     async def list_suggestions(self, status: SuggestionStatus | None = None, limit: int = 100) -> list[Suggestion]: ...
     async def cas_suggestion(self, id: str, expected_status: SuggestionStatus, changes: dict[str, Any]) -> Suggestion | None: ...
+    async def fail_stale_sending(self, error: str, now: str) -> list[str]: ...
     async def add_approval(self, approval: ApprovalRequest) -> None: ...
     async def get_approval(self, id: str) -> ApprovalRequest | None: ...
     async def list_approvals(self, status: ApprovalStatus | None = None) -> list[ApprovalRequest]: ...
@@ -403,6 +404,19 @@ class SqliteTelegramStore:
             check_transition("suggestion", expected_status, SuggestionStatus(changes["status"]))
         row = await self._run(lambda c: self._cas(c, "suggestions", id, expected_status.value, changes))
         return _row_to_suggestion(row) if row else None
+
+    async def fail_stale_sending(self, error: str, now: str) -> list[str]:
+        """Setzt alles in ``sending`` auf ``failed``: nur beim Start, wenn kein Versand laufen kann."""
+
+        def _do(conn: sqlite3.Connection) -> list[str]:
+            with self._tx(conn):
+                rows = conn.execute(
+                    "UPDATE suggestions SET status=?, error=?, decided_at=? WHERE status=? RETURNING id",
+                    (SuggestionStatus.FAILED.value, error, now, SuggestionStatus.SENDING.value),
+                ).fetchall()
+            return [r["id"] for r in rows]
+
+        return await self._run(_do)
 
     # -- Approvals -------------------------------------------------------- #
     async def add_approval(self, approval: ApprovalRequest) -> None:

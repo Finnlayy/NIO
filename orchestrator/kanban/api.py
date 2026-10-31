@@ -268,13 +268,16 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
     # -- Tools (Task-Token statt Operator-Token) --
     @router.get("/kanban/tools")
     async def list_tools() -> list[dict[str, Any]]:
-        return list(TOOL_DEFINITIONS)
+        extra = list(runtime.telegram.toolbox.definitions) if runtime.telegram is not None else []
+        return [*TOOL_DEFINITIONS, *extra]
 
     @router.post("/kanban/tools/{name}")
     async def call_tool(name: str, body: ToolCallIn, token: str = Depends(task_token)) -> dict[str, Any]:
         if await runtime.tokens.get(token) is None:
             raise HTTPException(status_code=401, detail="Task-Token ungueltig oder abgelaufen")
         try:
+            if runtime.telegram is not None and runtime.telegram.toolbox.handles(name):
+                return await runtime.telegram.toolbox.call(name, body.arguments)
             return await runtime.toolbox.call(name, body.arguments, token)
         except PermissionError as e:
             raise HTTPException(status_code=403, detail=str(e)) from e
@@ -362,6 +365,11 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
             return RustLimbResponse.from_dict(raw).to_dict()
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Limb-Aufruf fehlgeschlagen: {type(e).__name__}") from e
+
+    if runtime.telegram is not None:
+        from orchestrator.telegram.api import build_telegram_router
+
+        router.include_router(build_telegram_router(runtime.telegram, operator))
 
     app.include_router(router)
     return app

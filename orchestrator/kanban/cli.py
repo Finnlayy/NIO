@@ -28,6 +28,8 @@ __all__ = ["add_kanban_parser"]
 
 _Handler = Callable[[argparse.Namespace, KanbanRuntime], Awaitable[int]]
 
+_SHUTDOWN_GRACE_S = 3
+
 
 def _plain(data: Any) -> Any:
     if hasattr(data, "to_dict"):
@@ -148,6 +150,9 @@ async def _audit_tail(args: argparse.Namespace, rt: KanbanRuntime) -> int:
 
 
 async def _serve(args: argparse.Namespace, rt: KanbanRuntime) -> int:
+    from orchestrator.telegram.runtime import attach_telegram
+
+    await attach_telegram(rt)
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -165,8 +170,10 @@ async def _serve(args: argparse.Namespace, rt: KanbanRuntime) -> int:
         else:
             if not rt.config.api_token:
                 print("kanban: NIO_KANBAN_API_TOKEN fehlt -- Operator-Routen antworten 503", file=sys.stderr)
+            # Ohne Frist haelt ein offener SSE-Stream das Herunterfahren ewig auf.
             server = uvicorn.Server(uvicorn.Config(build_app(rt), host=args.host or rt.config.api_host,
-                                                   port=args.port or rt.config.api_port, log_level="info"))
+                                                   port=args.port or rt.config.api_port, log_level="info",
+                                                   timeout_graceful_shutdown=_SHUTDOWN_GRACE_S))
             # uvicorn faengt SIGINT/SIGTERM waehrend ``serve()`` selbst ab: wer zuerst
             # endet (API oder ``stop``), beendet den jeweils anderen.
             async def _api() -> None:

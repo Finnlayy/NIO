@@ -42,6 +42,8 @@ class TelegramPort(Protocol):
     async def dialogs(self) -> list[TgDialog]: ...
     async def messages_since(self, peer: int | str, min_id: int, limit: int = 200) -> list[TgMessage]: ...
     async def send(self, peer: int | str, text: str) -> TgMessage: ...
+    async def latest_msg_id(self, peer: int | str) -> int: ...
+    async def resolve_peer(self, peer: int | str) -> int: ...
     def on_new_message(self, callback: Callable[[TgMessage], Awaitable[None]]) -> None: ...
     async def close(self) -> None: ...
 
@@ -52,6 +54,7 @@ class FakeTelegramClient:
         self.me_data: dict[str, Any] | None = {"id": 1, "name": "Fake", "username": "fake"}
         self.fake_dialogs: list[TgDialog] = []
         self.fake_messages: list[TgMessage] = []
+        self.fake_names: dict[str, int] = {}
         self.sent: list[tuple[int | str, str]] = []
         self.callbacks: list[Callable[[TgMessage], Awaitable[None]]] = []
         self.flood_wait_after: int | None = None
@@ -89,6 +92,17 @@ class FakeTelegramClient:
             outgoing=True,
             is_bot=False,
         )
+
+    async def latest_msg_id(self, peer: int | str) -> int:
+        return max((m.msg_id for m in self.fake_messages if m.peer == peer), default=0)
+
+    async def resolve_peer(self, peer: int | str) -> int:
+        norm = normalize_peer(peer)
+        if isinstance(norm, int):
+            return norm
+        if norm not in self.fake_names:
+            raise ValueError(f"Peer nicht gefunden: {norm}")
+        return self.fake_names[norm]
 
     def on_new_message(self, callback: Callable[[TgMessage], Awaitable[None]]) -> None:
         self.callbacks.append(callback)
@@ -146,13 +160,15 @@ class TelethonClient:
         self._ensure_dir()
         session_str = str(self.config.session_path)
 
-        self._client = telethon.TelegramClient(
+        client = telethon.TelegramClient(
             session_str,
             self.config.api_id,
             self.config.api_hash,
         )
 
-        await self._client.connect()
+        # Erst nach erfolgreichem Connect merken, sonst bleibt ein toter Client haengen.
+        await client.connect()
+        self._client = client
 
         if self.config.session_path.exists():
             self.config.session_path.chmod(0o600)
@@ -276,6 +292,35 @@ class TelethonClient:
             return smsg
         except telethon.errors.FloodWaitError as e:
             self._flood(e.seconds)
+
+    async def latest_msg_id(self, peer: int | str) -> int:
+        if self._state != LoginState.AUTHORIZED:
+            raise TelegramNotAuthorized("Client ist nicht eingeloggt")
+
+        telethon = _import_telethon()
+        try:
+            async for msg in self._client.iter_messages(normalize_peer(peer), limit=1):
+                return int(msg.id)
+        except telethon.errors.FloodWaitError as e:
+            self._flood(e.seconds)
+        return 0
+
+    async def resolve_peer(self, peer: int | str) -> int:
+        norm = normalize_peer(peer)
+        if isinstance(norm, int):
+            return norm
+        if self._state != LoginState.AUTHORIZED:
+            raise TelegramNotAuthorized("Client ist nicht eingeloggt")
+
+        from telethon.utils import get_peer_id
+
+        telethon = _import_telethon()
+        try:
+            return int(get_peer_id(await self._client.get_input_entity(norm)))
+        except telethon.errors.FloodWaitError as e:
+            self._flood(e.seconds)
+        except ValueError:
+            raise ValueError(f"Peer nicht gefunden: {norm}") from None
 
     def on_new_message(self, callback: Callable[[TgMessage], Awaitable[None]]) -> None:
         self._callbacks.append(callback)

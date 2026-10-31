@@ -110,3 +110,25 @@ class TestTelegramClient(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTelethonConnectRetry(unittest.IsolatedAsyncioTestCase):
+    async def test_failed_connect_is_not_remembered(self):
+        import tempfile
+        from pathlib import Path
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from orchestrator.telegram import client as client_module
+        from orchestrator.telegram.client import TelethonClient
+        from orchestrator.telegram.config import TelegramConfig
+
+        with tempfile.TemporaryDirectory() as td:
+            config = TelegramConfig.from_env({"NIO_TELEGRAM_API_ID": "1", "NIO_TELEGRAM_API_HASH": "h"}, repo_root=Path(td))
+            broken = mock.Mock(connect=mock.AsyncMock(side_effect=ConnectionError("offline")))
+            module = SimpleNamespace(TelegramClient=mock.Mock(return_value=broken))
+            with mock.patch.object(client_module, "_import_telethon", return_value=module):
+                client = TelethonClient(config)
+                with self.assertRaises(ConnectionError):
+                    await client.status()
+            self.assertIsNone(client._client)

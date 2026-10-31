@@ -20,7 +20,7 @@ from core.protocol import utc_now_iso
 from .client import TelegramFloodWait, TelegramNotAuthorized, TelegramPort
 from .config import TelegramConfig
 from .models import TgMessage
-from .router import IntelRouter
+from .router import Emit, IntelRouter, safe_emit
 from .store import TelegramStore
 
 __all__ = ["GatherLoop", "TickReport"]
@@ -56,12 +56,14 @@ class GatherLoop:
         config: TelegramConfig,
         *,
         clock: Callable[[], str] = utc_now_iso,
+        emit: Emit | None = None,
     ) -> None:
         self._client = client
         self._store = store
         self._router = router
         self._config = config
         self._clock = clock
+        self._emit = emit
         self._peer_locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._attached = False
         self._running = False
@@ -82,13 +84,17 @@ class GatherLoop:
                     routed += 1
         return routed, None
 
+    async def _store_new(self, messages: list[TgMessage]) -> None:
+        for msg in await self._store.add_messages(messages):
+            await safe_emit(self._emit, "message", msg.to_dict())
+
     async def tick(self) -> TickReport:
         report = TickReport(at=self._clock())
         for peer in await self._store.list_monitored():
             report.peers += 1
             try:
                 messages = await self._client.messages_since(peer, await self._store.get_cursor(peer), _FETCH_LIMIT)
-                await self._store.add_messages(messages)
+                await self._store_new(messages)
             except TelegramFloodWait as exc:
                 report.flood_wait_s = exc.seconds
                 break
@@ -112,7 +118,7 @@ class GatherLoop:
         try:
             if msg.peer not in await self._store.list_monitored():
                 return
-            await self._store.add_messages([msg])
+            await self._store_new([msg])
             await self._route_peer(msg.peer)
         except Exception as exc:
             # Der naechste Tick holt die Nachricht nach; der Listener muss weiterleben.

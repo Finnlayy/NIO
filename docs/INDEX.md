@@ -38,6 +38,7 @@ Stand: `9598911` (Merge PR #243) · Sprache: Deutsch, Code und Identifier englis
 | [`INDEX.md`](INDEX.md) | — | diese Seite | alle |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 212 | zwei Stapel, eine Grenze; Schichten; Prozess- und Zeitmodell | Entwickler |
 | [`KANBAN.md`](KANBAN.md) | ~140 | Hermes-Kanban: Tasks, Worker, Architektur, Konfiguration und CLI | Entwickler, Betrieb |
+| [`TELEGRAM.md`](TELEGRAM.md) | ~110 | Telegram-Feeds: Einrichtung, Konfiguration, API, Sicherheit | Entwickler, Betrieb |
 | [`NEU.md`](NEU.md) | 470 | Core, Orchestrator, Limbs, Lernschleife | Entwickler |
 | [`APOLLO-CORE.md`](APOLLO-CORE.md) | ~240 | Orb, Neuronaler Graph, Router, Deck, Terminal | Nutzer, Frontend |
 | [`OPS-GRID.md`](OPS-GRID.md) | ~180 | 10 Widgets, Drag/Resize, MCP-Konsole | Nutzer, Frontend |
