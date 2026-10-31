@@ -37,6 +37,8 @@ dev = ["ruff>=0.16", "mypy>=1.11"]
 ciel = ["pydantic>=2"]
 # Optionale Kanban-Adapter: fastapi/uvicorn für die API und asyncpg für Postgres.
 kanban = ["asyncpg>=0.29", "fastapi>=0.110", "uvicorn>=0.29", "pydantic>=2"]
+# Optionale Telegram-Adapter: telethon für das MTProto Client-Protokoll.
+telegram = ["telethon>=1.36"]
 
 [project.scripts]
 neu = "orchestrator.cli:main"
@@ -46,10 +48,11 @@ Homepage = "https://github.com/Finnlayy/NIO"
 
 [tool.setuptools]
 # Nur die Python-Pakete; src/, evals/, frontend/ gehoeren zum Legacy-Harness.
-packages = ["core", "orchestrator", "orchestrator.kanban", "limbs", "apollo", "apollo.ciel"]
+packages = ["core", "orchestrator", "orchestrator.kanban", "orchestrator.telegram", "limbs", "apollo", "apollo.ciel"]
 
 [tool.setuptools.package-data]
 "orchestrator.kanban" = ["sql/*.sql"]
+"orchestrator.telegram" = ["sql/*.sql"]
 
 # ----------------------------------------------------------------------------
 # Lint / Format: ruff
@@ -102,6 +105,11 @@ ignore_errors = true
 # Optionale Kanban-Adapter (Extra ``kanban``): werden nur lazy importiert.
 [[tool.mypy.overrides]]
 module = ["asyncpg", "asyncpg.*", "uvicorn"]
+ignore_missing_imports = true
+
+# Optionaler Telegram-Adapter (Extra ``telegram``): wird nur lazy importiert.
+[[tool.mypy.overrides]]
+module = ["telethon", "telethon.*"]
 ignore_missing_imports = true
 
 # Transitiv ueber fastapi/pydantic erreichbare GUI-Stubs (PIL.ImageQt -> PyQt6) sind

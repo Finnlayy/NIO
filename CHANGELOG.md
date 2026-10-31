@@ -9,6 +9,15 @@ Datumsangaben in UTC.
 
 ### Hinzugefügt
 
+- `orchestrator/telegram/` — Telegram-Feeds mit Benutzerkonto lesen, Signale erkennen, Antworten nach Klick senden.
+  - Gather-Loop und Live-Listener mit At-least-once-Zustellung, SQLite-Cache und Dedupe.
+  - Intel-Router: Vorschläge an den gepaarten Bot, starke Signale als Hermes-Tasks in TRIAGE.
+  - Versand nur nach Freigabe, nur an Allowlist-Ziele, mit Rate-Limit und Audit.
+  - API unter `/api/v1/telegram/*` mit SSE, CLI `neu telegram`, Nur-Lese-Tools für Ciel und Worker.
+  - Start über `neu kanban serve`, neues Extra `telegram`, Abnahme via `scripts/ci_e2e_telegram.py` (`make e2e-telegram`).
+  - Oberfläche `/telegram` mit Server-Proxy: das Operator-Token erreicht nie den Browser.
+  - `docs/TELEGRAM.md` mit Einrichtung, Konfiguration, API und Sicherheitsmodell.
+
 - `orchestrator/kanban/` — Hermes-Kanban Task-Management.
   - Implementierung von Architektur-Layer 2 & 3: Dispatcher, Reaper, Event-Bus, Postgres/SQLite Store.
   - Sichere Sandbox-Umgebung (Docker & Subprocess) mit strikten Limits (kein `shell=True`, kein Netzwerk per Default).
