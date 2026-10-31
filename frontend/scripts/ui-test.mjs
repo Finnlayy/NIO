@@ -44,6 +44,20 @@ const entries = [
   "apollo/graph.ts",
   "apollo/commands.ts",
   "apollo/store.ts",
+  "kanban/types.ts",
+  "kanban/seed.ts",
+  "kanban/board-logic.ts",
+  "kanban/validate.ts",
+  "kanban/repository.ts",
+  "kanban/store.ts",
+  "kanban/hotkeys.ts",
+  "kanban/useKanbanStore.ts",
+  "kanban/dragState.ts",
+  "kanban/MoveMenu.tsx",
+  "kanban/TaskCard.tsx",
+  "kanban/KanbanColumn.tsx",
+  "kanban/BoardToolbar.tsx",
+  "kanban/KanbanBoard.tsx",
 ].filter((rel) => existsSync(path.join(srcDir, rel)));
 
 function walk(dir, out = []) {
@@ -119,16 +133,26 @@ execFileSync(
 /* 4. Copy the plain-JS tests and run them. Test files are passed
    explicitly: `node --test <dir>` chokes when the dir holds non-test .js
    files (dev utilities like churn-report.js). */
-const testSrc = path.join(srcDir, "ops", "__tests__");
 const testDest = path.join(buildDir, "__tests__");
 mkdirSync(testDest, { recursive: true });
 const testFiles = [];
-for (const f of readdirSync(testSrc).sort()) {
-  if (!f.endsWith(".js")) continue;
-  cpSync(path.join(testSrc, f), path.join(testDest, f));
-  if (f.endsWith(".test.js")) testFiles.push(path.join(testDest, f));
+
+/* All test dirs share one flat .test-build/__tests__/ (relative requires
+   like "../kanban/store" depend on it), so file names must be unique. */
+const copied = new Map();
+for (const dirName of ["ops", "kanban"]) {
+  const testSrc = path.join(srcDir, dirName, "__tests__");
+  if (!existsSync(testSrc)) continue;
+  for (const f of readdirSync(testSrc).sort()) {
+    if (!f.endsWith(".js")) continue;
+    if (copied.has(f)) throw new Error(`test file name clash: ${dirName}/__tests__/${f} vs ${copied.get(f)}/__tests__/${f}`);
+    copied.set(f, dirName);
+    cpSync(path.join(testSrc, f), path.join(testDest, f));
+    if (f.endsWith(".test.js")) testFiles.push(path.join(testDest, f));
+  }
 }
-if (testFiles.length === 0) throw new Error("no *.test.js files found in src/ops/__tests__/");
+
+if (testFiles.length === 0) throw new Error("no *.test.js files found in src/ops/__tests__/ or src/kanban/__tests__/");
 execFileSync(process.execPath, ["--test", "--test-reporter=spec", ...testFiles], {
   cwd: frontendRoot,
   stdio: "inherit",
