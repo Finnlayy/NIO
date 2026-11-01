@@ -1,6 +1,6 @@
 # HTTP-API
 
-Alle Routen liegen unter `frontend/src/app/api/`. Fünf Endpunkte, alle
+Alle Routen liegen unter `frontend/src/app/api/`. Alle Endpunkte nutzen
 `runtime = "nodejs"` und `dynamic = "force-dynamic"`.
 
 | Route | Methode | Zweck | Geheimnis nötig |
