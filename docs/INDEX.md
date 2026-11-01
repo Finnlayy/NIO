@@ -21,6 +21,7 @@ Stand: `9598911` (Merge PR #243) · Sprache: Deutsch, Code und Identifier englis
 2. [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md) — Intent/Result 1.2 (normativ)
 3. [`NEU.md`](NEU.md) — Kern, Orchestrator, Limbs im Detail
 4. [`TESTING.md`](TESTING.md) — wie man prüft, dass nichts kaputt ist
+5. [`EVIDENCE-HARNESS.md`](EVIDENCE-HARNESS.md) — wie ein Agent belegen muss, was er behauptet
 
 ### Ich will es betreiben
 
@@ -43,12 +44,14 @@ Stand: `9598911` (Merge PR #243) · Sprache: Deutsch, Code und Identifier englis
 | [`OPS-GRID.md`](OPS-GRID.md) | ~180 | 10 Widgets, Drag/Resize, MCP-Konsole | Nutzer, Frontend |
 | [`DATA-FLOW.md`](DATA-FLOW.md) | ~200 | Marktdaten: MCP → Adapter → Browser; Formate und Messungen | Entwickler, Betrieb |
 | [`TRADING-LIMB.md`](TRADING-LIMB.md) | ~230 | Sigma als Handels-Knoten; Sparse-Clone, Pin, Lifecycle | Betrieb |
+| [`EVIDENCE-HARNESS.md`](EVIDENCE-HARNESS.md) | ~650 | Masterprompt v2 für recherchende Agenten: Rollenverträge, Claim-Ledger, Fail-Closed-Gate, Ticket, Budget | Entwickler, Konzept |
 | [`API.md`](API.md) | ~220 | 4 Next-Routen mit vollständigen Fehlerverträgen | Frontend, Integration |
 | [`TESTING.md`](TESTING.md) | ~180 | 360 Python-Tests, 69 UI-Tests, Audit-Harness | Entwickler |
 | [`OPERATIONS.md`](OPERATIONS.md) | ~200 | Ports, Env, Prozesse, Troubleshooting | Betrieb |
 | [`REA-SUBAGENT.md`](REA-SUBAGENT.md) | 396 | REA-Limb als Subagent mit eigener Sandbox | Entwickler |
 | [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md) | ~490 | **normativ**: Intent, Result, Timer, Fehlercodes | Entwickler |
 | [`../prompts/limbs/`](../prompts/limbs/) | 3 Dateien | Rollen-Specs: bootstrap, rea, trading | Entwickler |
+| [`../prompts/agents/evidence_harness_v2.md`](../prompts/agents/evidence_harness_v2.md) | ~266 | Kanonischer Rollenvertrag für recherchende Agenten (H/M-Regeln, Ledger, Gate) | Entwickler |
 
 ### Historische Dokumente
 
