@@ -64,16 +64,6 @@ Der Key wird über die Endpoint-URL gewählt (siehe [`API.md`](API.md)):
 `OPENROUTER_API_KEY` · `GROQ_API_KEY` · `GOOGLE_API_KEY` ·
 `MISTRAL_API_KEY` · `CEREBRAS_API_KEY`
 
-### Manus (gesperrt)
-
-Echte Aufrufe sind gesperrt, siehe [`MANUS.md`](MANUS.md). `MANUS_API_KEY` bleibt serverseitig und erscheint in keinem Log.
-
-| Variable | Wirkung ohne sie |
-|---|---|
-| `MANUS_API_KEY` | `manus.*` wird abgewiesen |
-| `MANUS_BUDGET_RUN`, `MANUS_BUDGET_DAY` | `manus.start` wird abgewiesen |
-| `MANUS_API_BASE` | Nur für Tests, jeder Host außer diesem Rechner wird abgewiesen |
-
 ### Trading-Limb (setzt der Limb selbst)
 
 | Variable | Wert | Grund |

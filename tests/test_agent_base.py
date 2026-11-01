@@ -83,7 +83,7 @@ class DemoAgent(AgentLimb):
         return step
 
     def over_budget(self, run: dict[str, Any], poll: Poll, ctx: Any) -> str:
-        return "zu teuer" if poll.credits > 100 else ""
+        return "zu teuer" if (poll.detail or {}).get("tokens", 0) > 100 else ""
 
     def halt(self, run: dict[str, Any], ctx: Any) -> None:
         self.halted += 1
@@ -124,8 +124,8 @@ class AgentRunTest(unittest.TestCase):
 
     def test_erfolg_und_abholen(self):
         run_id = self.start()["run_id"]
-        self.assertEqual(self.status(run_id, Poll("running", 5))["state"], "running")
-        self.assertEqual(self.status(run_id, Poll("succeeded", 7))["credits"], 7)
+        self.assertEqual(self.status(run_id, Poll("running"))["state"], "running")
+        self.assertEqual(self.status(run_id, Poll("succeeded"))["state"], "succeeded")
         output = self.limb._collect({"run_id": run_id}, self.ctx)
         self.assertEqual(output["text"], "fertig")
         self.assertTrue(output["untrusted"])
@@ -140,7 +140,7 @@ class AgentRunTest(unittest.TestCase):
 
     def test_budget_stoppt_den_lauf(self):
         run_id = self.start()["run_id"]
-        view = self.status(run_id, Poll("running", 101))
+        view = self.status(run_id, Poll("running", {"tokens": 101}))
         self.assertEqual(view["state"], "budget_stopped")
         self.assertEqual(self.limb.halted, 1)
         self.assertTrue(view["stop_confirmed"])
@@ -148,7 +148,7 @@ class AgentRunTest(unittest.TestCase):
     def test_stopp_fehlgeschlagen_wird_gemeldet(self):
         self.limb.halt_error = agent_base.ServiceDown("weg")
         run_id = self.start()["run_id"]
-        view = self.status(run_id, Poll("running", 101))
+        view = self.status(run_id, Poll("running", {"tokens": 101}))
         self.assertEqual(view["state"], "budget_stopped")
         self.assertFalse(view["stop_confirmed"])
         self.assertIn("weiterlaufen", view["error"])
@@ -160,6 +160,30 @@ class AgentRunTest(unittest.TestCase):
         self.limb.runs.save(run)
         self.assertEqual(self.status(run_id, Poll("running"))["state"], "timeout")
         self.assertEqual(self.limb.halted, 1)
+
+    def test_ausfall_haelt_den_lauf_und_verlaengert_den_abstand(self):
+        run_id = self.start()["run_id"]
+        view = self.status(run_id, agent_base.ServiceDown("weg"))
+        self.assertEqual(view["state"], "running")
+        self.assertTrue(view["degraded"])
+        self.assertGreater(view["next_poll_after_s"], agent_base.MIN_POLL_S)
+        self.assertFalse(self.status(run_id, Poll("running")).get("degraded"))
+
+    def test_laufzeit_greift_auch_bei_ausfall(self):
+        run_id = self.start()["run_id"]
+        run = self.limb.runs.load(run_id, "demo")
+        run["started_s"] = 0.0
+        self.limb.runs.save(run)
+        view = self.status(run_id, agent_base.ServiceDown("weg"))
+        self.assertEqual(view["state"], "timeout")
+        self.assertEqual(self.limb.halted, 1)
+
+    def test_rueckfrage_wartet_und_wird_nicht_bestaetigt(self):
+        run_id = self.start()["run_id"]
+        view = self.status(run_id, Poll("waiting", {"frage": "weiter?"}))
+        self.assertEqual(view["state"], "waiting")
+        self.assertEqual(view["confirmation"], {"frage": "weiter?"})
+        self.assertNotIn("confirmation", self.status(run_id, Poll("running")))
 
     def test_fehlgeschlagener_start_wird_nicht_wiederholt(self):
         with self.assertRaises(LimbError) as caught:

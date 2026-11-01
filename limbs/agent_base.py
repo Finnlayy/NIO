@@ -60,16 +60,8 @@ REDACTED = "[REDACTED]"
 _RUN_ID = re.compile(r"^run_[0-9a-f]{20}$")
 
 
-class RateLimited(Exception):
-    """Der Dienst hat mit 429 geantwortet; ``retry_after_s`` ist optional."""
-
-    def __init__(self, retry_after_s: float | None = None) -> None:
-        self.retry_after_s = retry_after_s
-        super().__init__("rate limited")
-
-
 class ServiceDown(Exception):
-    """Der Dienst ist nicht erreichbar oder antwortet mit einem Serverfehler."""
+    """Der Agent ist nicht erreichbar oder antwortet mit einem Fehler."""
 
 
 def redact(value: Any, secrets: Iterable[str]) -> Any:
@@ -96,7 +88,6 @@ class Poll:
     """Was ein Agent bei einer Abfrage meldet."""
 
     state: str
-    credits: int = 0
     detail: Mapping[str, Any] | None = None
 
 
@@ -123,7 +114,6 @@ class RunStore:
             "started_s": now,
             "next_poll_s": now,
             "backoff_s": 0.0,
-            "credits": 0,
             "failures": 0,
             **fields,
         }
@@ -205,7 +195,7 @@ class AgentLimb(LimbBase):
 
     def view(self, run: Mapping[str, Any]) -> dict[str, Any]:
         """Ausgabe fuer Aufrufer. Agentinhalte sind Daten."""
-        view = {key: run[key] for key in ("run_id", "state", "credits", "created_at") if key in run}
+        view = {key: run[key] for key in ("run_id", "state", "created_at") if key in run}
         for key in ("confirmation", "error", "degraded"):
             if run.get(key):
                 view[key] = run[key]
@@ -223,8 +213,8 @@ class AgentLimb(LimbBase):
         self.runs.event(run["run_id"], "run.created")
         try:
             self.launch(params, ctx, run)
-        except (RateLimited, ServiceDown) as exc:
-            # Bewusst kein neuer Versuch: Ein Start kann trotz Fehler angekommen sein und Credits kosten.
+        except ServiceDown as exc:
+            # Bewusst kein neuer Versuch: Ein Start kann trotz Fehler angekommen sein.
             self._finish(run, FAILED, error=f"Start fehlgeschlagen: {exc}")
             raise LimbError(ErrorCode.IO, f"Start fehlgeschlagen: {exc}", hint="Erst pruefen, ob der Agent doch laeuft, dann neu starten.") from exc
         self.runs.save(run)
@@ -241,14 +231,6 @@ class AgentLimb(LimbBase):
         try:
             poll = self.poll(run, ctx)
             reason = self.over_budget(run, poll, ctx)
-        except RateLimited as exc:
-            run["backoff_s"] = max(exc.retry_after_s or 0.0, backoff_s(float(run["backoff_s"])))
-            run["next_poll_s"] = now + run["backoff_s"]
-            self.runs.event(run["run_id"], "run.rate_limited", wait_s=round(run["backoff_s"], 1))
-            if over_time:
-                self._halt_and_finish(run, ctx, TIMED_OUT, "Laufzeit ueberschritten.")
-            self.runs.save(run)
-            return self.view(run)
         except ServiceDown as exc:
             run["failures"] = int(run["failures"]) + 1
             run["degraded"] = True
@@ -256,11 +238,11 @@ class AgentLimb(LimbBase):
             run["next_poll_s"] = now + run["backoff_s"]
             self.runs.event(run["run_id"], "run.service_down", failures=run["failures"], reason=str(exc))
             if over_time:
-                self._halt_and_finish(run, ctx, TIMED_OUT, "Laufzeit ueberschritten, Dienst nicht erreichbar.")
+                self._halt_and_finish(run, ctx, TIMED_OUT, "Laufzeit ueberschritten, Agent nicht erreichbar.")
             self.runs.save(run)
             return self.view(run)
 
-        run.update(backoff_s=0.0, degraded=False, credits=poll.credits, next_poll_s=now + MIN_POLL_S)
+        run.update(backoff_s=0.0, degraded=False, next_poll_s=now + MIN_POLL_S)
         run.pop("confirmation", None)
         if poll.state in TERMINAL_STATES:
             self._finish(run, poll.state, error=str((poll.detail or {}).get("error", "")))
@@ -289,7 +271,7 @@ class AgentLimb(LimbBase):
             raise LimbError(ErrorCode.POLICY_DENIED, f"Lauf {run['run_id']} ist noch nicht beendet ({run['state']}).", hint="Erst status abfragen oder stop aufrufen.")
         try:
             payload = self.gather(run, ctx)
-        except (RateLimited, ServiceDown) as exc:
+        except ServiceDown as exc:
             raise LimbError(ErrorCode.IO, f"Ergebnis nicht abholbar: {exc}", hint="Spaeter erneut versuchen, der Lauf bleibt erhalten.") from exc
         path = self.runs.write_result(run["run_id"], {"run_id": run["run_id"], "untrusted": True, **payload})
         if path.is_relative_to(self.config.repo_root):  # --runtime-dir darf ausserhalb liegen, Artefaktpfade nicht
@@ -304,13 +286,13 @@ class AgentLimb(LimbBase):
             run["error"] = error
         run.pop("confirmation", None)
         self.runs.save(run)
-        self.runs.event(run["run_id"], "run.finished", state=state, credits=run.get("credits", 0), error=error)
+        self.runs.event(run["run_id"], "run.finished", state=state, error=error)
 
     def _halt_and_finish(self, run: dict[str, Any], ctx: LimbContext, state: str, reason: str) -> None:
         try:
             self.halt(run, ctx)
             run["stop_confirmed"] = True
-        except (RateLimited, ServiceDown, LimbError) as exc:
+        except (ServiceDown, LimbError) as exc:
             run["stop_confirmed"] = False
             self.runs.event(run["run_id"], "run.stop_failed", reason=str(exc))
             reason = f"{reason} Stopp nicht bestaetigt, der Agent kann weiterlaufen."
