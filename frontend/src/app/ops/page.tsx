@@ -82,22 +82,6 @@ export default function OpsGridPage() {
     }
   }, []);
 
-  /* Simulated live-tick telemetry: direct (virtualized) data binding —
-     streams into the store without flooding the MCP control log. */
-  useEffect(() => {
-    const timer = setInterval(() => {
-      useGridStore.getState().widgets.forEach((w) => {
-        if (w.templateId === "TPL_02" && Array.isArray(w.data.spark)) {
-          const spark = w.data.spark as number[];
-          const last = spark[spark.length - 1] ?? 0.5;
-          const next = Math.min(0.98, Math.max(0.02, last + (Math.random() - 0.48) * 0.08));
-          useGridStore.getState().mergeData(w.id, { spark: [...spark.slice(1), next] });
-        }
-      });
-    }, 2200);
-    return () => clearInterval(timer);
-  }, []);
-
   function exportLayout() {
     const widgets = useGridStore.getState().widgets;
     const payload = {

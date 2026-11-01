@@ -8,7 +8,10 @@ export function TradePlan({ data, symbol }: { data: Record<string, unknown>; sym
   const pct = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      <div className="absolute top-0 right-0 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 uppercase">
+        Simulated
+      </div>
       <button className="self-start px-3 py-1.5 rounded-lg border border-indigo-400/40 text-indigo-300 text-[11px] font-medium hover:bg-indigo-400/10 transition-colors">
         I took this trade
       </button>

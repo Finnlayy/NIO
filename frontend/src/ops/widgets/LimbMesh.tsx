@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { palette } from "@/data/network";
 import { Insight } from "./bits";
 
@@ -14,8 +15,57 @@ interface MeshEdge {
 }
 
 export function LimbMesh({ data }: { data: Record<string, unknown> }) {
-  const nodes = (data.nodes as MeshNode[]) ?? [];
-  const edges = (data.edges as MeshEdge[]) ?? [];
+  const [liveData, setLiveData] = useState<{ nodes: MeshNode[]; edges: MeshEdge[] } | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    async function fetchLimbs() {
+      try {
+        const res = await fetch("/api/ops", { cache: "no-store" });
+        if (!res.ok) throw new Error("Failed to fetch");
+        const json = await res.json();
+
+        const limbs = json.limbs?.registry || [];
+        const nodes: MeshNode[] = [
+          { id: "neural-core", label: "Neural Core", kind: "core", color: "amber" }
+        ];
+        const edges: MeshEdge[] = [];
+
+        limbs.forEach((l: any, i: number) => {
+          const id = l.id || `node-${i}`;
+          nodes.push({
+            id,
+            label: l.name || id,
+            kind: l.kind || "agent",
+            color: "purple"
+          });
+          edges.push({
+            from: "neural-core",
+            to: id,
+            color: "purple"
+          });
+        });
+
+        if (active) {
+          setLiveData({ nodes, edges });
+          setError(false);
+        }
+      } catch (err) {
+        if (active) setError(true);
+      }
+    }
+    fetchLimbs();
+    const interval = setInterval(fetchLimbs, 10000);
+    return () => { active = false; clearInterval(interval); };
+  }, []);
+
+  if (error) {
+     return <div className="flex flex-col h-full"><div className="text-[12px] text-rose-400 p-4">keine Daten</div></div>;
+  }
+
+  const nodes = liveData?.nodes ?? (data.nodes as MeshNode[]) ?? [];
+  const edges = liveData?.edges ?? (data.edges as MeshEdge[]) ?? [];
   const byId = new Map(nodes.map((n) => [n.id, n]));
 
   const positions: Record<string, { x: number; y: number }> = {
@@ -31,8 +81,6 @@ export function LimbMesh({ data }: { data: Record<string, unknown> }) {
     "topic-lcs": { x: 91, y: 70 },
   };
 
-  /* Bubbles are centred on their coordinate and carry a label, so the outer
-     ring of the mesh has to stay clear of the panel edges. */
   const contained = (point?: { x: number; y: number }) => ({
     x: Math.min(89, Math.max(11, point?.x ?? 50)),
     y: Math.min(87, Math.max(13, point?.y ?? 50)),
@@ -43,9 +91,8 @@ export function LimbMesh({ data }: { data: Record<string, unknown> }) {
       <div className="relative flex-1 min-h-[190px] rounded-lg bg-black/25 border border-white/[0.05] overflow-hidden">
         <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
           {edges.map((e, i) => {
-            if (!positions[e.from] || !positions[e.to]) return null;
-            const a = contained(positions[e.from]);
-            const b = contained(positions[e.to]);
+            const a = contained(positions[e.from] || { x: 50, y: 50 });
+            const b = contained(positions[e.to] || { x: 80, y: 80 });
             const color = palette[e.color]?.line ?? "#475569";
             return (
               <line
@@ -61,8 +108,8 @@ export function LimbMesh({ data }: { data: Record<string, unknown> }) {
             );
           })}
         </svg>
-        {nodes.map((n) => {
-          const pos = contained(positions[n.id]);
+        {nodes.map((n, i) => {
+          const pos = contained(positions[n.id] || { x: 20 + (i % 5) * 15, y: 20 + Math.floor(i / 5) * 15 });
           const color = palette[n.color] ?? palette.slate;
           const isCore = n.kind === "core";
           return (
@@ -91,7 +138,7 @@ export function LimbMesh({ data }: { data: Record<string, unknown> }) {
         })}
         {/* live edges readout */}
         <span className="absolute top-2 right-2 text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-          {edges.length} links · live
+          {liveData ? `${edges.length} links · live` : "Simulated"}
         </span>
       </div>
 
