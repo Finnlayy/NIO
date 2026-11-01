@@ -381,6 +381,40 @@
         "initialBalance": "number (optional)",
         "params": "object (optional)"
       }
+    },
+    "toolbox.ping": {
+      "phase": 6,
+      "risk": "none",
+      "requires_elevation": "none",
+      "path_params": [],
+      "implemented_by": ["toolbox"],
+      "description": "Lebenszeichen der Werkzeugkiste: Anzahl der Werkzeuge je Quelle.",
+      "params": {}
+    },
+    "toolbox.search": {
+      "phase": 6,
+      "risk": "read",
+      "requires_elevation": "none",
+      "path_params": [],
+      "implemented_by": ["toolbox"],
+      "description": "Werkzeuge im Katalog finden. Liefert pro Treffer nur eine Kurzzeile, damit der Kontext des Agenten klein bleibt.",
+      "params": {
+        "query": "string (optional, Suchwoerter, alle muessen passen)",
+        "source": "string (optional, z. B. neu oder tradingview-mcp)",
+        "access": "read-only | write (optional)",
+        "limit": "int (optional, Default 10, max. 50)"
+      }
+    },
+    "toolbox.describe": {
+      "phase": 6,
+      "risk": "read",
+      "requires_elevation": "none",
+      "path_params": [],
+      "implemented_by": ["toolbox"],
+      "description": "Volle Beschreibung genau eines Werkzeugs laden.",
+      "params": {
+        "tool": "string (pflicht, genauer Name aus toolbox.search)"
+      }
     }
   }
 }
