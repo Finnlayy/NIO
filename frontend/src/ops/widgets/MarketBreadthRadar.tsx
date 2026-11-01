@@ -58,7 +58,7 @@ export function MarketBreadthRadar({ data }: { data: Record<string, unknown> }) 
   const decliners = tape.filter((t) => t.changePct < 0).length;
 
   return (
-    <div className="flex flex-col gap-3 h-full">
+    <div className="@container flex flex-col gap-3 h-full">
       {/* Breadth summary */}
       <div className="flex items-center gap-3 text-[11px]">
         <span className="text-slate-400">
@@ -81,9 +81,9 @@ export function MarketBreadthRadar({ data }: { data: Record<string, unknown> }) 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-3 flex-1 min-h-0">
+      <div className="grid grid-cols-1 @3xl:grid-cols-[1fr_220px] gap-3 flex-1 min-h-0">
         {/* Treemap */}
-        <div className="grid grid-cols-4 auto-rows-[64px] gap-1.5">
+        <div className="grid grid-cols-2 @md:grid-cols-3 @2xl:grid-cols-4 auto-rows-[64px] gap-1.5">
           {[...tape]
             .sort((a, b) => tileWeight(b) - tileWeight(a))
             .map((t) => (

@@ -1,7 +1,19 @@
 import type { TradePlanData } from "../marketData";
 import { fmt } from "../marketData";
+import { useGridStore } from "../store";
 
-export function TradePlan({ data, symbol }: { data: Record<string, unknown>; symbol?: string }) {
+export function TradePlan({
+  data,
+  symbol,
+  instanceId,
+  takenAt,
+}: {
+  data: Record<string, unknown>;
+  symbol?: string;
+  instanceId?: string;
+  takenAt?: string;
+}) {
+  const setTaken = useGridStore((s) => s.setTaken);
   const plan = data.plan as TradePlanData;
   if (!plan) return null;
 
@@ -9,9 +21,28 @@ export function TradePlan({ data, symbol }: { data: Record<string, unknown>; sym
 
   return (
     <div className="flex flex-col h-full">
-      <button className="self-start px-3 py-1.5 rounded-lg border border-indigo-400/40 text-indigo-300 text-[11px] font-medium hover:bg-indigo-400/10 transition-colors">
-        I took this trade
-      </button>
+      {takenAt ? (
+        <p className="self-start flex items-center gap-2 text-[11px] text-emerald-300" role="status">
+          Marked as taken · {new Date(takenAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+          <span className="text-slate-400">· journal only</span>
+          <button
+            type="button"
+            onClick={() => instanceId && setTaken(instanceId, undefined)}
+            className="text-slate-300 underline underline-offset-2 hover:text-white"
+          >
+            Undo
+          </button>
+        </p>
+      ) : (
+        <button
+          type="button"
+          onClick={() => instanceId && setTaken(instanceId, new Date().toISOString())}
+          title="Marks this plan in your journal. No order is sent."
+          className="self-start px-3 py-1.5 rounded-lg border border-indigo-400/40 text-indigo-300 text-[11px] font-medium hover:bg-indigo-400/10 transition-colors"
+        >
+          I took this trade
+        </button>
+      )}
 
       <div className="grid grid-cols-4 gap-2 mt-3 text-center">
         <Stat label="Direction" value="Long" valueClass="text-emerald-400" />

@@ -130,8 +130,26 @@ body {
   min-height: 320px;
 }
 
+.apollo-stage {
+  --apollo-terminal-width: min(44vw, 640px);
+}
+
+/* From lg up the terminal docks right and the stage makes room, so the orb and
+   the quick commands stay reachable. Below that it overlays and carries the
+   quick commands itself. */
+@media (min-width: 1024px) {
+  .apollo-stage-docked {
+    padding-right: calc(var(--apollo-terminal-width) + 1.5rem);
+  }
+}
+
 .ops-widget-compact {
   min-height: 220px;
+}
+
+.ops-widget-compact .ops-widget-body {
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .ops-widget-pinned {

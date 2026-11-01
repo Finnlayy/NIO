@@ -216,16 +216,175 @@ export interface EngineFeed {
   lastError: string | null;
 }
 
+const INITIAL_ENGINE_FEED: EngineFeed = {
+  telemetry: EMPTY_TELEMETRY,
+  connection: "DISCONNECTED",
+  attempts: 0,
+  lastError: null,
+};
+
+/**
+ * Open one reconnecting telemetry stream and return its teardown.
+ *
+ * Reconnects with exponential backoff. All timers and the EventSource are
+ * released in the teardown, and every late callback is rejected via `stale`,
+ * so closing cannot leak a listener or schedule a reconnect.
+ */
+function openEngineStream(
+  url: string,
+  staleAfterMs: number,
+  maxAttempts: number,
+  publish: (patch: Partial<EngineFeed>) => void,
+): () => void {
+  let stale = false;
+  let source: EventSource | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let stalenessTimer: ReturnType<typeof setInterval> | null = null;
+  let attempt = 0;
+  let transportOpen = false;
+  let lastTickAt = 0;
+  // Mirror of the published state. The connection state must NOT be an effect
+  // dependency: re-running the effect on every badge change would tear the
+  // stream down and reset the backoff ladder.
+  let current: FeedConnectionState = "DISCONNECTED";
+  let telemetry: TelemetrySnapshot = EMPTY_TELEMETRY;
+
+  const applyConnection = (state: FeedConnectionState) => {
+    if (stale || state === current) return;
+    current = state;
+    publish({ connection: state });
+  };
+
+  const onTelemetry = (raw: string) => {
+    if (stale) return;
+    const record = parseTelemetryRecord(safeParse(raw));
+    if (!record) return; // unverifiable ⇒ ignored, state stays as it was
+    lastTickAt = Date.now();
+    telemetry = nextTelemetry(telemetry, record, lastTickAt);
+    publish({ telemetry });
+    applyConnection("CONNECTED_LIVE");
+  };
+
+  const connect = () => {
+    if (stale) return;
+    let opened: EventSource;
+    try {
+      opened = new EventSource(url);
+    } catch (err) {
+      applyConnection("DISCONNECTED");
+      if (!stale) publish({ lastError: err instanceof Error ? err.message : String(err) });
+      scheduleReconnect();
+      return;
+    }
+    source = opened;
+
+    opened.onopen = () => {
+      if (stale) return;
+      transportOpen = true;
+      attempt = 0;
+      publish({ attempts: 0, lastError: null });
+      // `hello` and `ping` are transport signals, not market data: they must
+      // not flip the badge to live on their own — only a real tick does that.
+      applyConnection(lastTickAt === 0 ? "DISCONNECTED" : "CONNECTED_LIVE");
+    };
+    opened.addEventListener("telemetry", (event) => onTelemetry((event as MessageEvent).data));
+    opened.onerror = () => {
+      if (stale) return;
+      transportOpen = false;
+      opened.close();
+      if (source === opened) source = null;
+      applyConnection("DISCONNECTED");
+      scheduleReconnect();
+    };
+  };
+
+  const scheduleReconnect = () => {
+    if (stale || reconnectTimer) return;
+    if (attempt >= maxAttempts) {
+      applyConnection("DISCONNECTED");
+      return;
+    }
+    const delay = backoffDelayMs(attempt);
+    attempt += 1;
+    if (!stale) publish({ attempts: attempt });
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, delay);
+  };
+
+  connect();
+
+  stalenessTimer = setInterval(() => {
+    if (stale) return;
+    applyConnection(
+      nextFeedConnection(current, { transportOpen, lastTickAt }, Date.now(), staleAfterMs),
+    );
+  }, 1000);
+
+  return () => {
+    // Order matters: flag first, so no late callback can touch state.
+    stale = true;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    if (stalenessTimer) clearInterval(stalenessTimer);
+    reconnectTimer = null;
+    stalenessTimer = null;
+    if (source) {
+      source.onopen = null;
+      source.onerror = null;
+      source.close();
+      source = null;
+    }
+  };
+}
+
+interface SharedFeed {
+  feed: EngineFeed;
+  listeners: Set<(feed: EngineFeed) => void>;
+  close: () => void;
+}
+
+const sharedFeeds = new Map<string, SharedFeed>();
+
+/**
+ * Join the one stream for this url, opening it for the first subscriber and
+ * closing it with the last. Browsers allow six HTTP/1.1 connections per host,
+ * so a stream per widget instance froze the whole page at the sixth widget.
+ */
+export function subscribeEngineFeed(
+  url: string,
+  staleAfterMs: number,
+  maxAttempts: number,
+  listener: (feed: EngineFeed) => void,
+): () => void {
+  const key = `${url}|${staleAfterMs}|${maxAttempts}`;
+  let shared = sharedFeeds.get(key);
+  if (!shared) {
+    const created: SharedFeed = { feed: INITIAL_ENGINE_FEED, listeners: new Set(), close: () => {} };
+    sharedFeeds.set(key, created);
+    created.close = openEngineStream(url, staleAfterMs, maxAttempts, (patch) => {
+      created.feed = { ...created.feed, ...patch };
+      created.listeners.forEach((notify) => notify(created.feed));
+    });
+    shared = created;
+  }
+  const joined = shared;
+  joined.listeners.add(listener);
+  listener(joined.feed);
+  return () => {
+    joined.listeners.delete(listener);
+    if (joined.listeners.size > 0) return;
+    joined.close();
+    sharedFeeds.delete(key);
+  };
+}
+
 /**
  * Subscribe to the engine telemetry stream.
  *
  * Fail-closed contract: the snapshot is never cleared on a drop (widgets keep
  * their last known shape and stay readable), but `connection` says so, and
  * every consumer gates its *values* on `connection === "CONNECTED_LIVE"`.
- *
- * Reconnects with exponential backoff. All timers and the EventSource are
- * released in the effect cleanup, and every late callback is rejected via
- * `stale`, so an unmount cannot leak a listener or schedule a reconnect.
  */
 export function useEngineTelemetry(
   url: string = "/api/telemetry/stream",
@@ -233,116 +392,14 @@ export function useEngineTelemetry(
 ): EngineFeed {
   const staleAfterMs = options.staleAfterMs ?? STALE_AFTER_MS;
   const maxAttempts = options.maxAttempts ?? Number.POSITIVE_INFINITY;
+  const [feed, setFeed] = useState<EngineFeed>(INITIAL_ENGINE_FEED);
 
-  const [telemetry, setTelemetry] = useState<TelemetrySnapshot>(EMPTY_TELEMETRY);
-  const [connection, setConnection] = useState<FeedConnectionState>("DISCONNECTED");
-  const [attempts, setAttempts] = useState(0);
-  const [lastError, setLastError] = useState<string | null>(null);
+  useEffect(
+    () => subscribeEngineFeed(url, staleAfterMs, maxAttempts, setFeed),
+    [url, staleAfterMs, maxAttempts],
+  );
 
-  useEffect(() => {
-    let stale = false;
-    let source: EventSource | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let stalenessTimer: ReturnType<typeof setInterval> | null = null;
-    let attempt = 0;
-    let transportOpen = false;
-    let lastTickAt = 0;
-    // Mirror of the published state. The connection state must NOT be an effect
-    // dependency: re-running the effect on every badge change would tear the
-    // stream down and reset the backoff ladder.
-    let current: FeedConnectionState = "DISCONNECTED";
-
-    const applyConnection = (state: FeedConnectionState) => {
-      if (stale || state === current) return;
-      current = state;
-      setConnection(state);
-    };
-
-    const onTelemetry = (raw: string) => {
-      if (stale) return;
-      const record = parseTelemetryRecord(safeParse(raw));
-      if (!record) return; // unverifiable ⇒ ignored, state stays as it was
-      lastTickAt = Date.now();
-      const snapshotAt = lastTickAt;
-      setTelemetry((prev) => nextTelemetry(prev, record, snapshotAt));
-      applyConnection("CONNECTED_LIVE");
-    };
-
-    const connect = () => {
-      if (stale) return;
-      let opened: EventSource;
-      try {
-        opened = new EventSource(url);
-      } catch (err) {
-        applyConnection("DISCONNECTED");
-        if (!stale) setLastError(err instanceof Error ? err.message : String(err));
-        scheduleReconnect();
-        return;
-      }
-      source = opened;
-
-      opened.onopen = () => {
-        if (stale) return;
-        transportOpen = true;
-        attempt = 0;
-        setAttempts(0);
-        if (!stale) setLastError(null);
-        // `hello` and `ping` are transport signals, not market data: they must
-        // not flip the badge to live on their own — only a real tick does that.
-        applyConnection(lastTickAt === 0 ? "DISCONNECTED" : "CONNECTED_LIVE");
-      };
-      opened.addEventListener("telemetry", (event) => onTelemetry((event as MessageEvent).data));
-      opened.onerror = () => {
-        if (stale) return;
-        transportOpen = false;
-        opened.close();
-        if (source === opened) source = null;
-        applyConnection("DISCONNECTED");
-        scheduleReconnect();
-      };
-    };
-
-    const scheduleReconnect = () => {
-      if (stale || reconnectTimer) return;
-      if (attempt >= maxAttempts) {
-        applyConnection("DISCONNECTED");
-        return;
-      }
-      const delay = backoffDelayMs(attempt);
-      attempt += 1;
-      if (!stale) setAttempts(attempt);
-      reconnectTimer = setTimeout(() => {
-        reconnectTimer = null;
-        connect();
-      }, delay);
-    };
-
-    connect();
-
-    stalenessTimer = setInterval(() => {
-      if (stale) return;
-      applyConnection(
-        nextFeedConnection(current, { transportOpen, lastTickAt }, Date.now(), staleAfterMs),
-      );
-    }, 1000);
-
-    return () => {
-      // Order matters: flag first, so no late callback can touch state.
-      stale = true;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (stalenessTimer) clearInterval(stalenessTimer);
-      reconnectTimer = null;
-      stalenessTimer = null;
-      if (source) {
-        source.onopen = null;
-        source.onerror = null;
-        source.close();
-        source = null;
-      }
-    };
-  }, [url, staleAfterMs, maxAttempts]);
-
-  return { telemetry, connection, attempts, lastError };
+  return feed;
 }
 
 function safeParse(raw: string): unknown {

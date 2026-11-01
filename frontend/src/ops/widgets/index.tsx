@@ -12,7 +12,12 @@ import { KeyLevelsTable } from "./KeyLevelsTable";
 import { TechnicalGauge } from "./TechnicalGauge";
 import { CompositeRankings } from "./CompositeRankings";
 
-type Renderer = ComponentType<{ data: Record<string, unknown>; symbol?: string }>;
+type Renderer = ComponentType<{
+  data: Record<string, unknown>;
+  symbol?: string;
+  instanceId?: string;
+  takenAt?: string;
+}>;
 
 const renderers: Record<string, Renderer> = {
   "market-breadth-radar": MarketBreadthRadar,
@@ -38,5 +43,5 @@ export function renderWidget(widget: WidgetInstance) {
       </p>
     );
   }
-  return <Cmp data={widget.data} symbol={widget.symbol} />;
+  return <Cmp data={widget.data} symbol={widget.symbol} instanceId={widget.id} takenAt={widget.takenAt} />;
 }

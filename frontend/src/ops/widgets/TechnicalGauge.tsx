@@ -1,6 +1,16 @@
-import type { GaugeData } from "../marketData";
+import { useMemo, useState } from "react";
+import { gaugeFor, type GaugeData } from "../marketData";
 import { toTvSymbol, useMarketData } from "../hooks/useMarketData";
 import { LiveBadge } from "./bits";
+
+type GaugeTf = "1D" | "4h" | "1h";
+
+/* TradingView resolutions, plus a seed so the simulated read differs per timeframe. */
+const TIMEFRAMES: Record<GaugeTf, { interval: string; simSeed: number }> = {
+  "1D": { interval: "1D", simSeed: 11 },
+  "4h": { interval: "240", simSeed: 7 },
+  "1h": { interval: "60", simSeed: 0 },
+};
 
 function verdictColor(v: string) {
   if (v.includes("Strong Buy") || v === "Buy") return "#34d399";
@@ -14,10 +24,15 @@ function labelColor(v: string) {
 }
 
 export function TechnicalGauge({ data, symbol }: { data: Record<string, unknown>; symbol?: string }) {
-  const sim = (data.gauge as GaugeData) ?? null;
+  const seeded = (data.gauge as GaugeData) ?? null;
+  const [tf, setTf] = useState<GaugeTf>("1h");
+  const sim = useMemo(
+    () => (seeded && tf !== "1h" ? { ...gaugeFor(symbol ?? "BTCUSDT", TIMEFRAMES[tf].simSeed), tf } : seeded),
+    [seeded, symbol, tf],
+  );
   const { data: live, source } = useMarketData(
     "technicals",
-    { symbol: toTvSymbol(symbol), interval: "60" },
+    { symbol: toTvSymbol(symbol), interval: TIMEFRAMES[tf].interval },
     sim,
     180_000,
   );
@@ -81,16 +96,19 @@ export function TechnicalGauge({ data, symbol }: { data: Record<string, unknown>
       </dl>
 
       <div className="mt-auto pt-3 grid grid-cols-3 gap-1.5 text-center">
-        {(["1D", "4h", "1h"] as const).map((tf) => (
+        {(Object.keys(TIMEFRAMES) as GaugeTf[]).map((option) => (
           <button
-            key={tf}
+            key={option}
+            type="button"
+            aria-pressed={tf === option}
+            onClick={() => setTf(option)}
             className={`rounded-md py-1.5 text-[10px] font-medium border transition-colors ${
-              g.tf === tf
+              tf === option
                 ? "bg-white/[0.09] border-white/20 text-white"
                 : "border-white/[0.07] text-slate-400 hover:text-slate-300"
             }`}
           >
-            {tf}
+            {option}
           </button>
         ))}
       </div>

@@ -2,9 +2,10 @@
 
 import { useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Library, Plus, X, Zap } from "lucide-react";
+import { Library, Plus, RotateCcw, X, Zap } from "lucide-react";
+import { resetLayout } from "./layout";
 import { widgetTemplates } from "./widgetRegistry";
-import { dispatchHydrateTemplate, dispatchOrchestratorScenario, useGridStore } from "./store";
+import { MAX_PER_TEMPLATE, dispatchHydrateTemplate, dispatchOrchestratorScenario, useGridStore } from "./store";
 
 const categoryColor: Record<string, string> = {
   Market: "text-emerald-300 bg-emerald-400/10 border-emerald-400/20",
@@ -13,10 +14,14 @@ const categoryColor: Record<string, string> = {
   Data: "text-violet-300 bg-violet-400/10 border-violet-400/20",
 };
 
+const scenarioTemplateId = widgetTemplates.find((t) => t.key === "orderflow-cvd-heatmap")?.id ?? "";
+
 export function GalleryDrawer() {
   const open = useGridStore((s) => s.galleryOpen);
   const setOpen = useGridStore((s) => s.setGalleryOpen);
-  const widgetCount = useGridStore((s) => s.widgets.length);
+  const widgets = useGridStore((s) => s.widgets);
+  const copiesOf = (templateId: string) => widgets.filter((w) => w.templateId === templateId).length;
+  const scenarioFull = copiesOf(scenarioTemplateId) >= MAX_PER_TEMPLATE;
 
   return (
     <AnimatePresence>
@@ -55,7 +60,8 @@ export function GalleryDrawer() {
             <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
               <button
                 onClick={() => dispatchOrchestratorScenario()}
-                className="w-full text-left rounded-xl border border-amber-400/25 bg-amber-400/[0.06] p-3.5 hover:bg-amber-400/10 transition-colors"
+                disabled={scenarioFull}
+                className="w-full text-left rounded-xl border border-amber-400/25 bg-amber-400/[0.06] p-3.5 hover:bg-amber-400/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <p className="flex items-center gap-2 text-[12px] font-semibold text-amber-200">
                   <Zap className="w-3.5 h-3.5" />
@@ -68,7 +74,10 @@ export function GalleryDrawer() {
                 </p>
               </button>
 
-              {widgetTemplates.map((tpl) => (
+              {widgetTemplates.map((tpl) => {
+                const copies = copiesOf(tpl.id);
+                const full = copies >= MAX_PER_TEMPLATE;
+                return (
                 <div
                   key={tpl.id}
                   className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3.5 flex items-start gap-3"
@@ -79,6 +88,11 @@ export function GalleryDrawer() {
                       <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${categoryColor[tpl.category]}`}>
                         {tpl.category}
                       </span>
+                      {copies > 0 && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-white/10 text-slate-300">
+                          {copies} on canvas
+                        </span>
+                      )}
                     </div>
                     <p className="text-[13px] font-semibold text-slate-100 mt-1">{tpl.title}</p>
                     <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">{tpl.tagline}</p>
@@ -88,17 +102,32 @@ export function GalleryDrawer() {
                   </div>
                   <button
                     onClick={() => dispatchHydrateTemplate(tpl.id)}
-                    className="shrink-0 inline-flex items-center gap-1 px-2.5 py-2 rounded-lg bg-cyan-400/10 border border-cyan-400/25 text-cyan-200 text-[11px] font-medium hover:bg-cyan-400/20 transition-colors"
-                    title={`Hydrate ${tpl.id} from template`}
+                    disabled={full}
+                    className="shrink-0 inline-flex items-center gap-1 px-2.5 py-2 rounded-lg bg-cyan-400/10 border border-cyan-400/25 text-cyan-200 text-[11px] font-medium hover:bg-cyan-400/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={full ? `Limit of ${MAX_PER_TEMPLATE} copies reached` : `Hydrate ${tpl.id} from template`}
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    Hydrate
+                    {full ? "Limit" : "Hydrate"}
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
-            <p className="px-5 py-3 border-t border-white/[0.07] text-[10px] text-slate-400 leading-relaxed">
+            <div className="px-5 pt-3 border-t border-white/[0.07]">
+              <button
+                type="button"
+                onClick={() => {
+                  resetLayout();
+                  setOpen(false);
+                }}
+                className="inline-flex items-center gap-1.5 text-[11px] text-slate-300 hover:text-white"
+              >
+                <RotateCcw className="w-3 h-3" />
+                Reset to default layout
+              </button>
+            </div>
+            <p className="px-5 py-3 text-[10px] text-slate-400 leading-relaxed">
               Templates are declarative blueprints. Hydration sends a JSON-RPC payload with the
               template key + live state; the canvas materializes the widget with a spring animation.
             </p>

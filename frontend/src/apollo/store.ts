@@ -10,6 +10,7 @@ import {
   SEED_NODES,
 } from "./catalog";
 import { runSandboxCommand, requestSynthesis } from "./client";
+import { APOLLO_STORAGE_KEY, parseApollo, serializeApollo } from "./persistence";
 import {
   COMMANDS,
   coerceConfigValue,
@@ -99,6 +100,10 @@ export interface ApolloStore {
   setWeights: (weights: Partial<Weights>) => void;
   setQuota: (percent: number) => void;
   applyConfig: (next: ApolloConfiguration) => boolean;
+  /** Operator action from the deck: back to the shipped settings, never gated by Apollo's permissions. */
+  resetConfig: () => void;
+  /** Client only: load saved settings once, then keep them saved. */
+  hydrate: () => void;
   toggleProvider: (providerId: string) => void;
 
   /* terminal */
@@ -172,6 +177,26 @@ const INITIAL_NODES: NioNode[] = SEED_NODES.map((seed) => ({
   metrics: { latencyMs: seed.latencyMs, load: seed.load, activeProvider: seed.provider },
   lastOutput: undefined,
 }));
+
+const SEED_NODE_IDS: ReadonlySet<string> = new Set(SEED_NODES.map((seed) => seed.id));
+
+let hydrated = false;
+
+function readSavedState(): string | null {
+  try {
+    return window.localStorage.getItem(APOLLO_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeSavedState(value: string) {
+  try {
+    window.localStorage.setItem(APOLLO_STORAGE_KEY, value);
+  } catch {
+    /* Blocked storage only costs persistence; the session keeps working. */
+  }
+}
 
 /* -- prompt heuristics ------------------------------------------------- */
 const ROUTES: Array<{ category: NodeCategory; pattern: RegExp }> = [
@@ -436,13 +461,21 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
       return node;
     },
 
-    dispatch: (nodeId, payload) => {
-      const node = get().nodes.find((n) => n.id === nodeId);
+    dispatch: (requestedId, payload) => {
+      const nodes = get().nodes;
+      // The footer chips say "router"; the ids say "node-router". Accept both.
+      const node = nodes.find((n) => n.id === requestedId || n.id === `node-${requestedId}`);
       if (!node) {
-        push({ origin: "NIO_CORE", level: "ERROR", message: `Dispatch failed: no node '${nodeId}'.` });
+        push({
+          origin: "NIO_CORE",
+          level: "ERROR",
+          message: `Dispatch failed: no node '${requestedId}'.`,
+          detail: `valid ids: ${nodes.map((n) => n.id).join(", ")}`,
+        });
         setOrb("ERROR", 1600);
         return false;
       }
+      const nodeId = node.id;
       if (node.state === "LYMP_SPAWNING") {
         push({
           origin: "NIO_CORE",
@@ -568,6 +601,42 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
         data: { weights: next.freeLLMRouting.weights, threshold: next.failoverThresholdPercent },
       });
       return true;
+    },
+
+    resetConfig: () => {
+      const config = structuredClone(DEFAULT_CONFIG);
+      const chain = rankCandidates(config.freeLLMRouting.fallbackChain, config.freeLLMRouting.weights);
+      set((state) => ({
+        config,
+        router: { ...state.router, primaryModel: config.primaryModel, chain },
+        nodes: state.nodes.filter((node) => SEED_NODE_IDS.has(node.id)),
+      }));
+      push({
+        origin: "NIO_CORE",
+        level: "INFO",
+        message: "Deck reset to defaults · spawned nodes removed.",
+      });
+    },
+
+    hydrate: () => {
+      if (hydrated) return;
+      hydrated = true;
+      const saved = parseApollo(readSavedState(), DEFAULT_CONFIG);
+      if (saved) {
+        const chain = rankCandidates(saved.config.freeLLMRouting.fallbackChain, saved.config.freeLLMRouting.weights);
+        set((state) => ({
+          config: saved.config,
+          router: { ...state.router, primaryModel: saved.config.primaryModel, chain },
+          nodes: [...state.nodes, ...saved.nodes.filter((node) => !state.nodes.some((n) => n.id === node.id))],
+        }));
+      }
+      let last = serializeApollo(get().config, get().nodes, SEED_NODE_IDS);
+      useApolloStore.subscribe((state) => {
+        const next = serializeApollo(state.config, state.nodes, SEED_NODE_IDS);
+        if (next === last) return;
+        last = next;
+        writeSavedState(next);
+      });
     },
 
     toggleProvider: (providerId) => {

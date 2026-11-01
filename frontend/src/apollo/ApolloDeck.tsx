@@ -48,6 +48,7 @@ export function ApolloDeck() {
   const setTerminalOpen = useApolloStore((s) => s.setTerminalOpen);
   const config = useApolloStore((s) => s.config);
   const applyConfig = useApolloStore((s) => s.applyConfig);
+  const resetConfig = useApolloStore((s) => s.resetConfig);
   const restorePrimary = useApolloStore((s) => s.restorePrimary);
   const simulateFailover = useApolloStore((s) => s.simulateFailover);
   const setWeights = useApolloStore((s) => s.setWeights);
@@ -59,7 +60,10 @@ export function ApolloDeck() {
   const [tab, setTab] = useState<Tab>("runtime");
   const [draft, setDraft] = useState<ApolloConfiguration>(config);
   const [applied, setApplied] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
   /* Seed the draft when the deck opens or the committed config changes.
      Deliberately NOT keyed on the router: the live quota has its own control
@@ -72,6 +76,10 @@ export function ApolloDeck() {
       setApplied(false);
     }
   }, [open, config]);
+
+  useEffect(() => {
+    panelRef.current?.scrollTo({ top: 0 });
+  }, [tab]);
 
   /* Modal focus contract:
      - opening moves focus into the dialog (otherwise Tab walks the page
@@ -138,6 +146,24 @@ export function ApolloDeck() {
   const patchRouting = (changes: Partial<ApolloConfiguration["freeLLMRouting"]>) =>
     setDraft((prev) => ({ ...prev, freeLLMRouting: { ...prev.freeLLMRouting, ...changes } }));
 
+  /* The deck stays open: failover touches the router, not the draft, so
+     unsaved edits survive and the header shows the swap. */
+  const fireFailover = (reason: string) => {
+    const ok = simulateFailover(reason);
+    setNotice(ok ? "failover fired · draft kept · details in terminal" : "failover refused · details in terminal");
+    setTimeout(() => setNotice(null), 2600);
+  };
+
+  const onResetDefaults = () => {
+    if (!confirmingReset) {
+      setConfirmingReset(true);
+      setTimeout(() => setConfirmingReset(false), 3000);
+      return;
+    }
+    setConfirmingReset(false);
+    resetConfig();
+  };
+
   const onApply = () => {
     const ok = applyConfig(draft);
     setApplied(ok);
@@ -182,7 +208,7 @@ export function ApolloDeck() {
             <Badge tone={draft.freeLLMRouting.enabled ? "emerald" : "slate"} dot>
               {draft.freeLLMRouting.enabled ? "routing armed" : "routing off"}
             </Badge>
-            <Badge tone="cyan">{health.active} keys live</Badge>
+            <Badge tone="amber">{health.active} demo keys</Badge>
             <button
               type="button"
               onClick={() => setDeckOpen(false)}
@@ -237,6 +263,7 @@ export function ApolloDeck() {
 
         {/* body */}
         <div
+          ref={panelRef}
           id="apollo-deck-panel"
           role="tabpanel"
           aria-labelledby={`apollo-deck-tab-${tab}`}
@@ -347,10 +374,7 @@ export function ApolloDeck() {
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => {
-                          setDeckOpen(false);
-                          simulateFailover("operator simulated quota exhaustion from the deck");
-                        }}
+                        onClick={() => fireFailover("operator simulated quota exhaustion from the deck")}
                         className="flex-1 rounded-lg border border-amber-400/30 bg-amber-400/10 px-2 py-1.5 font-mono text-[9.5px] uppercase tracking-[0.16em] text-amber-200 transition-colors hover:bg-amber-400/20"
                       >
                         simulate 429
@@ -550,9 +574,9 @@ export function ApolloDeck() {
 
               <div className="grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
                 <SectionCard
-                  title="Encrypted key vault"
-                  hint="Masked identifiers only. Keys never reach the bundle; the proxy holds them server-side."
-                  right={<Badge tone="cyan"><KeyRound size={8} /> {health.active}/{draft.freeLLMRouting.providers.length}</Badge>}
+                  title="Key vault · demo data"
+                  hint="Placeholder entries for the simulation, no real keys are set up here. Real keys stay server-side in the proxy."
+                  right={<Badge tone="amber"><KeyRound size={8} /> demo {health.active}/{draft.freeLLMRouting.providers.length}</Badge>}
                 >
                   <ul className="space-y-1">
                     {draft.freeLLMRouting.providers.map((provider) => (
@@ -694,10 +718,7 @@ export function ApolloDeck() {
                   <div className="mt-2 flex gap-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        setDeckOpen(false);
-                        simulateFailover("operator simulation from the MCP tab");
-                      }}
+                      onClick={() => fireFailover("operator simulation from the MCP tab")}
                       className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-amber-400/30 bg-amber-400/10 px-2 py-1.5 font-mono text-[9.5px] uppercase tracking-[0.14em] text-amber-200 hover:bg-amber-400/20"
                     >
                       <Activity size={11} /> test failover
@@ -720,9 +741,16 @@ export function ApolloDeck() {
         <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.07] bg-black/25 px-4 py-3 sm:px-5">
           <p className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-slate-400">
             <SlidersHorizontal size={9} className="mr-1 inline" />
-            {applied ? "hot-reloaded · apollo acknowledged" : "changes apply on hot-reload"}
+            {notice ?? (applied ? "hot-reloaded · apollo acknowledged" : "changes apply on hot-reload")}
           </p>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={onResetDefaults}
+              className="flex items-center gap-1.5 rounded-lg border border-white/12 bg-white/5 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-slate-300 transition-colors hover:border-rose-400/40 hover:text-rose-200"
+            >
+              <RotateCcw size={11} /> {confirmingReset ? "click again to reset" : "defaults"}
+            </button>
             <button
               type="button"
               onClick={() => {

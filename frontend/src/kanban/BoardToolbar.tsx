@@ -104,6 +104,7 @@ export const BoardToolbar: React.FC = () => {
                   type="checkbox"
                   checked={filter.labelIds.includes(l.id)}
                   onChange={() => toggleLabel(l.id)}
+                  aria-label={`Label ${l.name}`}
                   className="rounded border-white/20 bg-white/5"
                 />
                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: l.color }} />
@@ -136,6 +137,7 @@ export const BoardToolbar: React.FC = () => {
                 type="checkbox"
                 checked={filter.assigneeIds.includes("__unassigned__")}
                 onChange={() => toggleAssignee("__unassigned__")}
+                aria-label="Nicht zugewiesen"
                 className="rounded border-white/20 bg-white/5"
               />
               <span className="truncate italic text-slate-400">Nicht zugewiesen</span>
@@ -146,6 +148,7 @@ export const BoardToolbar: React.FC = () => {
                   type="checkbox"
                   checked={filter.assigneeIds.includes(m.id)}
                   onChange={() => toggleAssignee(m.id)}
+                  aria-label={m.name}
                   className="rounded border-white/20 bg-white/5"
                 />
                 <div className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white border border-white/10 shrink-0" style={{ backgroundColor: m.color }}>

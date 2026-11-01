@@ -32,6 +32,8 @@ export interface WidgetInstance {
   height: WidgetHeight;
   minimized: boolean;
   pinned: boolean;
+  /** ISO time the operator marked this plan as taken. Journal only, never an order. */
+  takenAt?: string;
   data: Record<string, unknown>;
 }
 

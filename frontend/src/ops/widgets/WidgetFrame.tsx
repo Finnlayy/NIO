@@ -155,7 +155,7 @@ export const WidgetFrameContent = memo(function WidgetFrameContent({ widget }: {
             transition={{ duration: 0.22, ease: "easeInOut" }}
             className="overflow-hidden"
           >
-            <div className="p-3.5">{renderWidget(widget)}</div>
+            <div className="ops-widget-body p-3.5">{renderWidget(widget)}</div>
           </motion.div>
         )}
       </AnimatePresence>

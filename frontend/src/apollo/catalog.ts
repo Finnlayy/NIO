@@ -111,17 +111,17 @@ export const POOL_ENDPOINTS = PROVIDERS.reduce((sum, p) => sum + p.endpoints, 0)
 export const POOL_PROVIDERS = PROVIDERS.length;
 
 /* ==================================================================== */
-/* Vault seed — masked placeholders, no secrets in the bundle            */
+/* Vault seed — demo entries for the simulation, no secrets in the bundle */
 /* ==================================================================== */
 export const SEED_KEYS: FreeLLMProviderKey[] = [
-  { providerId: "google", name: "Google Gemini", keyMasked: "AIza••••••••7f21", status: "ACTIVE" },
-  { providerId: "groq", name: "Groq", keyMasked: "gsk_••••••••c4e9", status: "ACTIVE" },
-  { providerId: "mistral", name: "Mistral", keyMasked: "mis_••••••••01ab", status: "ACTIVE" },
-  { providerId: "cerebras", name: "Cerebras", keyMasked: "csk_••••••••9d30", status: "STANDBY" },
-  { providerId: "openrouter", name: "OpenRouter", keyMasked: "sk-or-••••••••5b7c", status: "ACTIVE" },
-  { providerId: "nvidia", name: "NVIDIA", keyMasked: "nvapi-••••••••22f0", status: "STANDBY" },
-  { providerId: "cohere", name: "Cohere", keyMasked: "co-••••••••8a11", status: "LIMIT_REACHED" },
-  { providerId: "huggingface", name: "HuggingFace", keyMasked: "hf_••••••••d7b2", status: "STANDBY" },
+  { providerId: "google", name: "Google Gemini", keyMasked: "demo · no key stored", status: "ACTIVE" },
+  { providerId: "groq", name: "Groq", keyMasked: "demo · no key stored", status: "ACTIVE" },
+  { providerId: "mistral", name: "Mistral", keyMasked: "demo · no key stored", status: "ACTIVE" },
+  { providerId: "cerebras", name: "Cerebras", keyMasked: "demo · no key stored", status: "STANDBY" },
+  { providerId: "openrouter", name: "OpenRouter", keyMasked: "demo · no key stored", status: "ACTIVE" },
+  { providerId: "nvidia", name: "NVIDIA", keyMasked: "demo · no key stored", status: "STANDBY" },
+  { providerId: "cohere", name: "Cohere", keyMasked: "demo · no key stored", status: "LIMIT_REACHED" },
+  { providerId: "huggingface", name: "HuggingFace", keyMasked: "demo · no key stored", status: "STANDBY" },
 ];
 
 /* ==================================================================== */
@@ -198,7 +198,7 @@ export const SEED_NODES: NodeSeed[] = [
 ];
 
 export const PRIMARY_ENGINES = [
-  { id: "claude-sonnet", label: "Claude Code / Sonnet", detail: "primary endpoint · subscription" },
+  { id: "claude-sonnet", label: "Claude Sonnet 4.5", detail: "claude code · primary endpoint · subscription" },
   { id: "apollo-local", label: "Apollo-Hermes-Local", detail: "local weights · no network" },
   { id: "ollama", label: "Ollama / GGUF", detail: "llama.cpp backend" },
   { id: "custom-onnx", label: "Custom ONNX", detail: "bring your own runtime" },

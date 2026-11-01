@@ -18,6 +18,7 @@ import { ApolloOrb } from "@/apollo/ApolloOrb";
 import { NeuralGraph } from "@/apollo/NeuralGraph";
 import { HybridTerminal } from "@/apollo/Terminal";
 import { NODE_CATEGORY_STYLE, PALETTE, POOL_ENDPOINTS, POOL_PROVIDERS } from "@/apollo/catalog";
+import { QUICK_COMMANDS } from "@/apollo/commands";
 import { selectActiveModel, useApolloStore } from "@/apollo/store";
 import { Badge, MiniBar } from "@/apollo/ui";
 import { ORB_STATE_STYLE } from "@/apollo/catalog";
@@ -35,17 +36,19 @@ export default function ApolloStagePage() {
   const deckOpen = useApolloStore((s) => s.deckOpen);
   const runCommand = useApolloStore((s) => s.runCommand);
   const log = useApolloStore((s) => s.log);
+  const hydrate = useApolloStore((s) => s.hydrate);
   const booted = useRef(false);
 
   useEffect(() => {
     if (booted.current) return;
     booted.current = true;
+    hydrate();
     log({
       origin: "NIO_CORE",
       level: "INFO",
-      message: `Apollo core online · ${POOL_PROVIDERS} FreeLLMAPI providers · ${POOL_ENDPOINTS} endpoints indexed · primary ${config.primaryModel}.`,
+      message: `Apollo core online · ${POOL_PROVIDERS} FreeLLMAPI providers · ${POOL_ENDPOINTS} endpoints indexed · primary ${useApolloStore.getState().config.primaryModel}.`,
     });
-  }, [log, config.primaryModel]);
+  }, [log, hydrate]);
 
   const toggleDeck = useCallback(() => setDeckOpen(!useApolloStore.getState().deckOpen), [setDeckOpen]);
   const toggleTerminal = useCallback(
@@ -81,7 +84,11 @@ export default function ApolloStagePage() {
   const failover = router.mode !== "PRIMARY";
 
   return (
-    <div className="apollo-stage relative flex h-[100svh] min-h-[640px] flex-col overflow-hidden bg-[#05070d] text-slate-200">
+    <div
+      className={`apollo-stage relative flex h-[100svh] min-h-[640px] flex-col overflow-hidden bg-[#05070d] text-slate-200 ${
+        terminalOpen ? "apollo-stage-docked" : ""
+      }`}
+    >
       {/* ------------------------------------------------------------ header */}
       <header className="relative z-30 flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] bg-[#05070d]/80 px-3 py-2 backdrop-blur-xl sm:px-4">
         <div className="flex items-center gap-3">
@@ -135,9 +142,10 @@ export default function ApolloStagePage() {
           </button>
           <Link
             href="/ops"
-            className="hidden rounded-lg border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400 transition-colors hover:border-white/25 hover:text-slate-200 md:flex md:items-center md:gap-1.5"
+            aria-label="Ops grid"
+            className="flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400 transition-colors hover:border-white/25 hover:text-slate-200"
           >
-            ops grid <ArrowRight size={10} />
+            <span>ops<span className="hidden md:inline"> grid</span></span> <ArrowRight size={10} />
           </Link>
         </div>
       </header>
@@ -213,12 +221,7 @@ export default function ApolloStagePage() {
 
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap gap-1.5">
-            {[
-              { label: "/spawn inference", tone: "cyan" as const },
-              { label: "/failover simulate", tone: "amber" as const },
-              { label: "/router status", tone: "emerald" as const },
-              { label: "/sandbox exec ls", tone: "slate" as const },
-            ].map((action) => (
+            {QUICK_COMMANDS.map((action) => (
               <button
                 key={action.label}
                 type="button"

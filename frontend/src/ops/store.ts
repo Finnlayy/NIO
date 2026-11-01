@@ -4,6 +4,9 @@ import { create } from "zustand";
 import type { McpEvent, McpHydrateParams, WidgetInstance } from "./types";
 import { templateById, templateByKey } from "./widgetRegistry";
 
+/** Copies of one blueprint a gallery click may add; the gallery shows the count. */
+export const MAX_PER_TEMPLATE = 3;
+
 let seq = 0;
 const nextId = () => `w-${(++seq).toString(36)}-${Date.now().toString(36).slice(-4)}`;
 
@@ -94,6 +97,7 @@ interface GridState {
   togglePin: (id: string) => void;
   cycleSpan: (id: string) => void;
   cycleHeight: (id: string) => void;
+  setTaken: (id: string, takenAt: string | undefined) => void;
   setConsoleOpen: (open: boolean) => void;
   setGalleryOpen: (open: boolean) => void;
 }
@@ -168,6 +172,11 @@ export const useGridStore = create<GridState>((set) => ({
       ),
     })),
 
+  setTaken: (id, takenAt) =>
+    set((s) => ({
+      widgets: s.widgets.map((w) => (w.id === id ? { ...w, takenAt } : w)),
+    })),
+
   setConsoleOpen: (open) => set({ consoleOpen: open }),
   setGalleryOpen: (open) => set({ galleryOpen: open }),
 }));
@@ -176,10 +185,24 @@ export const useGridStore = create<GridState>((set) => ({
 /* High-level control-plane actions (dispatched as MCP events)          */
 /* ------------------------------------------------------------------ */
 
+function atTemplateLimit(templateId: WidgetInstance["templateId"]) {
+  const copies = useGridStore.getState().widgets.filter((w) => w.templateId === templateId).length;
+  return copies >= MAX_PER_TEMPLATE;
+}
+
+/** Rebuild the canvas from a saved layout; market data comes fresh from each blueprint. */
+export function restoreWidgets(saved: Array<Omit<WidgetInstance, "id" | "data">>) {
+  const widgets = saved.flatMap((entry) => {
+    const tpl = templateById(entry.templateId);
+    return tpl ? [{ ...entry, id: nextId(), data: tpl.dataFactory() }] : [];
+  });
+  useGridStore.setState({ widgets });
+}
+
 /** Materialize a widget from a gallery template */
 export function dispatchHydrateTemplate(templateId: `TPL_${string}`) {
   const tpl = templateById(templateId);
-  if (!tpl) return;
+  if (!tpl || atTemplateLimit(templateId)) return;
   emitMcp("ui/hydrate_widget_template", "gallery", {
     templateKey: tpl.key,
     title: tpl.defaultSymbol ? `${tpl.title} · ${tpl.defaultSymbol}` : tpl.title,
@@ -208,6 +231,8 @@ export function dispatchRemove(id: string) {
 
 /** Master-Twin scenario injection (e.g. geopolitical shock → liquidity radar) */
 export function dispatchOrchestratorScenario() {
+  const tpl = templateByKey("orderflow-cvd-heatmap");
+  if (!tpl || atTemplateLimit(tpl.id)) return;
   emitMcp("ui/hydrate_widget_template", "master-twin", {
     templateKey: "orderflow-cvd-heatmap",
     title: "Liquidity Radar · Shock Response",

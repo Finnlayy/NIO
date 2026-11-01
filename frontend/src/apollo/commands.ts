@@ -30,6 +30,13 @@ export const COMMANDS = [
   { command: "/help", usage: "/help", detail: "list commands" },
 ] as const;
 
+export const QUICK_COMMANDS = [
+  { label: "/spawn inference", tone: "cyan" },
+  { label: "/failover simulate", tone: "amber" },
+  { label: "/router status", tone: "emerald" },
+  { label: "/sandbox exec ls", tone: "slate" },
+] as const;
+
 const CATEGORY_ALIASES: Record<string, NodeCategory> = {
   orchestrator: "ORCHESTRATOR",
   orch: "ORCHESTRATOR",
