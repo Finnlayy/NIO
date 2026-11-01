@@ -9,7 +9,7 @@ import {
   SEED_KEYS,
   SEED_NODES,
 } from "./catalog";
-import { callVault, runSandboxCommand, requestSynthesis } from "./client";
+import { callVault, runSandboxCommand, requestSynthesis, kanbanRequest, secureKanbanRequest } from "./client";
 import {
   COMMANDS,
   coerceConfigValue,
@@ -760,10 +760,35 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
 
       switch (parsed.kind) {
         case "spawn": {
+          emit("APOLLO", "INFO", `[SPAWN] Dispatching worker spawn request via Kanban API`);
+
+          const spawnRes = await secureKanbanRequest<{ uid: string }>(
+            "/api/v1/workers",
+            "POST",
+            "",
+            { uid: parsed.name, name: parsed.name, skills: [], soul_md: "" }
+          );
+
+          if (!spawnRes.ok) {
+             emit("APOLLO", "ERROR", `[SPAWN] Failed: ${spawnRes.error}`);
+             return { ok: false, entries };
+          }
           const node = get().spawnNode(parsed.type, parsed.name);
           return { ok: node !== null, entries, data: node ? { nodeId: node.id } : undefined };
         }
         case "dispatch": {
+          emit("APOLLO", "INFO", `[DISPATCH] Dispatching task via Kanban API`);
+          const taskRes = await kanbanRequest<{ id: string }>(
+            "/api/v1/kanban/tasks",
+            "POST",
+            { board_id: "apollo", title: "Apollo Dispatch", description: JSON.stringify(parsed.payload), dependencies: [], required_skills: [] }
+          );
+
+          if (!taskRes.ok) {
+             emit("APOLLO", "ERROR", `[DISPATCH] Failed: ${taskRes.error}`);
+             return { ok: false, entries };
+          }
+
           const ok = get().dispatch(parsed.nodeId, parsed.payload);
           return { ok, entries, data: { nodeId: parsed.nodeId } };
         }
@@ -852,6 +877,49 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
             { data: { matches: notes.length } },
           );
           return { ok: result.ok, entries, data: { matches: notes.length } };
+        }
+        case "agent": {
+          emit("APOLLO", "INFO", `Agent command: ${parsed.command}`);
+          return { ok: true, entries };
+        }
+        case "runs": {
+          emit("APOLLO", "INFO", `Runs view requested`);
+          return { ok: true, entries };
+        }
+        case "approve": {
+          emit("APOLLO", "INFO", `Approving action...`);
+          const appRes = await secureKanbanRequest("/api/v1/approvals/issue", "POST", parsed.pin, { intent: {}, ttl_seconds: 60 });
+          if (!appRes.ok) {
+             emit("APOLLO", "ERROR", appRes.error === "HTTP 404" ? "Approval API not yet implemented (J4 missing)" : `Approval failed: ${appRes.error}`);
+             return { ok: false, entries };
+          }
+          emit("APOLLO", "INFO", `Action approved`);
+          return { ok: true, entries };
+        }
+        case "deny": {
+          emit("APOLLO", "INFO", `Action denied`);
+          return { ok: true, entries };
+        }
+        case "stop":
+        case "stopall": {
+          emit("APOLLO", "WARN", `Emergency stop requested`);
+          const stopRes = await kanbanRequest("/api/v1/kanban/stop", "POST", {});
+          if (!stopRes.ok) {
+             emit("APOLLO", "ERROR", `Stop failed: ${stopRes.error}`);
+             return { ok: false, entries };
+          }
+          emit("APOLLO", "INFO", `Emergency stop engaged`);
+          return { ok: true, entries };
+        }
+        case "resume": {
+          emit("APOLLO", "INFO", `Resuming operations...`);
+          const resumeRes = await secureKanbanRequest("/api/v1/kanban/stop", "DELETE", parsed.pin);
+          if (!resumeRes.ok) {
+             emit("APOLLO", "ERROR", `Resume failed: ${resumeRes.error}`);
+             return { ok: false, entries };
+          }
+          emit("APOLLO", "INFO", `Operations resumed`);
+          return { ok: true, entries };
         }
         case "clear": {
           set({ entries: [] });

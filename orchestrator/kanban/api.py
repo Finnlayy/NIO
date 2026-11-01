@@ -363,5 +363,21 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Limb-Aufruf fehlgeschlagen: {type(e).__name__}") from e
 
+
+    # -- STOP --
+    @router.post("/kanban/stop")
+    async def stop_orchestrator(actor: str = Depends(operator)) -> dict[str, Any]:
+        stop_file = runtime.config.runtime_dir.parent / "STOP"
+        stop_file.touch(exist_ok=True)
+        await runtime.ledger.append(actor=actor, action="kanban.stop", category="system", subject="all", payload={"state": "stopped"})
+        return {"ok": True, "status": "stopped"}
+
+    @router.delete("/kanban/stop")
+    async def clear_stop_orchestrator(actor: str = Depends(operator)) -> dict[str, Any]:
+        stop_file = runtime.config.runtime_dir.parent / "STOP"
+        if stop_file.exists():
+            stop_file.unlink()
+        await runtime.ledger.append(actor=actor, action="kanban.resume", category="system", subject="all", payload={"state": "running"})
+        return {"ok": True, "status": "running"}
     app.include_router(router)
     return app
