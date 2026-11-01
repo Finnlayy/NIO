@@ -73,6 +73,10 @@ Der Key wird über die Endpoint-URL gewählt (siehe [`API.md`](API.md)):
 `OPENROUTER_API_KEY` · `GROQ_API_KEY` · `GOOGLE_API_KEY` ·
 `MISTRAL_API_KEY` · `CEREBRAS_API_KEY`
 
+### OpenManus (gesperrt)
+
+Einrichtung und Variablen stehen in [`OPENMANUS.md`](OPENMANUS.md). `FREELLMAPI_KEY` bleibt serverseitig und erscheint in keinem Log.
+
 ### Trading-Limb (setzt der Limb selbst)
 
 | Variable | Wert | Grund |

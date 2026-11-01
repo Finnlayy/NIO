@@ -41,6 +41,8 @@ Datumsangaben in UTC.
   grün mit wie ohne pydantic).
 - `limbs/agent_base.py`: Lauf-Modell `start/status/stop/collect` für lange laufende Agenten
   (OpenManus, OpenCode, Cua), Zustand unter `runtime/agents/`. Noch ohne Limb, der es nutzt.
+- `limbs/openmanus_limb.py`, `docker/openmanus/`: Lokales OpenManus im abgeschotteten Container,
+  gesperrt (`planned`). Siehe `docs/OPENMANUS.md`.
 
 - `apollo/ciel/telemetry.py` — Modul E: Real-Time Graph-UI Telemetry.
   Typsichere `CielGraphEvent`-Payloads (`CIEL_COLD_STATE_SYNC`,

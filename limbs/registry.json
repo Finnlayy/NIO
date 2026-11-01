@@ -110,6 +110,22 @@
       ],
       "description": "Subagent-Knoten mit eigener Sandbox: installiert und betreibt REA (Reverse Engineer Anything) und liefert Evidence statt Behauptungen. Spezifikation: prompts/limbs/rea_limb.md"
     },
+    "openmanus": {
+      "entrypoint": "limbs/openmanus_limb.py",
+      "runtime": "python3",
+      "version": "1.0.0",
+      "phase": 6,
+      "status": "planned",
+      "writes_files": true,
+      "operations": [
+        "openmanus.collect",
+        "openmanus.ping",
+        "openmanus.start",
+        "openmanus.status",
+        "openmanus.stop"
+      ],
+      "description": "Lokales OpenManus im abgeschotteten Container mit Lauf-Modell aus limbs/agent_base.py. GESPERRT: status bleibt planned, bis Container, Netz (Harness 2.8, 2.9) und die Freigabe-Tickets aus J4 gemergt sind. Spezifikation: prompts/limbs/openmanus_limb.md"
+    },
     "trading": {
       "entrypoint": "limbs/trading_limb.py",
       "runtime": "python3",
