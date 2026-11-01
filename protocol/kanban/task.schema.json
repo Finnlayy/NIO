@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KanbanTask",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "board_id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "triage",
+        "backlog",
+        "ready",
+        "in_progress",
+        "blocked",
+        "completed"
+      ]
+    },
+    "priority": {
+      "type": "integer"
+    },
+    "assigned_worker_uid": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "parent_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "required_skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "is_rollup": {
+      "type": "boolean"
+    },
+    "attempts": {
+      "type": "integer"
+    },
+    "result_payload": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "block_reason": {
+      "type": "string"
+    },
+    "workspace_repo": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "updated_at": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "board_id",
+    "title",
+    "description",
+    "status",
+    "priority",
+    "assigned_worker_uid",
+    "parent_id",
+    "dependencies",
+    "required_skills",
+    "is_rollup",
+    "attempts",
+    "result_payload",
+    "block_reason",
+    "workspace_repo",
+    "created_at",
+    "updated_at",
+    "started_at"
+  ],
+  "additionalProperties": false
+}

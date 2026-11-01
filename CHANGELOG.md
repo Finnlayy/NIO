@@ -27,6 +27,27 @@ Datumsangaben in UTC.
 
 ### Hinzugefügt
 
+- Spracheingabe: Diktat im Apollo-Terminal über lokales speaches, `limbs/speech_limb.py`
+  (`speech.ping`, `speech.transcribe`) und Sprachstatus im Orb. speaches steht fest auf
+  `0.8.3-cpu`. Text wird nie automatisch gesendet, Freigaben gehen nicht per Sprache.
+  Siehe `docs/SPEECH.md`.
+
+- `orchestrator/kanban/` — Hermes-Kanban Task-Management.
+  - Implementierung von Architektur-Layer 2 & 3: Dispatcher, Reaper, Event-Bus, Postgres/SQLite Store.
+  - Sichere Sandbox-Umgebung (Docker & Subprocess) mit strikten Limits (kein `shell=True`, kein Netzwerk per Default).
+  - Unveränderliches Audit-Ledger (Hash-Kette) mit append-only Triggern in SQLite/Postgres.
+  - API (via FastAPI/uvicorn) für Boards, Tasks, Worker und Sandbox-Tools mit Token-Autorisierung.
+  - CLI via `python3 -m orchestrator kanban` zur Steuerung und Überwachung.
+  - Neues Extra `kanban` in `pyproject.toml` (asyncpg, fastapi, uvicorn).
+  - Ende-zu-Ende-Abnahme via `scripts/ci_e2e_kanban.py` (Ziel `make e2e-kanban`).
+  - Umfassende Testabdeckung: 66 neue Tests unter `tests/test_kanban*.py` hinzugefügt.
+  - `docs/KANBAN.md` mit detaillierter Architektur, Zustandsmaschine und Konfigurationsübersicht.
+
+- Obsidian-Vault: `limbs/vault_limb.py` (`vault.ping`, `vault.search`, `vault.read`,
+  `vault.capture`) mit SQLite FTS5, Apollo-Befehle `/note` und `/vault`, lesender
+  MCP-Server `scripts/vault_mcp.py`. Schreiben nur nach `Inbox/`, `workers/`, `tasks/`.
+  Siehe `docs/VAULT.md`.
+
 - `apollo/ciel/mcp_nodes.py` + `mcp_config.json` — externe MCP-Nodes als
   Ciel-Skills (u. a. StalkChain `https://data.stalkchain.com/mcp`, via
   `npx mcp-remote` oder direkt per SSE ohne Node). Stdio-JSON-RPC- und
@@ -36,6 +57,11 @@ Datumsangaben in UTC.
   `build_ciel_layer`. 8 neue Offline-Tests in
   `tests/test_ciel_mcp_nodes.py` (Fake-Stdio-Subprozess + Fake-SSE-Server,
   grün mit wie ohne pydantic).
+- `limbs/agent_base.py`: Lauf-Modell `start/status/stop/collect` für lange laufende Agenten
+  (OpenManus, OpenCode, Cua), Zustand unter `runtime/agents/`. Noch ohne Limb, der es nutzt.
+- `limbs/openmanus_limb.py`, `docker/openmanus/`: Lokales OpenManus im abgeschotteten Container,
+  gesperrt (`planned`). Siehe `docs/OPENMANUS.md`.
+
 - `apollo/ciel/telemetry.py` — Modul E: Real-Time Graph-UI Telemetry.
   Typsichere `CielGraphEvent`-Payloads (`CIEL_COLD_STATE_SYNC`,
   `CIEL_NCM_ROUTING` mit `SYSTEM_1_BYPASS`/`SYSTEM_2_JIT`, `CIEL_JIT_RELOAD`,

@@ -368,7 +368,9 @@ class TestEventVertrag(unittest.TestCase):
                 continue
             emitted.update(pattern.findall(path.read_text(encoding="utf-8")))
         self.assertTrue(emitted, "keine Event-Kinds gefunden -- Suchmuster kaputt?")
-        undeclared = sorted(emitted - set(VALID_EVENT_KINDS))
+        declared = set(VALID_EVENT_KINDS)
+        # Kanban-Service publiziert ohne Praefix; NeuEventBridge haengt ``kanban.`` an.
+        undeclared = sorted(k for k in emitted - declared if f"kanban.{k}" not in declared)
         self.assertEqual(undeclared, [], f"nicht deklarierte Event-Kinds: {undeclared}")
 
     def test_timer_kinds_sind_deklariert(self):
