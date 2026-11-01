@@ -128,34 +128,39 @@ async def sync_back(
         except OSError as e:
             logging.getLogger(__name__).warning("out/SOUL.md nicht lesbar: %s", e)
 
-    worker_changes: dict[str, Any] = {}
+    task_changes: dict[str, Any] = {}
     if soul_md is not None:
-        worker_changes["soul_md"] = soul_md
+        import hashlib
+        import copy
+        task_payload = copy.deepcopy(result_payload) if result_payload else {}
+        task_payload["proposed_soul"] = {
+            "content": soul_md,
+            "sha256": hashlib.sha256(soul_md.encode("utf-8")).hexdigest(),
+            "status": "pending"
+        }
+        result_payload = task_payload
+        task_changes["result_payload"] = task_payload
 
     audit = AuditDraft(
         actor=f"worker:{worker.uid}",
         action="worker.experience",
         category="worker",
         subject=task.id,
-        payload={"outcome": exp.outcome}
+        payload={"outcome": exp.outcome, "proposed_soul": soul_md is not None}
     )
 
     await store.finish_run(
         task_id=task.id,
         expected=None,
-        task_changes={},
+        task_changes=task_changes,
         worker_uid=worker.uid,
-        worker_changes=worker_changes,
+        worker_changes={},
         experience=exp,
         audit=audit
     )
 
     home = WorkerHome(workspace_dir)
     try:
-        if soul_md is not None:
-            vault.mirror_soul(worker.uid, soul_md)
-            home.write_soul(worker.uid, soul_md)
-
         history_line = f"- {exp.created_at} [[task-{task.id}]] {exp.outcome}: {exp.summary}"
         vault.append_history(worker.uid, history_line)
         home.append_history(worker.uid, history_line)
