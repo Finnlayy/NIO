@@ -39,6 +39,9 @@ Datumsangaben in UTC.
   `build_ciel_layer`. 8 neue Offline-Tests in
   `tests/test_ciel_mcp_nodes.py` (Fake-Stdio-Subprozess + Fake-SSE-Server,
   grün mit wie ohne pydantic).
+- `limbs/agent_base.py`: Lauf-Modell `start/status/stop/collect` für lange laufende Agenten
+  (OpenManus, OpenCode, Cua), Zustand unter `runtime/agents/`. Noch ohne Limb, der es nutzt.
+
 - `apollo/ciel/telemetry.py` — Modul E: Real-Time Graph-UI Telemetry.
   Typsichere `CielGraphEvent`-Payloads (`CIEL_COLD_STATE_SYNC`,
   `CIEL_NCM_ROUTING` mit `SYSTEM_1_BYPASS`/`SYSTEM_2_JIT`, `CIEL_JIT_RELOAD`,
