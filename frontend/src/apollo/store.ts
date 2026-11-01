@@ -41,6 +41,7 @@ import {
   routerSnapshot,
   type Weights,
 } from "./routing";
+import type { SpeechStatus } from "./dictation";
 import type {
   ActiveTask,
   ApolloConfiguration,
@@ -77,6 +78,7 @@ export interface ApolloStore {
   impulses: Impulse[];
   orbState: OrbState;
   orbSince: number;
+  speech: SpeechStatus;
   flare: { angle: number; startedAt: number } | null;
   task: ActiveTask | null;
   entries: LogEntry[];
@@ -104,6 +106,7 @@ export interface ApolloStore {
   /* terminal */
   prompt: (text: string) => Promise<void>;
   runCommand: (text: string) => Promise<CommandResult>;
+  setSpeech: (status: SpeechStatus) => void;
   setDeckOpen: (open: boolean) => void;
   setTerminalOpen: (open: boolean) => void;
   setTerminalMode: (mode: TerminalMode) => void;
@@ -361,6 +364,7 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
     impulses: [],
     orbState: "IDLE",
     orbSince: Date.now(),
+    speech: "idle",
     flare: null,
     task: null,
     entries: [],
@@ -729,6 +733,14 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
           }
         });
       }
+    },
+
+    /* Dictation colours an idle orb only: a running turn keeps its own state. */
+    setSpeech: (status) => {
+      set({ speech: status });
+      const orb = get().orbState;
+      if (status === "listening" && orb === "IDLE") setOrb("LISTENING");
+      else if (status !== "listening" && orb === "LISTENING") setOrb("IDLE");
     },
 
     runCommand: async (text) => {

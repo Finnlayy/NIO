@@ -50,6 +50,19 @@
       ],
       "description": "Protokoll-Testdouble und Konformanz-Harness. Beweist den Round-Trip Intent -> Limb -> Result ohne Nebenwirkungen und erzwingt auf Wunsch Fehlpfade (fail/timeout/partial/crash)."
     },
+    "speech": {
+      "entrypoint": "limbs/speech_limb.py",
+      "runtime": "python3",
+      "version": "1.0.0",
+      "phase": 7,
+      "status": "active",
+      "writes_files": false,
+      "operations": [
+        "speech.ping",
+        "speech.transcribe"
+      ],
+      "description": "Sprache zu Text ueber das lokale speaches auf 127.0.0.1:8011. Kostenlos, Audio verlaesst den Rechner nicht, ein Ausfall ergibt einen Fehler statt erfundenem Text. Spezifikation: prompts/limbs/speech_limb.md"
+    },
     "bootstrap": {
       "entrypoint": "limbs/bootstrap_limb.py",
       "runtime": "python3",

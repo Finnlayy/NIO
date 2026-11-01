@@ -176,6 +176,7 @@ Zwei Fehler, die dabei behoben wurden und leicht zurückkommen:
 | Copy | `navigator.clipboard` mit `execCommand`-Fallback, danach ein „copied"-Badge |
 | Busy-Gate | während eines Turns sind Senden und `/clear` gesperrt; die Fußzeile zeigt `mid-turn · command held` |
 | Verlauf | ↑/↓, Tab vervollständigt Kommandos |
+| Diktat | Mikrofon-Button, Text landet im Feld und wird nie automatisch gesendet, siehe [`SPEECH.md`](SPEECH.md) |
 
 Das Busy-Gate ist Absicht: ein `/clear` mitten im Turn zerstörte den Kontext,
 aus dem die Antwort gerade gebaut wurde.

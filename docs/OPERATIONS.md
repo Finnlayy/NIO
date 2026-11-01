@@ -13,6 +13,7 @@ antwortet.
 | Orchestrator-API | 4000 | `127.0.0.1` | `npm run start` (nach `npm run build`) |
 | Sigma-Worker (Trading-Limb) | **8731** | `127.0.0.1` | `trading.start` |
 | Sigma-Scraper (Sidecar) | 8001 | `127.0.0.1` | im Worker erwartet, nicht gestartet |
+| speaches (Spracherkennung) | 8011 | `127.0.0.1` | Docker, siehe [`SPEECH.md`](SPEECH.md) |
 
 **Warum `0.0.0.0` für die UI:** In einer Sandbox wird die Vorschau über einen
 Proxy-Host (`*.e2b.app`) ausgeliefert. Bindet der Dev-Server nur an
@@ -56,6 +57,14 @@ gelesen. Alle Secrets bleiben serverseitig.
 |---|---|
 | `TVREMIX_API_KEY` | `/api/market/*` → 503, Widgets zeigen `SIM` |
 | `TVREMIX_MCP_URL` | Default `https://tvremix.xyz/api/mcp/v1` |
+
+### Sprache
+
+| Variable | Wirkung ohne sie |
+|---|---|
+| `STT_ENDPOINT_URL` | Default `http://127.0.0.1:8011/v1/audio/transcriptions`, der Limb lehnt fremde Hosts ab |
+| `STT_MODEL` | Default `Systran/faster-whisper-small` |
+| `STT_LANGUAGE` | Default `de` |
 
 ### Apollo-Proxy
 
