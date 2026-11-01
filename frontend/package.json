@@ -2,9 +2,9 @@
   "name": "neural-orchestrator-ui",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 4001",
+    "dev": "next dev -H 127.0.0.1 -p 4001",
     "build": "next build",
-    "start": "next start -p 4001",
+    "start": "next start -H 127.0.0.1 -p 4001",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
