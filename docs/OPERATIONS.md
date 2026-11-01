@@ -126,6 +126,14 @@ install → start → (status) → stop
 `start` ist idempotent: läuft der Worker schon, kommt
 `{"started": false, "already_running": true}` statt eines zweiten Prozesses.
 
+### Not-Aus
+
+`neu stop` legt `runtime/STOP` an. Neue Läufe werden mit `E_STOPPED` abgelehnt, laufende Limbs enden samt Kindprozessen in unter 5 Sekunden, Agent-Läufe beim nächsten `status`, und der Kanban-Dispatcher nimmt nichts an und bricht aktive Aufgaben ab. Inbox-Aufträge bleiben liegen. Nur `neu resume` hebt das auf, nie der Automatismus.
+
+### Umgebung der Limbs
+
+Limbs erben die Host-Umgebung nicht. Sie bekommen `PATH`, `LANG`, `LC_ALL`, `TZ`, ein eigenes `HOME` und `TMPDIR` unter `workspace/limbs/<name>/` und die Namen aus ihrem `env_allow` in `limbs/registry.json`. Namen mit `KEY`, `TOKEN`, `SECRET` oder `PASSWORD` scheitern beim Laden. Die einzige Ausnahme ist `FREELLMAPI_KEY`.
+
 ### Prozessleichen finden
 
 ```bash

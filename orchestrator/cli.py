@@ -1260,6 +1260,23 @@ def cmd_loop(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+
+def cmd_stop(args: argparse.Namespace) -> int:
+    config = _config_from_args(args)
+    stop_file = config.runtime_dir / "STOP"
+    stop_file.parent.mkdir(parents=True, exist_ok=True)
+    stop_file.touch()
+    _say("[not-aus] gesetzt: Laufende Limbs enden, neue werden abgelehnt.")
+    return EXIT_OK
+
+
+def cmd_resume(args: argparse.Namespace) -> int:
+    config = _config_from_args(args)
+    (config.runtime_dir / "STOP").unlink(missing_ok=True)
+    _say("[not-aus] aufgehoben.")
+    return EXIT_OK
+
+
 def cmd_scale(args: argparse.Namespace) -> int:
     """Skalierungsprofil dauerhaft setzen -- nur mit menschlicher Freigabe."""
     config = _config_from_args(args)
@@ -1692,6 +1709,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_loop.add_argument("--once", action="store_true", default=True, help="Ein Durchlauf (Default)")
     p_loop.add_argument("--watch", action="store_true", help="Dauerbetrieb (ab Phase 4)")
     p_loop.set_defaults(func=cmd_loop)
+    p_stop = sub.add_parser("stop", help="Not-Aus: laufende Limbs beenden, neue ablehnen")
+    p_stop.set_defaults(func=cmd_stop)
+    p_resume = sub.add_parser("resume", help="Not-Aus aufheben")
+    p_resume.set_defaults(func=cmd_resume)
 
     p_subagent = sub.add_parser(
         "subagent",
