@@ -13,6 +13,12 @@ from pathlib import Path
 from typing import Any
 
 from core.protocol import utc_now_iso
+from core.config import NeuConfig
+from core.protocol import Operations
+from core.policy import Policy
+from orchestrator.runner import Orchestrator
+from .limb_bridge import run_limb_request
+import asyncio
 
 from .audit import AuditDraft
 from .models import Experience, KanbanTask, Worker
@@ -46,6 +52,7 @@ async def sync_back(
     reason = "no result (exit None)" if result.exit_code is None else f"no result (exit {result.exit_code})"
     result_payload = None
 
+
     result_file = result.out_dir / "result.json"
     if result_file.is_file():
         try:
@@ -74,6 +81,25 @@ async def sync_back(
         status = "failed"
         if reason.startswith("no result"):
             reason = f"exit code {result.exit_code}"
+
+    limb_req = result.out_dir / "limb_request.json"
+    if limb_req.is_file():
+        cfg = NeuConfig.load()
+        ops = Operations.load(cfg.protocol_dir / "operations.json")
+        pol = Policy(cfg, ops)
+        orch = Orchestrator(cfg)
+        try:
+            success, l_reason, l_payload = await asyncio.wait_for(
+                asyncio.to_thread(
+                    run_limb_request, limb_req, ops, pol, orch, task.id, worker.soul_md
+                ),
+                timeout=120.0
+            )
+        except asyncio.TimeoutError:
+            success, l_reason, l_payload = False, "limb request timed out", None
+        status = "completed" if success else "failed"
+        reason = l_reason
+        result_payload = l_payload
 
     exp_file = result.out_dir / "experience.json"
     exp = None
