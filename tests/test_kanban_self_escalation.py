@@ -180,6 +180,120 @@ class TestSelfEscalation(unittest.IsolatedAsyncioTestCase):
             config=self.config
         )
 
-        completed_task = await svc.complete(task3.id, {"x": 1, "proposed_soul": {"status": "approved"}}, actor="test")
-        self.assertNotIn("proposed_soul", completed_task.result_payload)
-        self.assertIn("x", completed_task.result_payload)
+        from orchestrator.kanban.tools import KanbanToolbox
+        class MockTokenStore:
+            async def get(self, token):
+                return {"task_id": task3.id, "worker_uid": "test-worker", "actor": "test"}
+
+        toolbox = KanbanToolbox(svc, MockTokenStore())
+        # Call the complete handler directly with fake tool structure
+        completed_task_dict = await toolbox.call("kanban_complete", {"result_payload": {"x": 1, "proposed_soul": {"status": "approved"}}}, "fake-token")
+
+        updated_task3 = await self.store.get_task(task3.id)
+        self.assertNotIn("proposed_soul", updated_task3.result_payload)
+        self.assertIn("x", updated_task3.result_payload)
+
+    async def test_dispatcher_flow_keeps_genuine_proposal(self):
+        from orchestrator.kanban.dispatcher import Dispatcher
+        from orchestrator.kanban.service import KanbanService
+
+        task4 = KanbanTask(id="t-444444444444", board_id="b-1", title="Task 4", status=TaskStatus.READY, assigned_worker_uid=None)
+        await self.store.create_board(board=KanbanBoard(id="b-1", name="B1"))
+        def _do(conn):
+            self.store._insert_task(conn, task4)
+        await self.store._run(_do)
+
+        class DummyLockManager:
+            def lock_task(self, *a, **k):
+                return True
+            def unlock_task(self, *a, **k):
+                pass
+            async def release(self, *a, **k):
+                pass
+        class DummyHeartbeatStore:
+            def beat(self, *a, **k):
+                pass
+            def get_heartbeats(self):
+                return {}
+            async def clear(self, *a, **k):
+                pass
+        class DummyTokenStore:
+            def generate(self, *a, **k):
+                return "token"
+            async def put(self, *a, **k):
+                pass
+            async def revoke(self, *a, **k):
+                pass
+        class DummyLedger:
+            async def append(self, *args, **kwargs):
+                return None
+            async def list_events(self, *a, **k):
+                return []
+        class DummyBus:
+            async def publish(self, *a, **k):
+                pass
+        class DummyDecomposer:
+            def decompose(self, *a, **k):
+                return []
+
+        svc = KanbanService(
+            store=self.store,
+            bus=DummyBus(),
+            ledger=DummyLedger(),
+            heartbeats=DummyHeartbeatStore(),
+            tokens=DummyTokenStore(),
+            config=self.config
+        )
+
+        class DummyBreaker:
+            def can_assign(self, *a, **k):
+                return True
+            async def record_success(self, *a, **k):
+                pass
+            async def record_failure(self, *a, **k):
+                pass
+
+        class FakeSandboxResult:
+            exit_code = 0
+            timed_out = False
+            cancelled = False
+            out_dir = self.out_dir
+            stderr_tail = ""
+
+        class DummySandbox:
+            def __init__(self, out_dir):
+                self.out_dir = out_dir
+            async def run(self, spec, on_heartbeat):
+                (self.out_dir / "SOUL.md").write_text("genuine soul")
+                (self.out_dir / "result.json").write_text('{"status": "completed", "result_payload": {"x": 1}}')
+                return FakeSandboxResult()
+
+        dispatcher = Dispatcher(
+            store=self.store,
+            service=svc,
+            locks=DummyLockManager(),
+            heartbeats=DummyHeartbeatStore(),
+            tokens=DummyTokenStore(),
+            sandbox=DummySandbox(self.out_dir),
+            breaker=DummyBreaker(),
+            vault=self.vault,
+            decomposer=DummyDecomposer(),
+            config=self.config,
+            owner_id="test-dispatcher"
+        )
+
+        # Manually run the dispatcher for one tick to pick up task4 and process it
+        dispatcher.out_dir = self.out_dir # Just to pass the out_dir around
+
+        # We need to assign it to be picked up by transitioning to in_progress
+        task4 = await svc.transition(task4.id, TaskStatus.IN_PROGRESS, actor="test", expected=TaskStatus.READY, changes={"assigned_worker_uid": self.worker.uid})
+
+        # Now we mock the specific part of dispatcher logic
+        await dispatcher._run_worker(task4, self.worker)
+
+        updated_task4 = await self.store.get_task(task4.id)
+
+        self.assertEqual(updated_task4.status, TaskStatus.COMPLETED)
+        self.assertIn("proposed_soul", updated_task4.result_payload)
+        self.assertEqual(updated_task4.result_payload["proposed_soul"]["status"], "pending")
+        self.assertEqual(updated_task4.result_payload["proposed_soul"]["content"], "genuine soul")
