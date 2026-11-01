@@ -6,6 +6,8 @@ schreibt die Erfahrung in den Kanban-Store und spiegelt alles in den Obsidian Va
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 import logging
 from dataclasses import dataclass
@@ -129,9 +131,12 @@ async def sync_back(
             logging.getLogger(__name__).warning("out/SOUL.md nicht lesbar: %s", e)
 
     task_changes: dict[str, Any] = {}
+
+    if result_payload and isinstance(result_payload, dict) and "proposed_soul" in result_payload:
+        result_payload.pop("proposed_soul", None)
+        task_changes["result_payload"] = result_payload
+
     if soul_md is not None:
-        import hashlib
-        import copy
         task_payload = copy.deepcopy(result_payload) if result_payload else {}
         task_payload["proposed_soul"] = {
             "content": soul_md,

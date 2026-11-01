@@ -186,6 +186,11 @@ class KanbanService:
         )
 
     async def complete(self, task_id: str, result_payload: dict[str, Any], *, actor: str) -> KanbanTask:
+        # A worker is not allowed to forge a proposed_soul via the kanban_complete tool.
+        # It must only be created by the sync mechanism parsing an actual out/SOUL.md file.
+        if isinstance(result_payload, dict) and "proposed_soul" in result_payload:
+            result_payload.pop("proposed_soul", None)
+
         return await self.transition(
             task_id,
             TaskStatus.COMPLETED,
