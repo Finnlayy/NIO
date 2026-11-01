@@ -5,8 +5,8 @@ Dieser Plan ergänzt `docs/helpers/INTEGRATION_PLAN.md` (ADR-001) und korrigiert
 
 **Annahmen**
 - „Apollo“ meint NIOs Oberfläche in `frontend/src/apollo/` plus `apollo/ciel`, nicht den Dienst Apollo.io.
-- „Manus“ meint den gehosteten Dienst mit API, „OpenManus“ das lokale Projekt. Es sind zwei getrennte Limbs.
-- Sprache bleibt kostenlos. Für Manus fallen Kosten an, das braucht deine Entscheidung (Abschnitt 7).
+- „Manus“ meint in NIO immer OpenManus, das lokale Projekt. Der gehostete Dienst wird nicht eingebaut, weil er Kosten verursacht (Entscheidung vom 2026-11-01).
+- Sprache und Modellzugang bleiben kostenlos.
 
 ## 1. Ergebnis
 
@@ -66,7 +66,7 @@ Behoben am 2026-11-01: Der Sprachcode ist auf `fix/ui-testlauf-batch` gepusht (`
 | `workspace/obsidian` ist leer | Der Ordner existiert nicht |
 | VoiceStudio auf Port 8013 | Standard ist `127.0.0.1:3900` |
 | Immich als feste Version | Das Archiv ist `3.4.0-rc.0`, also kein stabiles Release, und bindet Port 2283 auf alle Schnittstellen |
-| OpenManus-Limb heißt `manus` | Name wird für den gehosteten Dienst gebraucht, lokal heißt er `openmanus` |
+| OpenManus-Limb heißt `manus` | Er heißt `openmanus`, damit klar ist, dass nur das lokale Projekt gemeint ist |
 | Cua über `cua-sandbox` | `cua-sandbox` verlangt Python unter 3.14, der Host hat 3.14.4, und das Lizenzbild des `cua`-Wheels ist ungeklärt |
 | Modelllizenz von VoiceStudio prüfen | Alle 77 Einträge stehen auf `commercial_use: false` |
 
@@ -86,8 +86,8 @@ Apollo (Web, Sprache)   Telegram
                       ▼
    Agent-Gateway: Policy · Budget · Umgebung · Prozessgruppe · Protokoll
         │              │               │              │
-     manus          openmanus       desktop        opencode
-    (HTTPS)        (Container)     (Container)    (Container)
+        openmanus         desktop        opencode
+       (Container)      (Container)    (Container)
                        │
                        ▼
         internes Docker-Netz nio-agents ──▶ freellmapi
@@ -177,7 +177,7 @@ Der Vault ist ein Ordner mit Markdown. Der Zugriff läuft direkt über Dateien, 
 3. Agenten schreiben nur nach `Inbox/`, `workers/`, `tasks/`, nie nach `Knowledge/`.
 4. Apollo: `/note`, `/vault <suche>`, Diktat als Notiz.
 5. Lesender MCP-Server `scripts/vault_mcp.py` für OpenCode.
-6. Notizen gelten als Fremdinhalt und werden beim Weitergeben entsprechend markiert. An Manus gehen sie nur auf ausdrückliche Auswahl im Auftrag.
+6. Notizen gelten als Fremdinhalt und werden beim Weitergeben entsprechend markiert. An OpenManus gehen sie nur auf ausdrückliche Auswahl im Auftrag.
 
 **Abnahme:** Diktat steht mit Frontmatter in `Inbox/`, Suche findet es in unter einer Sekunde, `../` und Symlinks nach außen werden abgewiesen.
 
@@ -202,21 +202,9 @@ Der Code wird nicht verändert. Ein eigener Runner im Image umgeht die bekannten
 
 **Abnahme:** Testauftrag erzeugt ein Artefakt. Negativtests im Container: Host-Dateien, `docker.sock`, Sigma-Port, Kraken-Keys, fremde Hosts sind nicht erreichbar. Stop und Timeout entfernen den Container. Plattenbedarf ist gemessen.
 
-### Phase 7: Manus, gehostet (M)
+### Phase 7: entfällt
 
-Offizielle API v2 (`https://api.manus.ai/v2/`, Header `x-manus-api-key`). Das ist der einzige Agent, bei dem Daten den Rechner verlassen.
-
-| Paket | Inhalt |
-|---|---|
-| 7.1 | Zuerst Doku zu Task-Lebenszyklus, Status und Credit-Feldern lesen. Das ist bisher nicht geprüft |
-| 7.2 | `manus`-Limb: `ping` (`user.me`), `start` (`task.create`), `status` (`task.detail`, `task.listMessages`), `stop` (`task.stop`), `collect` (`artifact.list`), `usage` (`usage.list`). Nur `urllib` |
-| 7.3 | Feste Vorgaben: `clear_connectors: true`, `share_visibility: private`, `agent_profile: lite`, `interactive_mode: false` |
-| 7.4 | **Polling statt Webhooks:** Webhooks verlangen einen öffentlichen HTTPS-Endpunkt, und NIO soll keinen Port öffnen. Abstand mindestens 10 Sekunden, Backoff mit Jitter bei `429` (Limit 100 pro Minute für Lesezugriffe, 10 für `task.create`) |
-| 7.5 | Rückfragen von Manus (`task.confirmAction`) gehen als Karte an Apollo, nie automatisch bestätigen |
-| 7.6 | Filter vor dem Senden: Secrets und Pfade aus `runtime/`, `workspace/sigma`, `.env` werden abgewiesen. `risk: external`, jede Sendung braucht ein Ticket |
-| 7.7 | Budget über `usage.list`; bei Überschreitung `task.stop` |
-
-**Abnahme:** Mit gefälschtem Dienst: Erfolg, 429, Ausfall, Timeout, Budgetstopp. Danach ein echter `lite`-Testlauf mit deiner Freigabe. Der Key erscheint in keinem Log und keinem Artefakt.
+Der gehostete Manus-Dienst wird nicht eingebaut, weil er Kosten verursacht. NIO nutzt nur OpenManus (Phase 6). Die Nummern der übrigen Phasen bleiben, weil andere Dokumente sie zitieren.
 
 ### Phase 8: Cua (C)
 
@@ -254,19 +242,19 @@ Wird echtes FinBERT für Sentiment gebraucht, kommt es als eigener kleiner Limb 
 
 ## 5. Reihenfolge
 
-Entscheidung vom 2026-11-01: Sprache, Obsidian und Manus werden vorgezogen und parallel zur Absicherung gebaut. Das ändert die Kette aus Abschnitt 1 so:
+Entscheidung vom 2026-11-01: Sprache, Obsidian und OpenManus werden vorgezogen und parallel zur Absicherung gebaut. Das ändert die Kette aus Abschnitt 1 so:
 
 | Spur | Inhalt | Wer |
 |---|---|---|
-| A | Sprache (0.1, 3.6, 3.8), dann Obsidian (4), dann Manus (2.1 und 7) | Claude |
+| A | Sprache (0.1, 3.6, 3.8), dann Obsidian (4), dann das Lauf-Modell (2.1) und OpenManus (6) | Claude |
 | B | Absicherung, Welle 1 und 2 aus Abschnitt 9 | Jules |
 | C | Entscheidungen, Freigaben, 1.6, 2.12 | Mensch |
 
-**Sperre für Manus:** Der Limb wird gegen einen gefälschten Dienst gebaut und getestet. Ein echter Lauf findet erst statt, wenn die Tickets aus J4 gemergt sind und du Key und Budget gegeben hast.
+**Sperre für OpenManus:** Der Limb bleibt `planned`, bis Container und Netz aus 2.8 und 2.9 und die Tickets aus J4 gemergt sind. Davor läuft kein Auftrag.
 
-Sprache und Obsidian bleiben lokal und schicken nichts nach außen, deshalb dürfen sie vor dem Gateway laufen. Ihre Routen fallen unter den Schutz aus J1, sobald er gemergt ist.
+Sprache und Obsidian schicken nichts nach außen und führen keinen Fremdcode aus, deshalb dürfen sie vor dem Gateway laufen. Ihre Routen fallen unter den Schutz aus J1, sobald er gemergt ist.
 
-OpenCode, OpenManus und Cua führen Code aus und warten weiter auf Phase 2.
+OpenManus, OpenCode und Cua führen Code aus und warten weiter auf Phase 2.
 
 ## 6. Gesamtprüfung
 
@@ -282,7 +270,7 @@ OpenCode, OpenManus und Cua führen Code aus und warten weiter auf Phase 2.
 |---|---|---|
 | 1 | Freigabe für Änderungen an `human_only_globs`-Dateien in Phasen 1 und 2 | Ja, je PR einzeln prüfen |
 | 2 | Build-Cache leeren | Ja, aber Ertrag vorher mit `docker buildx du` prüfen: `docker system df` zeigt 11,16 GB bei 0 aktiven Einträgen, nennt aber 0 B als freigebbar. Reicht es nicht, muss anderer Platz frei werden |
-| 3 | Manus: API-Key und Tagesbudget | Erst in Phase 7 nötig. Bezahlter Dienst, Preise habe ich nicht gefunden |
+| 3 | entfällt: gehostetes Manus wird nicht eingebaut | |
 | 4 | Obsidian-App | Optional, NIO läuft ohne sie |
 | 5 | VoiceStudio nur privat? | Bitte bestätigen, sonst entfällt es |
 
@@ -292,7 +280,6 @@ OpenCode, OpenManus und Cua führen Code aus und warten weiter auf Phase 2.
 - Die Startfehler von OpenManus sind aus dem Code gelesen, nicht ausgeführt.
 - Herkunft der laufenden Container `fable5-paper` und `neo-fabel-postgres` ist unklar. Sie bleiben unberührt.
 - Plattenbedarf von OpenManus- und Cua-Images ist ungemessen.
-- Status- und Credit-Felder der Manus-API sind nicht belegt, Preise ebenso.
 - Zur Obsidian-CLI und zum Headless-Paket lagen nur Sekundärquellen vor. Für die Entscheidung genügt das, weil beides nicht verwendet wird.
 
 ## 9. Arbeitsaufteilung Jules
@@ -308,7 +295,7 @@ Die Aufträge liegen in `docs/helpers/jules/`. Sie sind in sich vollständig, we
 | `J3-runner-haertung.md` | 2.4, 2.5, 2.6 | K7, K8, F3 | `jules/j3-runner-haertung` |
 | `J4-freigabe-tickets.md` | 1.7, 2.2, 2.3 ⚠ | K5, F1 | `jules/j4-freigabe-tickets` |
 
-**Welle 2 (erst nach dem Merge von Welle 1):** 2.7 Budget, 2.8 und 2.9 Container und Netz, 2.10 Runtime `limb`, 2.11 Protokoll, Phase 3 ohne 3.6 und 3.8, danach OpenCode, OpenManus, der Cua-Spike und Phase 9.
+**Welle 2 (erst nach dem Merge von Welle 1):** 2.7 Budget, 2.8 und 2.9 Container und Netz, 2.10 Runtime `limb`, 2.11 Protokoll, Phase 3 ohne 3.6 und 3.8, danach OpenCode, der Cua-Spike und Phase 9.
 
 **Nicht für Jules:**
 
@@ -317,7 +304,7 @@ Die Aufträge liegen in `docs/helpers/jules/`. Sie sind in sich vollständig, we
 | 1.4 Sigma | Liegt ungetrackt auf dem Host und berührt den Kapitalschutz |
 | 1.6, 2.12 | Änderungen, die ein Mensch vornimmt |
 | 1.8 Marktdaten | PR 262 ist offen und mergebar, hier fehlt nur die Prüfung |
-| 2.1 und Phase 7 | Baut Claude zusammen mit Manus, Jules hat keinen Zugang zu Manus |
+| 2.1 und Phase 6 | Baut Claude. Das Image braucht den lokalen Download und einen Lauf auf dem Host |
 | Phase 10, Phase 0 Schritt 3 und 4 | Brauchen den Host |
 
 Jules-Ergebnisse gelten erst als fertig, wenn der PR geprüft ist. Docker-Tests laufen dort vermutlich nicht, das steht dann im PR.

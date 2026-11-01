@@ -610,8 +610,8 @@ produziert, nicht was der Harness verhindert.
 1. Keine Testsuite ausgeführt. Dieses Dokument ist Analyse.
 2. Persona-Namen, `Grok-3.8-Max`, `GPT-6-Llama-Max`, 1-Mio.-Kontext und
    `agent_count=4|16` sind aus dem Bericht übernommen und nicht gegengeprüft.
-3. Die Manus-APIs (`task.detail`, `usage.list`, Credit-Felder) sind unbelegt; der
-   `external_send`-Vertrag bleibt deshalb bei `ping` und `start` hypothetisch.
+3. Der gehostete Manus-Dienst wird nicht eingebaut. Der `external_send`-Vertrag bleibt
+   hypothetisch, bis ein Limb tatsächlich Daten nach außen sendet.
 4. Der Gate-Pseudocode ist Absicht, kein Entwurf: Er soll die Prüfreihenfolge festlegen,
    nicht die Umsetzung vortäuschen.
 5. Ob `research.publish` in die Sandbox oder in den Vault schreibt, entscheidet Phase 4 —
