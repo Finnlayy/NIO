@@ -9,6 +9,7 @@ Alle Routen liegen unter `frontend/src/app/api/`. Alle Endpunkte nutzen
 | `/api/apollo/transcribe` | GET, POST | Sprachstatus und Diktat über lokales speaches, 503 bei Ausfall ([`SPEECH.md`](SPEECH.md)) | nein |
 | `/api/market/[tool]` | GET | Marktdaten über tvremix MCP | ja, serverseitig |
 | `/api/sandbox` | POST | read-only Shell-Allowlist | nein |
+| `/api/apollo/vault` | POST | Notizen ablegen und suchen über den Vault-Limb ([`VAULT.md`](VAULT.md)) | nein |
 | `/api/telemetry/stream` | GET | SSE der Python-Engine | nein |
 
 **Grundregel:** Kein API-Key erreicht je den Browser. Der Client spricht nur
@@ -204,4 +205,5 @@ puffert. Beim Abort des Clients werden Intervall und Subscription freigegeben.
 | `/api/apollo/transcribe` | ƒ dynamisch | Endpoint nur aus der Server-Umgebung | ja |
 | `/api/market/[tool]` | ƒ dynamisch | serverseitiger Key | ja |
 | `/api/sandbox` | ƒ dynamisch | Allowlist | ja |
+| `/api/apollo/vault` | ƒ dynamisch | nur JSON, Aktionen `search` und `capture` | ja |
 | `/api/telemetry/stream` | ƒ dynamisch | — | ja (Validierung) |

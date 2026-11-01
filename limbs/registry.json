@@ -79,6 +79,21 @@
       ],
       "description": "Erster echter Arm: schreibt/patcht Dateien in der Sandbox und (mit elevation.level=repo_write) am System selbst. Spezifikation: prompts/limbs/bootstrap_limb.md"
     },
+    "vault": {
+      "entrypoint": "limbs/vault_limb.py",
+      "runtime": "python3",
+      "version": "1.0.0",
+      "phase": 8,
+      "status": "active",
+      "writes_files": true,
+      "operations": [
+        "vault.capture",
+        "vault.ping",
+        "vault.read",
+        "vault.search"
+      ],
+      "description": "Obsidian-Vault unter workspace/obsidian: Suche mit SQLite FTS5, Lesen, Notizen ablegen. Schreiben nur nach Inbox/, workers/, tasks/. Notizen sind Fremdinhalt. Spezifikation: prompts/limbs/vault_limb.md"
+    },
     "rea": {
       "entrypoint": "limbs/rea_limb.py",
       "runtime": "python3",

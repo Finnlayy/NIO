@@ -83,6 +83,12 @@ Der Key wird über die Endpoint-URL gewählt (siehe [`API.md`](API.md)):
 | `PYTHONUNBUFFERED` | `1` | Logs sofort sichtbar |
 | `PYTHONDONTWRITEBYTECODE` | `1` | keine `__pycache__` im Clone |
 
+### Obsidian-Vault
+
+| Variable | Wirkung ohne sie |
+|---|---|
+| `NIO_OBSIDIAN_VAULT` | Default `workspace/obsidian`, siehe [`VAULT.md`](VAULT.md) |
+
 ### Qdrant (Architect-Stapel, optional)
 
 `QDRANT_URL` · `QDRANT_API_KEY` · `QDRANT_CLUSTER_ID` ·
