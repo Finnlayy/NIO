@@ -300,6 +300,7 @@
             "E_SCHEMA_INVALID",
             "E_SHELL_BLOCKED",
             "E_TARGET_NOT_FOUND",
+            "E_TICKET_INVALID",
             "E_TIMEOUT",
             "E_TRIGGER_INVALID",
             "E_UNSUPPORTED_OP"

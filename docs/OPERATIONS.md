@@ -66,6 +66,16 @@ gelesen. Alle Secrets bleiben serverseitig.
 | `STT_MODEL` | Default `Systran/faster-whisper-small` |
 | `STT_LANGUAGE` | Default `de` |
 
+### Freigabe-Tickets
+
+| Variable | Wirkung |
+|---|---|
+| `NIO_APPROVAL_KEY` | Schlüssel für Tickets. Fehlt er, werden Operationen mit `risk` `high`, `destructive` oder `external` und jede Rechteanhebung abgelehnt |
+
+Ein Ticket stellt der Mensch aus: `neu approve <intent.json> [--ttl-seconds N]` oder `POST /api/v1/approvals/issue` mit Operator-Token. Es gilt für genau einen Auftrag, läuft ab und wirkt nur einmal. `ticket`, `expires_at` und `approved_by: human` kommen danach in `elevation`.
+
+Der Schlüssel darf nie in `env_allow` stehen. Setze ihn erst, wenn der Runner die Umgebung der Limbs filtert.
+
 ### Apollo-Proxy
 
 Der Key wird über die Endpoint-URL gewählt (siehe [`API.md`](API.md)):
