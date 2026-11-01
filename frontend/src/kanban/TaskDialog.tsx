@@ -294,6 +294,13 @@ export const TaskDialog: React.FC<TaskDialogProps> = ({ taskId, initialStatus = 
               className="text-sm font-semibold text-slate-900 bg-cyan-500 hover:bg-cyan-400 px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
             >
               {isEditMode ? "Speichern" : "Karte anlegen"}
+              <span className="hidden sm:inline-flex items-center gap-0.5 text-[9px] font-mono text-cyan-900/50 bg-cyan-100/30 border border-cyan-800/30 px-1 py-0.5 rounded shadow-sm leading-none ml-1">
+                <kbd>⌘</kbd>
+                <span>/</span>
+                <kbd>Ctrl</kbd>
+                <span>+</span>
+                <kbd>Enter</kbd>
+              </span>
             </button>
           </div>
         </footer>
