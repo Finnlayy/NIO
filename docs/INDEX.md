@@ -45,6 +45,8 @@ Stand: `9598911` (Merge PR #243) · Sprache: Deutsch, Code und Identifier englis
 | [`DATA-FLOW.md`](DATA-FLOW.md) | ~200 | Marktdaten: MCP → Adapter → Browser; Formate und Messungen | Entwickler, Betrieb |
 | [`TRADING-LIMB.md`](TRADING-LIMB.md) | ~230 | Sigma als Handels-Knoten; Sparse-Clone, Pin, Lifecycle | Betrieb |
 | [`EVIDENCE-HARNESS.md`](EVIDENCE-HARNESS.md) | ~650 | Masterprompt v2 für recherchende Agenten: Rollenverträge, Claim-Ledger, Fail-Closed-Gate, Ticket, Budget | Entwickler, Konzept |
+| [`helpers/HARNESS_PLAN.md`](helpers/HARNESS_PLAN.md) | ~330 | Harness-Lücken, Phasenplan und Aufteilung auf Claude und Jules | Entwickler, Betrieb |
+| [`helpers/INTEGRATION_PLAN.md`](helpers/INTEGRATION_PLAN.md) | ~330 | ADR und Plan: Sprache, Obsidian, OpenCode und weitere Helfer | Entwickler, Betrieb |
 | [`API.md`](API.md) | ~220 | 4 Next-Routen mit vollständigen Fehlerverträgen | Frontend, Integration |
 | [`TESTING.md`](TESTING.md) | ~180 | 360 Python-Tests, 69 UI-Tests, Audit-Harness | Entwickler |
 | [`OPERATIONS.md`](OPERATIONS.md) | ~200 | Ports, Env, Prozesse, Troubleshooting | Betrieb |
