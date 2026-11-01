@@ -41,6 +41,7 @@ Stand: `9598911` (Merge PR #243) · Sprache: Deutsch, Code und Identifier englis
 | [`NEU.md`](NEU.md) | 470 | Core, Orchestrator, Limbs, Lernschleife | Entwickler |
 | [`APOLLO-CORE.md`](APOLLO-CORE.md) | ~240 | Orb, Neuronaler Graph, Router, Deck, Terminal | Nutzer, Frontend |
 | [`OPS-GRID.md`](OPS-GRID.md) | ~180 | 10 Widgets, Drag/Resize, MCP-Konsole | Nutzer, Frontend |
+| [`SPEECH.md`](SPEECH.md) | ~55 | Spracheingabe im Apollo-Terminal: speaches lokal einrichten, Ablauf, Messwerte | Nutzer, Betrieb |
 | [`DATA-FLOW.md`](DATA-FLOW.md) | ~200 | Marktdaten: MCP → Adapter → Browser; Formate und Messungen | Entwickler, Betrieb |
 | [`TRADING-LIMB.md`](TRADING-LIMB.md) | ~230 | Sigma als Handels-Knoten; Sparse-Clone, Pin, Lifecycle | Betrieb |
 | [`API.md`](API.md) | ~220 | 4 Next-Routen mit vollständigen Fehlerverträgen | Frontend, Integration |

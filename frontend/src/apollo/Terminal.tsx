@@ -9,10 +9,14 @@ import {
   CornerDownLeft,
   Eraser,
   ListFilter,
+  LoaderCircle,
+  Mic,
+  Square,
   TerminalSquare,
   X,
 } from "lucide-react";
-import { COMMANDS } from "./commands";
+import { COMMANDS, QUICK_COMMANDS } from "./commands";
+import { appendTranscript, useDictation } from "./dictation";
 import { useApolloStore, type LogEntry } from "./store";
 import { Badge, Segmented, type Tone } from "./ui";
 import type { TerminalMode } from "./types";
@@ -53,6 +57,16 @@ export function HybridTerminal() {
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const dictation = useDictation((text) => {
+    setInput((current) => appendTranscript(current, text));
+    inputRef.current?.focus({ preventScroll: true });
+  });
+  const { cancel: cancelDictation } = dictation;
+
+  useEffect(() => {
+    if (!open) cancelDictation();
+  }, [open, cancelDictation]);
 
   useEffect(() => {
     if (!open) return;
@@ -173,7 +187,7 @@ export function HybridTerminal() {
     <aside
       role="complementary"
       aria-label="NIO hybrid terminal"
-      className="apollo-rise-in fixed bottom-3 right-3 z-[70] flex h-[min(68vh,600px)] w-[min(96vw,720px)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#05080f]/96 shadow-[0_30px_90px_rgba(0,0,0,0.65)] backdrop-blur-xl"
+      className="apollo-rise-in fixed bottom-3 right-3 z-[70] flex h-[min(68vh,600px)] w-[min(96vw,720px)] flex-col overflow-hidden lg:top-3 lg:h-auto lg:w-[var(--apollo-terminal-width)] rounded-2xl border border-white/10 bg-[#05080f]/96 shadow-[0_30px_90px_rgba(0,0,0,0.65)] backdrop-blur-xl"
       data-testid="nio-terminal"
       data-mode={mode}
     >
@@ -314,13 +328,31 @@ export function HybridTerminal() {
         </div>
       )}
 
+      {/* Below lg the terminal overlays the footer, so its quick commands live here too. */}
+      <div className="flex gap-1.5 overflow-x-auto border-t border-white/[0.06] px-2.5 py-1.5 lg:hidden">
+        {QUICK_COMMANDS.map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            disabled={busy}
+            onClick={() => void runCommand(action.label)}
+            className="shrink-0 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 font-mono text-[9.5px] text-slate-300 transition-colors hover:border-cyan-400/40 hover:text-cyan-200 disabled:opacity-40"
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+
       <div className="border-t border-white/[0.07] bg-black/30 p-2.5">
         <div className="flex items-center gap-2">
           <span className="select-none font-mono text-[12px] text-emerald-300">›</span>
           <input
             ref={inputRef}
             value={input}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(event) => {
+              setInput(event.target.value);
+              dictation.clearError();
+            }}
             onKeyDown={onKeyDown}
             placeholder={busy ? "apollo is working…" : "ask apollo, or /spawn inference Vision Cortex"}
             aria-label="Apollo terminal input"
@@ -329,6 +361,28 @@ export function HybridTerminal() {
             className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-slate-100 outline-none placeholder:text-slate-400"
             data-testid="terminal-input"
           />
+          <button
+            type="button"
+            onClick={dictation.toggle}
+            disabled={dictation.state === "transcribing"}
+            aria-label={dictation.state === "recording" ? "Stop dictation" : "Start dictation"}
+            aria-pressed={dictation.state === "recording"}
+            title={dictation.state === "recording" ? "Stop dictation" : "Dictate"}
+            data-testid="terminal-mic"
+            className={`grid h-6 w-6 place-items-center rounded-md border transition-colors disabled:opacity-40 ${
+              dictation.state === "recording"
+                ? "border-rose-400/60 text-rose-300"
+                : "border-white/10 text-slate-400 hover:border-cyan-400/40 hover:text-cyan-200"
+            }`}
+          >
+            {dictation.state === "recording" ? (
+              <Square size={10} />
+            ) : dictation.state === "transcribing" ? (
+              <LoaderCircle size={11} className="animate-spin" />
+            ) : (
+              <Mic size={11} />
+            )}
+          </button>
           <button
             type="button"
             onClick={() => void submit()}
@@ -341,8 +395,21 @@ export function HybridTerminal() {
           </button>
         </div>
         <div className="mt-1 flex items-center justify-between font-mono text-[8.5px] uppercase tracking-[0.14em] text-slate-400">
-          <span aria-live="polite" className={blocked ? "text-amber-300" : undefined}>
-            {blocked ? "mid-turn · command held" : busy ? "apollo is working · input held" : "↑↓ history · tab complete · /help"}
+          <span
+            aria-live="polite"
+            className={dictation.error ? "text-rose-300" : blocked ? "text-amber-300" : undefined}
+            data-testid="terminal-status"
+          >
+            {dictation.error ??
+              (dictation.state === "recording"
+                ? "listening · click stop when done"
+                : dictation.state === "transcribing"
+                  ? "transcribing…"
+                  : blocked
+                    ? "mid-turn · command held"
+                    : busy
+                      ? "apollo is working · input held"
+                      : "↑↓ history · tab complete · /help")}
           </span>
           <span className="flex items-center gap-1"><ListFilter size={8} /> {entries.length} entries</span>
         </div>
@@ -452,15 +519,18 @@ function Disclosure({
 }) {
   const [expanded, setExpanded] = useState(defaultOpen);
   const hasBody = Boolean(payload || handoffNote || detail);
+  const canToggle = collapsible && hasBody;
   return (
     <div className="rounded-lg border border-white/[0.06] bg-white/[0.015]">
       <button
         type="button"
-        onClick={() => collapsible && hasBody && setExpanded((prev) => !prev)}
-        aria-expanded={expanded}
+        disabled={!canToggle}
+        onClick={() => setExpanded((prev) => !prev)}
+        aria-expanded={canToggle ? expanded : undefined}
+        aria-label={`${canToggle ? (expanded ? "Collapse" : "Expand") : "Entry"}: ${label} ${title.slice(0, 80)}`}
         className="flex w-full items-start gap-2 px-2.5 py-1.5 text-left"
       >
-        {collapsible && hasBody ? (
+        {canToggle ? (
           expanded ? (
             <ChevronDown size={11} className="mt-0.5 shrink-0 text-slate-400" />
           ) : (

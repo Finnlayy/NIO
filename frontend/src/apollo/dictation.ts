@@ -1,0 +1,135 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+
+/* ==================================================================== */
+/* Dictation into the terminal input                                     */
+/*                                                                       */
+/* Audio is recorded in the tab and sent to `/api/apollo/transcribe`,     */
+/* which talks to the local speech engine. The text lands in the input    */
+/* and is never sent on its own: a misheard command must be readable      */
+/* before it runs.                                                        */
+/* ==================================================================== */
+
+export const MAX_RECORDING_MS = 60_000;
+
+const RECORDER_MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
+
+export type DictationState = "idle" | "recording" | "transcribing";
+
+export function pickRecorderMime(isSupported: (mime: string) => boolean): string | undefined {
+  return RECORDER_MIME_TYPES.find(isSupported);
+}
+
+export function appendTranscript(current: string, text: string): string {
+  const addition = text.trim();
+  if (!addition) return current;
+  return current && !/\s$/.test(current) ? `${current} ${addition}` : `${current}${addition}`;
+}
+
+export function microphoneError(error: unknown): string {
+  const name = error instanceof Error ? error.name : "";
+  if (name === "NotAllowedError" || name === "SecurityError") return "microphone blocked by the browser";
+  if (name === "NotFoundError") return "no microphone found";
+  if (name === "NotReadableError") return "microphone is in use by another app";
+  return "microphone failed to start";
+}
+
+export async function transcribeAudio(audio: Blob): Promise<string> {
+  const body = new FormData();
+  body.set("file", audio, "dictation");
+  const response = await fetch("/api/apollo/transcribe", { method: "POST", body });
+  const result = (await response.json().catch(() => null)) as { ok?: boolean; text?: string; error?: string } | null;
+  if (!response.ok || !result?.ok) {
+    throw new Error(result?.error === "stt_unavailable" ? "speech engine is not running" : "transcription failed");
+  }
+  return result.text ?? "";
+}
+
+export function useDictation(onText: (text: string) => void) {
+  const [state, setState] = useState<DictationState>("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const startingRef = useRef(false);
+  const discardRef = useRef(false);
+  const onTextRef = useRef(onText);
+  useEffect(() => {
+    onTextRef.current = onText;
+  }, [onText]);
+
+  const start = useCallback(async () => {
+    if (startingRef.current) return;
+    setError(null);
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("this browser cannot record audio");
+      return;
+    }
+
+    startingRef.current = true;
+    discardRef.current = false;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (cause) {
+      setError(microphoneError(cause));
+      return;
+    } finally {
+      startingRef.current = false;
+    }
+    if (discardRef.current) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
+    const mimeType = pickRecorderMime((mime) => MediaRecorder.isTypeSupported(mime));
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    const chunks: Blob[] = [];
+    const limit = setTimeout(() => {
+      if (recorder.state !== "inactive") recorder.stop();
+    }, MAX_RECORDING_MS);
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    };
+    recorder.onstop = async () => {
+      clearTimeout(limit);
+      stream.getTracks().forEach((track) => track.stop());
+      recorderRef.current = null;
+      if (discardRef.current) {
+        setState("idle");
+        return;
+      }
+      setState("transcribing");
+      try {
+        const text = await transcribeAudio(new Blob(chunks, { type: recorder.mimeType }));
+        if (discardRef.current) return;
+        if (text) onTextRef.current(text);
+        else setError("no speech recognized");
+      } catch (cause) {
+        if (!discardRef.current) setError(cause instanceof Error ? cause.message : "transcription failed");
+      } finally {
+        setState("idle");
+      }
+    };
+
+    recorderRef.current = recorder;
+    recorder.start();
+    setState("recording");
+  }, []);
+
+  const toggle = useCallback(() => {
+    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+    else if (state === "idle") void start();
+  }, [start, state]);
+
+  /** Drop whatever is in progress: no text reaches the input afterwards. */
+  const cancel = useCallback(() => {
+    discardRef.current = true;
+    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+  }, []);
+
+  const clearError = useCallback(() => setError(null), []);
+
+  useEffect(() => cancel, [cancel]);
+
+  return { state, error, toggle, cancel, clearError };
+}
