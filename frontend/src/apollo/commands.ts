@@ -14,6 +14,8 @@ export type ParsedCommand =
   | { kind: "router-status" }
   | { kind: "config-set"; key: string; value: string | number | boolean; raw: string }
   | { kind: "sandbox-exec"; command: string }
+  | { kind: "note"; text: string }
+  | { kind: "vault-search"; query: string }
   | { kind: "clear" }
   | { kind: "help" }
   | { kind: "unknown"; input: string }
@@ -26,6 +28,8 @@ export const COMMANDS = [
   { command: "/router", usage: "/router status", detail: "providers, pool estimates, score ranking" },
   { command: "/config", usage: "/config set <key> <value>", detail: "mutate Apollo runtime parameters" },
   { command: "/sandbox", usage: "/sandbox exec <cmd>", detail: "run a read-only command in the sandbox jail" },
+  { command: "/note", usage: "/note <text>", detail: "save a note to the vault inbox (works with dictation)" },
+  { command: "/vault", usage: "/vault <search>", detail: "search the Obsidian vault" },
   { command: "/clear", usage: "/clear", detail: "flush terminal history" },
   { command: "/help", usage: "/help", detail: "list commands" },
 ] as const;
@@ -212,6 +216,12 @@ export function parseCommand(input: string): ParsedCommand {
       }
       return { kind: "sandbox-exec", command };
     }
+    case "/note":
+      if (!rest) return { kind: "error", message: "usage: /note <text>", hint: "dictate into the input after typing /note" };
+      return { kind: "note", text: rest };
+    case "/vault":
+      if (!rest) return { kind: "error", message: "usage: /vault <search>" };
+      return { kind: "vault-search", query: rest };
     case "/clear":
       return { kind: "clear" };
     case "/help":

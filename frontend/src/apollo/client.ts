@@ -20,6 +20,7 @@ export interface SynthesisResult {
   ok: boolean;
   text: string;
   provider?: string;
+  model?: string;
   latencyMs?: number;
   error?: string;
 }
@@ -38,12 +39,14 @@ export async function requestSynthesis(payload: SynthesisRequest): Promise<Synth
       ok?: boolean;
       text?: string;
       provider?: string;
+      model?: string;
       error?: string;
     };
     return {
       ok: Boolean(response.ok && data.ok),
       text: data.text ?? "",
       provider: data.provider,
+      model: data.model,
       latencyMs: Date.now() - started,
       error: data.error ?? (response.ok ? undefined : `HTTP ${response.status}`),
     };
@@ -92,5 +95,35 @@ export async function runSandboxCommand(command: string): Promise<SandboxResult>
       code: 1,
       error: error instanceof Error ? error.message : "network error",
     };
+  }
+}
+
+export interface VaultNote {
+  path: string;
+  title: string;
+  snippet: string;
+}
+
+export interface VaultResult {
+  ok: boolean;
+  path?: string;
+  committed?: boolean;
+  notes?: VaultNote[];
+  error?: string;
+}
+
+/** Notes stay on this machine; the route runs them through the orchestrator. */
+export async function callVault(request: { action: "search"; query: string } | { action: "capture"; text: string }): Promise<VaultResult> {
+  try {
+    const response = await fetch("/api/apollo/vault", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+      signal: AbortSignal.timeout(16_000),
+    });
+    const data = (await response.json()) as Partial<VaultResult>;
+    return { ...data, ok: Boolean(response.ok && data.ok) };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "network error" };
   }
 }

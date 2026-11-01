@@ -13,6 +13,7 @@ antwortet.
 | Orchestrator-API | 4000 | `127.0.0.1` | `npm run start` (nach `npm run build`) |
 | Sigma-Worker (Trading-Limb) | **8731** | `127.0.0.1` | `trading.start` |
 | Sigma-Scraper (Sidecar) | 8001 | `127.0.0.1` | im Worker erwartet, nicht gestartet |
+| speaches (Spracherkennung) | 8011 | `127.0.0.1` | Docker, siehe [`SPEECH.md`](SPEECH.md) |
 
 **Warum `0.0.0.0` für die UI:** In einer Sandbox wird die Vorschau über einen
 Proxy-Host (`*.e2b.app`) ausgeliefert. Bindet der Dev-Server nur an
@@ -57,12 +58,24 @@ gelesen. Alle Secrets bleiben serverseitig.
 | `TVREMIX_API_KEY` | `/api/market/*` → 503, Widgets zeigen `SIM` |
 | `TVREMIX_MCP_URL` | Default `https://tvremix.xyz/api/mcp/v1` |
 
+### Sprache
+
+| Variable | Wirkung ohne sie |
+|---|---|
+| `STT_ENDPOINT_URL` | Default `http://127.0.0.1:8011/v1/audio/transcriptions`, der Limb lehnt fremde Hosts ab |
+| `STT_MODEL` | Default `Systran/faster-whisper-small` |
+| `STT_LANGUAGE` | Default `de` |
+
 ### Apollo-Proxy
 
 Der Key wird über die Endpoint-URL gewählt (siehe [`API.md`](API.md)):
 
 `OPENROUTER_API_KEY` · `GROQ_API_KEY` · `GOOGLE_API_KEY` ·
 `MISTRAL_API_KEY` · `CEREBRAS_API_KEY`
+
+### OpenManus (gesperrt)
+
+Einrichtung und Variablen stehen in [`OPENMANUS.md`](OPENMANUS.md). `FREELLMAPI_KEY` bleibt serverseitig und erscheint in keinem Log.
 
 ### Trading-Limb (setzt der Limb selbst)
 
@@ -73,6 +86,12 @@ Der Key wird über die Endpoint-URL gewählt (siehe [`API.md`](API.md)):
 | `SIGMA_ALLOW_FAKE_REDIS` | `1` | kein Redis-Container nötig |
 | `PYTHONUNBUFFERED` | `1` | Logs sofort sichtbar |
 | `PYTHONDONTWRITEBYTECODE` | `1` | keine `__pycache__` im Clone |
+
+### Obsidian-Vault
+
+| Variable | Wirkung ohne sie |
+|---|---|
+| `NIO_OBSIDIAN_VAULT` | Default `workspace/obsidian`, siehe [`VAULT.md`](VAULT.md) |
 
 ### Qdrant (Architect-Stapel, optional)
 
