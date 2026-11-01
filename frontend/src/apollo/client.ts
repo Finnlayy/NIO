@@ -20,6 +20,7 @@ export interface SynthesisResult {
   ok: boolean;
   text: string;
   provider?: string;
+  model?: string;
   latencyMs?: number;
   error?: string;
 }
@@ -38,12 +39,14 @@ export async function requestSynthesis(payload: SynthesisRequest): Promise<Synth
       ok?: boolean;
       text?: string;
       provider?: string;
+      model?: string;
       error?: string;
     };
     return {
       ok: Boolean(response.ok && data.ok),
       text: data.text ?? "",
       provider: data.provider,
+      model: data.model,
       latencyMs: Date.now() - started,
       error: data.error ?? (response.ok ? undefined : `HTTP ${response.status}`),
     };
