@@ -152,7 +152,7 @@ export const DEFAULT_CONFIG: ApolloConfiguration = {
   allowSandboxShell: true,
   freeLLMRouting: {
     enabled: true,
-    endpointUrl: "",
+    endpointUrl: process.env.NEXT_PUBLIC_APOLLO_ENDPOINT_URL?.trim() ?? "",
     weights: { ...DEFAULT_WEIGHTS },
     enableContextHandoffNote: true,
     providers: SEED_KEYS.map((key) => ({ ...key })),
@@ -683,7 +683,7 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
               origin: "APOLLO",
               level: "CHAT",
               message: result.text.trim(),
-              activeModel: model.name,
+              activeModel: result.model ?? model.name,
               data: { provider: result.provider, latencyMs: result.latencyMs, node },
             });
             advance("synthesise", "DONE", steps[4].label);
