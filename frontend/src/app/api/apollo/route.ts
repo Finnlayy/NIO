@@ -118,6 +118,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Der Katalog im Client kennt Anzeigenamen, der Anbieter braucht seine eigene Modell-ID.
+  const model = process.env.APOLLO_MODEL?.trim() || checked.model;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   const started = Date.now();
@@ -127,7 +129,7 @@ export async function POST(request: NextRequest) {
       method: "POST",
       headers: authHeaders(checked.url),
       body: JSON.stringify({
-        model: checked.model,
+        model,
         messages: checked.messages,
         temperature: checked.temperature,
         max_tokens: checked.maxTokens,
@@ -192,7 +194,7 @@ export async function POST(request: NextRequest) {
       ok: true,
       text: text.slice(0, 12_000),
       provider: checked.url.host,
-      model: checked.model,
+      model,
       latencyMs,
     });
   } catch (error) {

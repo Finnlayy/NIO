@@ -9,6 +9,11 @@ Datumsangaben in UTC.
 
 ### Hinzugefügt
 
+- Spracheingabe: Diktat im Apollo-Terminal über lokales speaches, `limbs/speech_limb.py`
+  (`speech.ping`, `speech.transcribe`) und Sprachstatus im Orb. speaches steht fest auf
+  `0.8.3-cpu`. Text wird nie automatisch gesendet, Freigaben gehen nicht per Sprache.
+  Siehe `docs/SPEECH.md`.
+
 - `orchestrator/kanban/` — Hermes-Kanban Task-Management.
   - Implementierung von Architektur-Layer 2 & 3: Dispatcher, Reaper, Event-Bus, Postgres/SQLite Store.
   - Sichere Sandbox-Umgebung (Docker & Subprocess) mit strikten Limits (kein `shell=True`, kein Netzwerk per Default).
@@ -19,6 +24,11 @@ Datumsangaben in UTC.
   - Ende-zu-Ende-Abnahme via `scripts/ci_e2e_kanban.py` (Ziel `make e2e-kanban`).
   - Umfassende Testabdeckung: 66 neue Tests unter `tests/test_kanban*.py` hinzugefügt.
   - `docs/KANBAN.md` mit detaillierter Architektur, Zustandsmaschine und Konfigurationsübersicht.
+
+- Obsidian-Vault: `limbs/vault_limb.py` (`vault.ping`, `vault.search`, `vault.read`,
+  `vault.capture`) mit SQLite FTS5, Apollo-Befehle `/note` und `/vault`, lesender
+  MCP-Server `scripts/vault_mcp.py`. Schreiben nur nach `Inbox/`, `workers/`, `tasks/`.
+  Siehe `docs/VAULT.md`.
 
 - `apollo/ciel/mcp_nodes.py` + `mcp_config.json` — externe MCP-Nodes als
   Ciel-Skills (u. a. StalkChain `https://data.stalkchain.com/mcp`, via

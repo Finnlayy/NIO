@@ -42,9 +42,12 @@ Stand: `9598911` (Merge PR #243) · Sprache: Deutsch, Code und Identifier englis
 | [`NEU.md`](NEU.md) | 470 | Core, Orchestrator, Limbs, Lernschleife | Entwickler |
 | [`APOLLO-CORE.md`](APOLLO-CORE.md) | ~240 | Orb, Neuronaler Graph, Router, Deck, Terminal | Nutzer, Frontend |
 | [`OPS-GRID.md`](OPS-GRID.md) | ~180 | 10 Widgets, Drag/Resize, MCP-Konsole | Nutzer, Frontend |
+| [`SPEECH.md`](SPEECH.md) | ~80 | Spracheingabe, speaches lokal einrichten, Speech-Limb, Sprachstatus im Orb | Nutzer, Betrieb |
 | [`DATA-FLOW.md`](DATA-FLOW.md) | ~200 | Marktdaten: MCP → Adapter → Browser; Formate und Messungen | Entwickler, Betrieb |
+| [`VAULT.md`](VAULT.md) | ~65 | Obsidian-Vault: `/note`, `/vault`, Vault-Limb, lesender MCP-Server | Nutzer, Entwickler |
 | [`TRADING-LIMB.md`](TRADING-LIMB.md) | ~230 | Sigma als Handels-Knoten; Sparse-Clone, Pin, Lifecycle | Betrieb |
 | [`EVIDENCE-HARNESS.md`](EVIDENCE-HARNESS.md) | ~650 | Masterprompt v2 für recherchende Agenten: Rollenverträge, Claim-Ledger, Fail-Closed-Gate, Ticket, Budget | Entwickler, Konzept |
+| [`knowledge/tradingview-mcp/README.md`](knowledge/tradingview-mcp/README.md) | 35 Leafs | TradingView-MCP: Zugang, Regeln, ein Leaf pro Tool | Agenten |
 | [`API.md`](API.md) | ~220 | 4 Next-Routen mit vollständigen Fehlerverträgen | Frontend, Integration |
 | [`TESTING.md`](TESTING.md) | ~180 | 360 Python-Tests, 69 UI-Tests, Audit-Harness | Entwickler |
 | [`OPERATIONS.md`](OPERATIONS.md) | ~200 | Ports, Env, Prozesse, Troubleshooting | Betrieb |
@@ -80,9 +83,11 @@ einen Test, der ohne Netz und ohne Handarbeit läuft.
 | `orchestrator/` — Planner, Runner, Scheduler, UDS, Locks | 7 910 | **stabil** | `tests/` |
 | `limbs/echo` (Phase 1) | — | **aktiv** | `test_limbs.py` |
 | `limbs/bootstrap` (Phase 2) | — | **aktiv** | `test_bootstrap.py` |
+| `limbs/vault` (Phase 8) | 290 | **aktiv** | `test_vault_limb.py` (27) |
 | `limbs/rea` (Phase 3) | — | **aktiv** | `test_limbs.py`, `support_rea.py` |
 | `limbs/openmanus` (Phase 6) | 250 | **geplant, gesperrt** | `test_openmanus_limb.py`, `test_agent_base.py` |
 | `limbs/trading` (Phase 5) | 552 | **aktiv** | `test_trading_limb.py` (23) |
+| `limbs/speech` (Phase 7) | 190 | **aktiv** | `test_speech_limb.py` (12) |
 
 **26 Operationen** in `protocol/operations.json`: 4 `echo`, 6 `bootstrap`,
 5 `rea`, 8 `trading`, 3 deklariert-aber-nicht-implementiert (`shell.exec`,
