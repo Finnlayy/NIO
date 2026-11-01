@@ -20,6 +20,11 @@ Datumsangaben in UTC.
   - Umfassende Testabdeckung: 66 neue Tests unter `tests/test_kanban*.py` hinzugefügt.
   - `docs/KANBAN.md` mit detaillierter Architektur, Zustandsmaschine und Konfigurationsübersicht.
 
+- Obsidian-Vault: `limbs/vault_limb.py` (`vault.ping`, `vault.search`, `vault.read`,
+  `vault.capture`) mit SQLite FTS5, Apollo-Befehle `/note` und `/vault`, lesender
+  MCP-Server `scripts/vault_mcp.py`. Schreiben nur nach `Inbox/`, `workers/`, `tasks/`.
+  Siehe `docs/VAULT.md`.
+
 - `apollo/ciel/mcp_nodes.py` + `mcp_config.json` — externe MCP-Nodes als
   Ciel-Skills (u. a. StalkChain `https://data.stalkchain.com/mcp`, via
   `npx mcp-remote` oder direkt per SSE ohne Node). Stdio-JSON-RPC- und

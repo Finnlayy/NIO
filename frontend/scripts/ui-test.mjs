@@ -42,6 +42,7 @@ const entries = [
   "apollo/engine.ts",
   "apollo/routing.ts",
   "apollo/graph.ts",
+  "app/api/apollo/vault/route.ts",
   "apollo/commands.ts",
   "apollo/store.ts",
   "kanban/types.ts",
