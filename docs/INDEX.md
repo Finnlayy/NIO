@@ -42,6 +42,7 @@ Stand: `9598911` (Merge PR #243) · Sprache: Deutsch, Code und Identifier englis
 | [`NEU.md`](NEU.md) | 470 | Core, Orchestrator, Limbs, Lernschleife | Entwickler |
 | [`APOLLO-CORE.md`](APOLLO-CORE.md) | ~240 | Orb, Neuronaler Graph, Router, Deck, Terminal | Nutzer, Frontend |
 | [`OPS-GRID.md`](OPS-GRID.md) | ~180 | 10 Widgets, Drag/Resize, MCP-Konsole | Nutzer, Frontend |
+| [`SPEECH.md`](SPEECH.md) | ~80 | Spracheingabe, speaches lokal einrichten, Speech-Limb, Sprachstatus im Orb | Nutzer, Betrieb |
 | [`DATA-FLOW.md`](DATA-FLOW.md) | ~200 | Marktdaten: MCP → Adapter → Browser; Formate und Messungen | Entwickler, Betrieb |
 | [`TRADING-LIMB.md`](TRADING-LIMB.md) | ~230 | Sigma als Handels-Knoten; Sparse-Clone, Pin, Lifecycle | Betrieb |
 | [`EVIDENCE-HARNESS.md`](EVIDENCE-HARNESS.md) | ~650 | Masterprompt v2 für recherchende Agenten: Rollenverträge, Claim-Ledger, Fail-Closed-Gate, Ticket, Budget | Entwickler, Konzept |
@@ -81,6 +82,7 @@ einen Test, der ohne Netz und ohne Handarbeit läuft.
 | `limbs/bootstrap` (Phase 2) | — | **aktiv** | `test_bootstrap.py` |
 | `limbs/rea` (Phase 3) | — | **aktiv** | `test_limbs.py`, `support_rea.py` |
 | `limbs/trading` (Phase 5) | 552 | **aktiv** | `test_trading_limb.py` (23) |
+| `limbs/speech` (Phase 7) | 190 | **aktiv** | `test_speech_limb.py` (12) |
 
 **26 Operationen** in `protocol/operations.json`: 4 `echo`, 6 `bootstrap`,
 5 `rea`, 8 `trading`, 3 deklariert-aber-nicht-implementiert (`shell.exec`,

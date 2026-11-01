@@ -9,6 +9,11 @@ Datumsangaben in UTC.
 
 ### Hinzugefügt
 
+- Spracheingabe: Diktat im Apollo-Terminal über lokales speaches, `limbs/speech_limb.py`
+  (`speech.ping`, `speech.transcribe`) und Sprachstatus im Orb. speaches steht fest auf
+  `0.8.3-cpu`. Text wird nie automatisch gesendet, Freigaben gehen nicht per Sprache.
+  Siehe `docs/SPEECH.md`.
+
 - `orchestrator/kanban/` — Hermes-Kanban Task-Management.
   - Implementierung von Architektur-Layer 2 & 3: Dispatcher, Reaper, Event-Bus, Postgres/SQLite Store.
   - Sichere Sandbox-Umgebung (Docker & Subprocess) mit strikten Limits (kein `shell=True`, kein Netzwerk per Default).

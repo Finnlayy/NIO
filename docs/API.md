@@ -1,11 +1,12 @@
 # HTTP-API
 
-Alle Routen liegen unter `frontend/src/app/api/`. Vier Endpunkte, alle
+Alle Routen liegen unter `frontend/src/app/api/`. Fünf Endpunkte, alle
 `runtime = "nodejs"` und `dynamic = "force-dynamic"`.
 
 | Route | Methode | Zweck | Geheimnis nötig |
 |---|---|---|---|
 | `/api/apollo` | POST | LLM-Proxy (FreeLLMAPI) | ja, serverseitig |
+| `/api/apollo/transcribe` | GET, POST | Sprachstatus und Diktat über lokales speaches, 503 bei Ausfall ([`SPEECH.md`](SPEECH.md)) | nein |
 | `/api/market/[tool]` | GET | Marktdaten über tvremix MCP | ja, serverseitig |
 | `/api/sandbox` | POST | read-only Shell-Allowlist | nein |
 | `/api/telemetry/stream` | GET | SSE der Python-Engine | nein |
@@ -200,6 +201,7 @@ puffert. Beim Abort des Clients werden Intervall und Subscription freigegeben.
 | `/apollo` | ○ statisch | — | — |
 | `/ops` | ○ statisch | — | — |
 | `/api/apollo` | ƒ dynamisch | serverseitiger Key | ja |
+| `/api/apollo/transcribe` | ƒ dynamisch | Endpoint nur aus der Server-Umgebung | ja |
 | `/api/market/[tool]` | ƒ dynamisch | serverseitiger Key | ja |
 | `/api/sandbox` | ƒ dynamisch | Allowlist | ja |
 | `/api/telemetry/stream` | ƒ dynamisch | — | ja (Validierung) |
