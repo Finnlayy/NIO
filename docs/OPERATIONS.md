@@ -64,16 +64,6 @@ Der Key wird über die Endpoint-URL gewählt (siehe [`API.md`](API.md)):
 `OPENROUTER_API_KEY` · `GROQ_API_KEY` · `GOOGLE_API_KEY` ·
 `MISTRAL_API_KEY` · `CEREBRAS_API_KEY`
 
-### Trading-Limb (setzt der Limb selbst)
-
-| Variable | Wert | Grund |
-|---|---|---|
-| `HOME`, `TMPDIR`, `XDG_CACHE_HOME` | Sandbox | sonst schreibt Sigma ins Host-Home |
-| `SIGMA_DATA_DIR` | `<sandbox>/data` | DuckDB + Parquet bleiben lokal |
-| `SIGMA_ALLOW_FAKE_REDIS` | `1` | kein Redis-Container nötig |
-| `PYTHONUNBUFFERED` | `1` | Logs sofort sichtbar |
-| `PYTHONDONTWRITEBYTECODE` | `1` | keine `__pycache__` im Clone |
-
 ### Manus (gesperrt)
 
 Echte Aufrufe sind gesperrt, siehe [`MANUS.md`](MANUS.md). `MANUS_API_KEY` bleibt serverseitig und erscheint in keinem Log.
@@ -83,6 +73,16 @@ Echte Aufrufe sind gesperrt, siehe [`MANUS.md`](MANUS.md). `MANUS_API_KEY` bleib
 | `MANUS_API_KEY` | `manus.*` wird abgewiesen |
 | `MANUS_BUDGET_RUN`, `MANUS_BUDGET_DAY` | `manus.start` wird abgewiesen |
 | `MANUS_API_BASE` | Nur für Tests, jeder Host außer diesem Rechner wird abgewiesen |
+
+### Trading-Limb (setzt der Limb selbst)
+
+| Variable | Wert | Grund |
+|---|---|---|
+| `HOME`, `TMPDIR`, `XDG_CACHE_HOME` | Sandbox | sonst schreibt Sigma ins Host-Home |
+| `SIGMA_DATA_DIR` | `<sandbox>/data` | DuckDB + Parquet bleiben lokal |
+| `SIGMA_ALLOW_FAKE_REDIS` | `1` | kein Redis-Container nötig |
+| `PYTHONUNBUFFERED` | `1` | Logs sofort sichtbar |
+| `PYTHONDONTWRITEBYTECODE` | `1` | keine `__pycache__` im Clone |
 
 ### Qdrant (Architect-Stapel, optional)
 
