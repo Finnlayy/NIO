@@ -20,6 +20,10 @@ Datumsangaben in UTC.
   - Umfassende Testabdeckung: 66 neue Tests unter `tests/test_kanban*.py` hinzugefügt.
   - `docs/KANBAN.md` mit detaillierter Architektur, Zustandsmaschine und Konfigurationsübersicht.
 
+- `limbs/agent_base.py`: Lauf-Modell `start/status/stop/collect` für externe Agenten, Zustand
+  unter `runtime/agents/`. Darauf `limbs/manus_limb.py` für die Manus-API v2, gesperrt und nur
+  gegen einen gefälschten Dienst getestet. Siehe `docs/MANUS.md`.
+
 - `apollo/ciel/mcp_nodes.py` + `mcp_config.json` — externe MCP-Nodes als
   Ciel-Skills (u. a. StalkChain `https://data.stalkchain.com/mcp`, via
   `npx mcp-remote` oder direkt per SSE ohne Node). Stdio-JSON-RPC- und

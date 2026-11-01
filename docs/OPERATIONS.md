@@ -74,6 +74,16 @@ Der Key wird über die Endpoint-URL gewählt (siehe [`API.md`](API.md)):
 | `PYTHONUNBUFFERED` | `1` | Logs sofort sichtbar |
 | `PYTHONDONTWRITEBYTECODE` | `1` | keine `__pycache__` im Clone |
 
+### Manus (gesperrt)
+
+Echte Aufrufe sind gesperrt, siehe [`MANUS.md`](MANUS.md). `MANUS_API_KEY` bleibt serverseitig und erscheint in keinem Log.
+
+| Variable | Wirkung ohne sie |
+|---|---|
+| `MANUS_API_KEY` | `manus.*` wird abgewiesen |
+| `MANUS_BUDGET_RUN`, `MANUS_BUDGET_DAY` | `manus.start` wird abgewiesen |
+| `MANUS_API_BASE` | Nur für Tests, jeder Host außer diesem Rechner wird abgewiesen |
+
 ### Qdrant (Architect-Stapel, optional)
 
 `QDRANT_URL` · `QDRANT_API_KEY` · `QDRANT_CLUSTER_ID` ·

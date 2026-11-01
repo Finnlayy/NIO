@@ -82,6 +82,23 @@
       ],
       "description": "Subagent-Knoten mit eigener Sandbox: installiert und betreibt REA (Reverse Engineer Anything) und liefert Evidence statt Behauptungen. Spezifikation: prompts/limbs/rea_limb.md"
     },
+    "manus": {
+      "entrypoint": "limbs/manus_limb.py",
+      "runtime": "python3",
+      "version": "1.0.0",
+      "phase": 9,
+      "status": "planned",
+      "writes_files": true,
+      "operations": [
+        "manus.collect",
+        "manus.ping",
+        "manus.start",
+        "manus.status",
+        "manus.stop",
+        "manus.usage"
+      ],
+      "description": "Gehosteter Agent Manus ueber API v2 mit Lauf-Modell aus limbs/agent_base.py. GESPERRT: status bleibt planned, bis die Freigabe-Tickets aus J4 gemergt sind und der Mensch Key und Budget gegeben hat; der Limb weist bis dahin jeden Host ausser diesem Rechner ab. Spezifikation: prompts/limbs/manus_limb.md"
+    },
     "trading": {
       "entrypoint": "limbs/trading_limb.py",
       "runtime": "python3",

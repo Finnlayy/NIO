@@ -48,6 +48,7 @@ Stand: `9598911` (Merge PR #243) · Sprache: Deutsch, Code und Identifier englis
 | [`API.md`](API.md) | ~220 | 4 Next-Routen mit vollständigen Fehlerverträgen | Frontend, Integration |
 | [`TESTING.md`](TESTING.md) | ~180 | 360 Python-Tests, 69 UI-Tests, Audit-Harness | Entwickler |
 | [`OPERATIONS.md`](OPERATIONS.md) | ~200 | Ports, Env, Prozesse, Troubleshooting | Betrieb |
+| [`MANUS.md`](MANUS.md) | ~60 | Manus-Limb: Sperre, belegte API-Felder, Schritte vor dem ersten echten Lauf | Entwickler, Betrieb |
 | [`REA-SUBAGENT.md`](REA-SUBAGENT.md) | 396 | REA-Limb als Subagent mit eigener Sandbox | Entwickler |
 | [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md) | ~490 | **normativ**: Intent, Result, Timer, Fehlercodes | Entwickler |
 | [`../prompts/limbs/`](../prompts/limbs/) | 3 Dateien | Rollen-Specs: bootstrap, rea, trading | Entwickler |
@@ -80,6 +81,7 @@ einen Test, der ohne Netz und ohne Handarbeit läuft.
 | `limbs/echo` (Phase 1) | — | **aktiv** | `test_limbs.py` |
 | `limbs/bootstrap` (Phase 2) | — | **aktiv** | `test_bootstrap.py` |
 | `limbs/rea` (Phase 3) | — | **aktiv** | `test_limbs.py`, `support_rea.py` |
+| `limbs/manus` (Phase 9) | 340 | **geplant, gesperrt** | `test_manus_limb.py` (39), `test_agent_base.py` (14) |
 | `limbs/trading` (Phase 5) | 552 | **aktiv** | `test_trading_limb.py` (23) |
 
 **26 Operationen** in `protocol/operations.json`: 4 `echo`, 6 `bootstrap`,
