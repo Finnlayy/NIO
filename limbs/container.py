@@ -96,7 +96,9 @@ def build_docker_run_args(config: ContainerConfig) -> tuple[list[str], dict[str,
         if "docker.sock" in str(resolved_host):
             raise ConfigError("docker.sock Mount ist verboten.")
 
-        if home:
+        # Liegt das Repo unter $HOME, greifen fuer Pfade im Repo die strengeren
+        # Pruefungen unten: Zugelassen bleibt dort nur das run_dir.
+        if home and not resolved_host.is_relative_to(_REPO_ROOT):
             if resolved_host == home_resolved or resolved_host.is_relative_to(home_resolved):
                 raise ConfigError("$HOME Mount ist verboten.")
 
