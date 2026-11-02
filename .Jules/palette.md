@@ -1,3 +1,6 @@
 ## 2026-09-12 - Keyboard Shortcut and Modal Close Accessibility
 **Learning:** We realized that global keyboard shortcuts in the dashboard were hijacking inputs for users trying to use forms (specifically in elements with `isContentEditable` set). Additionally, drawer/modal components were missing standard Escape key listeners, forcing users to click close buttons or the backdrop, thus limiting keyboard navigation.
 **Action:** Always verify `document.activeElement?.isContentEditable` alongside input and textarea tags when writing custom keyboard shortcut hooks. Furthermore, all overlay menus must pair with an `Escape` key close listener to support non-mouse accessibility.
+## 2024-05-15 - Missing Accessible Names on Responsive Buttons
+**Learning:** When using responsive Tailwind classes like `hidden sm:inline` to collapse text into icon-only buttons on small viewports, the button loses its accessible name for screen readers on mobile devices if no `aria-label` or `sr-only` text is provided.
+**Action:** Always ensure that buttons visually hiding text on smaller viewports include a screen-reader-only sibling span (e.g., `<span className="sr-only sm:hidden">Text</span>`) to guarantee an accessible name is present in the accessibility tree regardless of viewport size.
