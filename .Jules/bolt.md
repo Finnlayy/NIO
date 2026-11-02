@@ -4,3 +4,7 @@
 ## 2026-10-28 - Context-Independent Task Dispatch Workflow
 **Learning:** Manual focus requirement for operational triggers (like dispatching tasks via `Cmd/Ctrl+Enter`) adds unnecessary clicks and friction when nodes are pre-selected.
 **Action:** Expose context-independent global workflows using top-level `useEffect` keyboard listeners attached to `window` rather than scoped `onKeyDown` input handlers. Always guard these global listeners with `isTypingTarget(document.activeElement)` to suppress triggers when the user is focused inside text fields, unless intentionally scoped to that specific field (e.g., `document.activeElement === targetRef.current`). Store frequently updated state variables in a `useRef` to avoid constantly unbinding and rebinding the event listener.
+
+## 2025-02-12 - Task Console Ergonomics & Global Execution
+**Learning:** The "Run through Neural Core" shortcut (Cmd/Ctrl+Enter) in `TaskConsole.tsx` only fires when the user is focused directly inside the `<textarea>`. This breaks the workflow speed principle, as users expecting a fast dispatch must manually click into the textarea first.
+**Action:** Bind context-independent global execution shortcuts via a top-level `useEffect` keyboard listener in the parent layout, enabling users to execute workflows rapidly regardless of focus (safeguarded appropriately if focused in irrelevant fields, or intentionally wired to trigger the console's action).

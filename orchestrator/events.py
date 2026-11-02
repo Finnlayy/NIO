@@ -18,7 +18,9 @@ import math
 import sys
 import time
 from collections.abc import Iterable, Mapping
+import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol, TextIO
 
 
@@ -159,6 +161,16 @@ def _iso_ms_z_fast() -> str:
 #: aber Tests, Doku und die CLI ziehen diese Liste heran. Die ``timer.*``-Kinds
 #: ab ``timer.armed`` gehoeren zu Protokoll 1.2 (Zeit-Tracking + Trigger).
 VALID_EVENT_KINDS: tuple[str, ...] = (
+    # Hermes-Kanban (orchestrator/kanban): kommen ueber NeuEventBridge als
+    # ``kanban.<kind>`` auf diesen Bus; auf dem Kanban-Bus selbst ohne Praefix.
+    "kanban.board.created",
+    "kanban.task.created",
+    "kanban.task.transition",
+    "kanban.task.promoted",
+    "kanban.task.completed",
+    "kanban.task.blocked",
+    "kanban.task.reset",
+    "kanban.worker.created",
     "job.created",
     "job.finished",
     "job.aborted",
@@ -232,6 +244,56 @@ class Event:
             "clock_s": self.clock_s,
             "payload": dict(self.payload),
         }
+
+
+class FileSink:
+    """Schreibt Events als JSON-Zeilen in eine Datei mit Rotation."""
+
+    name = "file"
+
+    def __init__(self, path: Path | str, max_bytes: int = 10 * 1024 * 1024, backup_count: int = 3) -> None:
+        self.path = Path(path)
+        self.max_bytes = max_bytes
+        self.backup_count = backup_count
+        self.wants_prepared_line = True
+        self._reported_error = False
+        self._error_count = 0
+
+    def _rotate(self) -> None:
+        if not self.path.exists() or self.path.stat().st_size < self.max_bytes:
+            return
+        for i in range(self.backup_count - 1, 0, -1):
+            s = self.path.with_name(f"{self.path.name}.{i}")
+            d = self.path.with_name(f"{self.path.name}.{i + 1}")
+            if s.exists():
+                try:
+                    os.replace(s, d)
+                except OSError:
+                    pass
+        try:
+            os.replace(self.path, self.path.with_name(f"{self.path.name}.1"))
+        except OSError:
+            pass
+
+    def write(self, record: Mapping[str, Any]) -> None:
+        self._emit_line(render_record(record))
+
+    def write_prepared(self, record: Mapping[str, Any], line: str) -> None:
+        self._emit_line(line)
+
+    def _emit_line(self, line: str) -> None:
+        try:
+            if self.path.parent:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+            self._rotate()
+            with self.path.open("a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except OSError as exc:
+            self._error_count += 1
+            if not self._reported_error:
+                import sys
+                sys.stderr.write(f"[events] System-Log {self.path} nicht schreibbar: {exc}\n")
+                self._reported_error = True
 
 
 class ConsoleSink:
@@ -368,7 +430,7 @@ class EventBus:
         )
 
 
-def build_event_bus(*, quiet: bool = False, collector: CollectingSink | None = None, stream: TextIO | None = None) -> EventBus:
+def build_event_bus(*, quiet: bool = False, collector: CollectingSink | None = None, stream: TextIO | None = None, log_path: Path | str | None = None) -> EventBus:
     """Standard-Bus des Orchestrators.
 
     NEU-PHASE-3-ANCHOR: Hier wird der persistente File-Sink (``runtime/system.log``)
@@ -378,5 +440,15 @@ def build_event_bus(*, quiet: bool = False, collector: CollectingSink | None = N
     sinks: list[EventSink] = []
     if collector is not None:
         sinks.append(collector)
+
+    env_log = os.environ.get("NIO_SYSTEM_LOG")
+    if env_log != "":
+        if log_path is None:
+            if env_log:
+                log_path = Path(env_log)
+            else:
+                log_path = Path(__file__).parents[1] / "runtime" / "system.log"
+        sinks.append(FileSink(log_path))
+
     sinks.append(ConsoleSink(stream=stream, quiet=quiet))
     return EventBus(sinks)

@@ -25,6 +25,7 @@ import itertools
 import json
 import os
 import re
+import signal
 import threading
 import urllib.error
 import urllib.parse
@@ -161,7 +162,9 @@ class StdioMCPTransport:
         env: Mapping[str, str] | None = None,
         *,
         timeout_sec: float = 30.0,
+        kill_on_timeout: bool = True,
     ) -> None:
+        self._kill_on_timeout = kill_on_timeout
         self._node = node
         self._command = command
         self._args = list(args)
@@ -203,6 +206,7 @@ class StdioMCPTransport:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
+                start_new_session=os.name == "posix",
             )
         except (FileNotFoundError, PermissionError, OSError) as exc:
             raise MCPTransportError(self._node, f"Start von {self._command!r} scheiterte: {exc}") from exc
@@ -217,12 +221,24 @@ class StdioMCPTransport:
         rpc_id = next(self._ids)
         future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
         self._pending[rpc_id] = future
-        await self._send({"jsonrpc": "2.0", "id": rpc_id, "method": method, "params": dict(params or {})})
         try:
+            await self._send({"jsonrpc": "2.0", "id": rpc_id, "method": method, "params": dict(params or {})})
             message = await asyncio.wait_for(future, timeout=self._timeout)
         except TimeoutError:
             self._pending.pop(rpc_id, None)
+            if self._kill_on_timeout:
+                await self.stop()
             raise MCPTransportError(self._node, f"JSON-RPC {method!r}: Timeout nach {self._timeout:g}s.") from None
+        except asyncio.CancelledError:
+            self._pending.pop(rpc_id, None)
+            future.cancel()
+            if self._kill_on_timeout:
+                await self.stop()
+            raise
+        except Exception:
+            self._pending.pop(rpc_id, None)
+            future.cancel()
+            raise
         error = message.get("error")
         if error is not None:
             raise MCPTransportError(self._node, f"JSON-RPC {method!r}: {error}.")
@@ -234,33 +250,47 @@ class StdioMCPTransport:
             raise MCPTransportError(self._node, "Transport laeuft nicht (start() vergessen?).")
         await self._send({"jsonrpc": "2.0", "method": method, "params": dict(params or {})})
 
-    async def stop(self) -> None:
-        """Beendet Reader-Tasks und Subprozess (Terminate, notfalls Kill)."""
-        for task_attr in ("_reader_task", "_stderr_task"):
-            task = getattr(self, task_attr)
-            setattr(self, task_attr, None)
-            if task is not None and not task.done():
-                task.cancel()
+    async def terminate_process_group(self, grace_s: float = 0.25) -> None:
+        """Beendet die Prozessgruppe und weist alle offenen Anfragen ab."""
         proc, self._proc = self._proc, None
         for rpc_id, future in list(self._pending.items()):
             self._pending.pop(rpc_id, None)
             if not future.done():
                 future.set_exception(MCPTransportError(self._node, "Transport gestoppt."))
-        if proc is not None:
-            if proc.returncode is None:
-                with _suppress_all():
-                    proc.terminate()
-                try:
-                    await asyncio.wait_for(proc.wait(), timeout=5.0)
-                except TimeoutError:
-                    with _suppress_all():
-                        proc.kill()
-                    with _suppress_all():
-                        await asyncio.wait_for(proc.wait(), timeout=5.0)
-            for stream in (proc.stdin, proc.stdout, proc.stderr):
-                if stream is not None:
-                    with _suppress_all():
-                        stream.close()
+        if proc is None:
+            return
+        if os.name == "posix":
+            # Auch bei bereits beendetem Gruppenleiter koennen Kinder weiterleben.
+            with suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGTERM)
+            await asyncio.sleep(max(0, grace_s))
+            with suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+        elif proc.returncode is None:
+            with suppress(ProcessLookupError):
+                proc.terminate()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=grace_s)
+            except TimeoutError:
+                with suppress(ProcessLookupError):
+                    proc.kill()
+        with suppress(TimeoutError):
+            await asyncio.wait_for(proc.wait(), timeout=5.0)
+        if proc.stdin is not None:
+            proc.stdin.close()
+
+    async def stop(self) -> None:
+        """Beendet Reader-Tasks und die gesamte Subprozessgruppe."""
+        tasks = []
+        for task_attr in ("_reader_task", "_stderr_task"):
+            task = getattr(self, task_attr)
+            setattr(self, task_attr, None)
+            if task is not None:
+                task.cancel()
+                tasks.append(task)
+        await self.terminate_process_group()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _send(self, message: dict[str, Any]) -> None:
         assert self._proc is not None and self._proc.stdin is not None

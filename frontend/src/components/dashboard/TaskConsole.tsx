@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Loader2, Play, Terminal } from "lucide-rea
 import { ModuleHeader, StatusDot, Tile } from "./shared";
 import { isTypingTarget } from "@/ops/hotkeys";
 import type { RunState } from "./types";
+import { isTypingTarget } from "@/ops/hotkeys";
 
 export function TaskConsole({
   taskText,
@@ -38,6 +39,14 @@ export function TaskConsole({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         // Suppress triggers when typing in other inputs, but allow if focused on our textarea
+  const stateRef = useRef({ taskText, isRunning, onRun });
+  useEffect(() => {
+    stateRef.current = { taskText, isRunning, onRun };
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         if (
           isTypingTarget(document.activeElement) &&
           document.activeElement !== textareaRef.current
@@ -49,6 +58,9 @@ export function TaskConsole({
         const { isRunning, taskText, onRun } = stateRef.current;
         if (!isRunning && taskText.trim()) {
           onRun();
+        const { taskText: currentTaskText, isRunning: currentIsRunning, onRun: currentOnRun } = stateRef.current;
+        if (!currentIsRunning && currentTaskText.trim()) {
+          currentOnRun();
         }
       }
     };

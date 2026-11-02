@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from core.config import NeuConfig
 from core.job import JOB_RUNNING, JobRecord
@@ -48,6 +49,12 @@ class TestSandbox(unittest.TestCase):
 
 
 def elevated(path: str, approved_by: str = "core", **kwargs):
+    # Die Tests hier gelten den Pfaden. Tickets prueft tests/test_tickets.py.
+    with mock.patch.object(Policy, "_check_ticket", return_value=None):
+        return _elevated(path, approved_by, **kwargs)
+
+
+def _elevated(path: str, approved_by: str, **kwargs):
     """Schreib-Auftrag mit Rechteanhebung und deklariertem Zielpfad."""
     return intent(
         operation="fs.write_file",
@@ -57,6 +64,8 @@ def elevated(path: str, approved_by: str = "core", **kwargs):
             "level": "repo_write",
             "reason": ELEVATION_REASON,
             "approved_by": approved_by,
+            "ticket": "a" * 64,
+            "expires_at": "2099-01-01T00:00:00Z",
             "requested_paths": (path,),
         },
         constraints={"sandbox_root": "."},
