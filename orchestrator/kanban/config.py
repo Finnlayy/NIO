@@ -41,6 +41,7 @@ def _csv(env: Mapping[str, str], key: str) -> tuple[str, ...]:
 @dataclass(frozen=True)
 class KanbanConfig:
     repo_root: Path = _REPO_ROOT
+    stop_file: Path = _REPO_ROOT / "runtime" / "STOP"
     # Backends
     store: str = "sqlite"  # sqlite | postgres
     sqlite_path: Path = _REPO_ROOT / "runtime" / "kanban" / "kanban.db"
@@ -85,6 +86,7 @@ class KanbanConfig:
         root = Path(e.get("NEU_ROOT") or repo_root or _REPO_ROOT).resolve()
         return cls(
             repo_root=root,
+            stop_file=root / "runtime" / "STOP",
             store=e.get("NIO_KANBAN_STORE", "sqlite").strip() or "sqlite",
             sqlite_path=_path(e, "NIO_KANBAN_SQLITE_PATH", root, "runtime/kanban/kanban.db"),
             pg_dsn=e.get("NIO_KANBAN_PG_DSN", ""),

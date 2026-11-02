@@ -41,6 +41,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -90,6 +91,34 @@ from .planner import Diagnosis, IterationPlanner
 from .scheduler import ACTION_CHECK, ACTION_ESCALATE, ACTION_FINISH, DueAction, Scheduler, ScheduleState, describe_schedule
 from .transport import FileTransport, read_json
 
+# Limbs bekommen nur diese Basis plus ihr `env_allow` aus limbs/registry.json.
+LIMB_BASE_ENV = ("PATH", "LANG", "LC_ALL", "TZ")
+_ENV_NAME_RE = re.compile(r"[A-Z][A-Z0-9_]*")
+_SECRET_NAME_RE = re.compile(r"KEY|TOKEN|SECRET|PASSWORD")
+# Einzige Ausnahme: Der Gateway-Key ist lokal und ohne ihn kann OpenManus kein Modell erreichen.
+ENV_SECRET_EXCEPTIONS = frozenset({"FREELLMAPI_KEY"})
+STOP_POLL_S = 0.25
+STOP_GRACE_S = 2.0
+
+
+def _parse_env_allow(limb: str, raw: Any) -> tuple[str, ...]:
+    """Prueft ``env_allow`` beim Laden: Geheimnisse gehoeren nie in diese Liste."""
+    where = f"limbs.{limb}.env_allow"
+    if not isinstance(raw, list):
+        raise ProtocolError(ErrorCode.SCHEMA_INVALID, "env_allow muss eine Liste sein", where)
+    for name in raw:
+        if not isinstance(name, str) or not _ENV_NAME_RE.fullmatch(name):
+            raise ProtocolError(ErrorCode.SCHEMA_INVALID, f"Ungueltiger Variablenname: {name!r}", where)
+        if _SECRET_NAME_RE.search(name) and name not in ENV_SECRET_EXCEPTIONS:
+            raise ProtocolError(ErrorCode.SCHEMA_INVALID, f"Geheimnis in env_allow: {name}", where)
+    return tuple(raw)
+
+
+def _signal_group(pgid: int, signum: int) -> None:
+    """Signal an die ganze Prozessgruppe; eine leere Gruppe ist kein Fehler."""
+    with contextlib.suppress(OSError):
+        os.killpg(pgid, signum)
+
 
 @dataclass(frozen=True)
 class LimbSpec:
@@ -102,6 +131,7 @@ class LimbSpec:
     operations: tuple[str, ...]
     writes_files: bool
     description: str
+    env_allow: tuple[str, ...] = ()
 
     @property
     def usable(self) -> bool:
@@ -289,6 +319,7 @@ class LimbRegistry:
                 operations=tuple(str(op) for op in body.get("operations", ())),
                 writes_files=bool(body.get("writes_files", False)),
                 description=str(body.get("description", "")),
+                env_allow=_parse_env_allow(name, body.get("env_allow", [])),
             )
 
     def names(self) -> tuple[str, ...]:
@@ -841,6 +872,8 @@ class Orchestrator:
         der Inbox) oder -- bei Ablehnung -- direkt ein fertiges ``Attempt``, ohne
         dass ein Prozess gestartet wurde.
         """
+        if self._stopped():
+            return self._short_circuit(intent, ErrorCode.STOPPED, "Not-Aus aktiv (runtime/STOP).", hint="`neu resume` hebt ihn auf.")
         job_record = job or self.jobs.get(intent.job_id)
         if job_record is None:
             # Ein aus dem Intent nachgetragener Job erbt dessen Zeit-Modus:
@@ -1006,6 +1039,8 @@ class Orchestrator:
     def run_inbox_once(self, *, consume: bool = True) -> list[Attempt]:
         """Abarbeitungs-Modus: alle offenen Intents der Inboxen dispatchen."""
         attempts: list[Attempt] = []
+        if self._stopped():
+            return attempts  # Auftraege bleiben in der Inbox und laufen nach `neu resume`
         for pending in self.transport.drain_inbox():
             try:
                 attempt = self.dispatch_file(pending)
@@ -1021,26 +1056,75 @@ class Orchestrator:
     # =====================================================================
     # Intern
     # =====================================================================
+    def _stopped(self) -> bool:
+        return (self.config.runtime_dir / "STOP").exists()
+
+    def _limb_env(self, spec: LimbSpec) -> dict[str, str]:
+        """Minimale Umgebung eines Limbs: keine geerbten Geheimnisse, eigenes HOME."""
+        home = self.config.workspace_dir / "limbs" / spec.name
+        home.mkdir(parents=True, exist_ok=True)
+        env = {name: os.environ[name] for name in (*LIMB_BASE_ENV, *spec.env_allow) if name in os.environ}
+        env.update(NEU_ROOT=str(self.config.repo_root), PYTHONIOENCODING="utf-8", HOME=str(home), TMPDIR=str(home))
+        return env
+
+    def _run_child(self, argv: Sequence[str], env: Mapping[str, str], hard_timeout: float | None) -> tuple[str, str, int | None, str]:
+        """Laesst einen Limb als eigene Prozessgruppe laufen.
+
+        Liefert stdout, stderr, Exit-Code und den Abbruchgrund (``""``, ``"stop"``
+        oder ``"timeout"``). Der Abbruch trifft die ganze Gruppe, damit keine
+        Kindprozesse uebrig bleiben.
+        """
+        process = subprocess.Popen(
+            argv,
+            cwd=str(self.config.repo_root),
+            env=dict(env),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        deadline = None if hard_timeout is None else time.monotonic() + hard_timeout
+        while True:
+            try:
+                stdout, stderr = process.communicate(timeout=STOP_POLL_S)
+                return stdout, stderr, process.returncode, ""
+            except subprocess.TimeoutExpired:
+                reason = "stop" if self._stopped() else ""
+                if deadline is not None and time.monotonic() >= deadline:
+                    reason = reason or "timeout"
+                if reason:
+                    break
+        _signal_group(process.pid, signal.SIGTERM)
+        try:
+            stdout, stderr = process.communicate(timeout=STOP_GRACE_S)
+        except subprocess.TimeoutExpired:
+            _signal_group(process.pid, signal.SIGKILL)
+            stdout, stderr = process.communicate()
+        _signal_group(process.pid, signal.SIGKILL)  # Kinder, die SIGTERM ignoriert haben
+        return stdout, stderr, process.returncode, reason
+
     def _spawn(self, spec: LimbSpec, intent: Intent, *, inbox_file: Path) -> tuple[Result, bool, int | None]:
         argv = self.registry.argv(spec, intent_file=inbox_file, iteration=intent.iteration)
-        env = {**os.environ, "NEU_ROOT": str(self.config.repo_root), "PYTHONIOENCODING": "utf-8"}
         started_at = utc_now_iso()
         hard_timeout = intent.timer.hard_timeout_s()
         self._emit("limb.spawned", {"argv": argv, "hard_timeout_s": hard_timeout}, intent, job_id=intent.job_id, limb=spec.name)
 
         try:
-            completed = subprocess.run(
-                argv,
-                cwd=str(self.config.repo_root),
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=hard_timeout,
-                check=False,
+            stdout, stderr, returncode, aborted = self._run_child(argv, self._limb_env(spec), hard_timeout)
+        except (OSError, ValueError) as exc:
+            result = self._synthetic(
+                intent,
+                "failed",
+                ErrorCode.LIMB_CRASH,
+                f"Limb konnte nicht gestartet werden: {exc}",
+                hint="Entrypoint und Laufzeitumgebung pruefen.",
+                started_at=started_at,
             )
-        except subprocess.TimeoutExpired as exc:
-            stdout = _decode(exc.stdout)
-            stderr = _decode(exc.stderr)
+            return result, False, None
+
+        if aborted == "stop":
+            return self._stopped_result(intent, started_at), True, returncode
+        if aborted == "timeout":
             if intent.timer.unlimited:
                 # Kein Aufgabenlimit verletzt: Das Safety-Netz hat den Prozess
                 # beendet (Hygiene). Eskalation statt 2. Durchgang.
@@ -1057,24 +1141,17 @@ class Orchestrator:
                 result = self._timeout_result(intent, started_at, stdout=stdout, stderr=stderr, hard_kill=True)
                 self._emit("timer.expired", {"hard_kill": True, "after_s": hard_timeout}, intent, job_id=intent.job_id, limb=spec.name)
             return result, True, None
-        except (OSError, ValueError) as exc:
-            result = self._synthetic(
-                intent,
-                "failed",
-                ErrorCode.LIMB_CRASH,
-                f"Limb konnte nicht gestartet werden: {exc}",
-                hint="Entrypoint und Laufzeitumgebung pruefen.",
-                started_at=started_at,
-            )
-            return result, False, None
 
         return self._parse_child_output(
             intent,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
-            returncode=completed.returncode,
+            stdout=stdout,
+            stderr=stderr,
+            returncode=returncode,
             started_at=started_at,
         )
+
+    def _stopped_result(self, intent: Intent, started_at: str) -> Result:
+        return self._synthetic(intent, "failed", ErrorCode.STOPPED, "Lauf durch Not-Aus beendet.", hint="`neu resume` hebt ihn auf.", started_at=started_at)
 
     def _parse_child_output(
         self,
@@ -1312,7 +1389,7 @@ class Orchestrator:
             return prepared
 
         argv = self.registry.argv(prepared.spec, intent_file=prepared.inbox_file, iteration=prepared.intent.iteration)
-        env = {**os.environ, "NEU_ROOT": str(self.config.repo_root), "PYTHONIOENCODING": "utf-8"}
+        env = self._limb_env(prepared.spec)
         started_at = utc_now_iso()
         net = prepared.intent.timer.hard_timeout_s()
         try:
@@ -1320,6 +1397,7 @@ class Orchestrator:
                 argv,
                 cwd=str(self.config.repo_root),
                 env=env,
+                start_new_session=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -1420,17 +1498,16 @@ class Orchestrator:
                 if stream is not None:
                     stream.close()
 
-    def _terminate_child(self, handle: SpawnHandle, *, reason: str) -> tuple[str, str, int | None]:
-        """Beendet einen Limb-Prozess geordnet: SIGTERM, Nachfrist, SIGKILL."""
-        grace = max(1.0, handle.intent.timer.grace_s)
-        # Prozess kann bereits weg sein (Race) -- dann ist SIGTERM ueberfluessig.
-        with contextlib.suppress(OSError, ValueError):
-            handle.process.send_signal(signal.SIGTERM)
+    def _terminate_child(self, handle: SpawnHandle, *, reason: str, grace_s: float | None = None) -> tuple[str, str, int | None]:
+        """Beendet einen Limb samt Kindprozessen: SIGTERM an die Gruppe, Nachfrist, SIGKILL."""
+        grace = max(1.0, handle.intent.timer.grace_s) if grace_s is None else grace_s
+        _signal_group(handle.pid, signal.SIGTERM)
         try:
             stdout, stderr = handle.process.communicate(timeout=grace)
         except subprocess.TimeoutExpired:
-            handle.process.kill()
+            _signal_group(handle.pid, signal.SIGKILL)
             stdout, stderr = handle.process.communicate()
+        _signal_group(handle.pid, signal.SIGKILL)  # Kinder, die SIGTERM ignoriert haben
         self._emit(
             "limb.terminated",
             {"reason": reason, "pid": handle.pid, "returncode": handle.process.returncode, "elapsed_s": handle.intent.timer.elapsed()},
@@ -1479,6 +1556,13 @@ class Orchestrator:
             self._release_slot(handle.prepared)
             raise
 
+    def _abort_stopped(self, handle: SpawnHandle) -> Attempt:
+        """Not-Aus waehrend der Ueberwachung: Gruppe beenden, Slot freigeben, Ergebnis festhalten."""
+        _, _, code = self._terminate_child(handle, reason="stop", grace_s=STOP_GRACE_S)
+        self._release_slot(handle.prepared)
+        result = self._stopped_result(handle.intent, handle.started_at)
+        return self._finalize_attempt(handle.prepared, result, spawned=True, returncode=code)
+
     def _supervise_loop(
         self,
         handle: SpawnHandle,
@@ -1493,6 +1577,9 @@ class Orchestrator:
     ) -> tuple[Attempt, dict[str, Any]]:
         """Die Tick-Schleife selbst -- getrennt, damit die Aufraeum-Garantie haelt."""
         while True:
+            if self._stopped():
+                return self._abort_stopped(handle), summary
+
             attempt = self.collect_async(handle)
             if attempt is not None:
                 summary["t_unlimited_s"] = attempt.result.timer.elapsed_s

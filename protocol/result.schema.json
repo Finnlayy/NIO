@@ -290,6 +290,7 @@
             "E_BUDGET_EXHAUSTED",
             "E_DEADLINE_EXCEEDED",
             "E_INTERNAL",
+            "E_STOPPED",
             "E_IO",
             "E_LIMB_CRASH",
             "E_PATCH_NO_MATCH",

@@ -118,6 +118,7 @@ class ErrorCode:
     IO = "E_IO"
     LIMB_CRASH = "E_LIMB_CRASH"
     INTERNAL = "E_INTERNAL"
+    STOPPED = "E_STOPPED"
 
     ALL = (
         SCHEMA_INVALID,
@@ -137,6 +138,7 @@ class ErrorCode:
         IO,
         LIMB_CRASH,
         INTERNAL,
+        STOPPED,
     )
 
 

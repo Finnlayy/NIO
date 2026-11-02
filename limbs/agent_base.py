@@ -207,7 +207,13 @@ class AgentLimb(LimbBase):
         return view
 
     # ---------------------------------------------------------------- Handler
+    def _stop_requested(self) -> bool:
+        return (Path(self.config.runtime_dir) / "STOP").exists()
+
     def _start(self, params: Mapping[str, Any], ctx: LimbContext) -> dict[str, Any]:
+        if self._stop_requested():
+            raise LimbError(ErrorCode.STOPPED, "Not-Aus aktiv (runtime/STOP).")
+
         fields = self.prepare(params, ctx)
         run = self.runs.create(self.name, **fields)
         self.runs.event(run["run_id"], "run.created")
@@ -224,6 +230,10 @@ class AgentLimb(LimbBase):
     def _status(self, params: Mapping[str, Any], ctx: LimbContext) -> dict[str, Any]:
         run = self._load(params)
         now = time.time()
+        if self._stop_requested() and run["state"] not in TERMINAL_STATES:
+            self._halt_and_finish(run, ctx, STOPPED, "Not-Aus aktiv (runtime/STOP).")
+            return self.view(run)
+
         if run["state"] in TERMINAL_STATES or now < float(run["next_poll_s"]):
             return self.view(run)
 
