@@ -197,6 +197,14 @@ class SubprocessSandbox(_ProcessSandbox):
     """Sandbox fuer Entwicklung und Tests (keine Isolation, keine Limits)."""
 
     def _prepare(self, spec: SandboxSpec) -> tuple[list[str], dict[str, str], str | None]:
+        # Die Subprozess-Sandbox darf ausschliesslich fuer NOOP verwendet werden.
+        # Kommando-Ausfuehrung ohne Docker ist nicht gestattet.
+        from orchestrator.kanban.soul import parse_soul
+        soul = parse_soul(spec.worker.soul_md)
+        runtime = soul.frontmatter.get("runtime", "noop").lower()
+        if runtime != "noop":
+            raise ValueError(f"Subprocess-Sandbox unterstuetzt nur runtime='noop', gefordert war '{runtime}'")
+
         # Dev/Test-Pfad ohne Docker. Keine CPU/RAM-Limits.
         run_dir = spec.run_dir
         work_dir = run_dir / "work"

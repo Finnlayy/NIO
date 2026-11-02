@@ -66,6 +66,16 @@ gelesen. Alle Secrets bleiben serverseitig.
 | `STT_MODEL` | Default `Systran/faster-whisper-small` |
 | `STT_LANGUAGE` | Default `de` |
 
+### Freigabe-Tickets
+
+| Variable | Wirkung |
+|---|---|
+| `NIO_APPROVAL_KEY` | Schlüssel für Tickets. Fehlt er, werden Operationen mit `risk` `high`, `destructive` oder `external` und jede Rechteanhebung abgelehnt |
+
+Ein Ticket stellt der Mensch aus: `neu approve <intent.json> [--ttl-seconds N]` oder `POST /api/v1/approvals/issue` mit Operator-Token. Es gilt für genau einen Auftrag, läuft ab und wirkt nur einmal. `ticket`, `expires_at` und `approved_by: human` kommen danach in `elevation`.
+
+Der Schlüssel darf nie in `env_allow` stehen. Setze ihn erst, wenn der Runner die Umgebung der Limbs filtert.
+
 ### Apollo-Proxy
 
 Der Key wird über die Endpoint-URL gewählt (siehe [`API.md`](API.md)):
@@ -125,6 +135,14 @@ install → start → (status) → stop
 
 `start` ist idempotent: läuft der Worker schon, kommt
 `{"started": false, "already_running": true}` statt eines zweiten Prozesses.
+
+### Not-Aus
+
+`neu stop` legt `runtime/STOP` an. Neue Läufe werden mit `E_STOPPED` abgelehnt, laufende Limbs enden samt Kindprozessen in unter 5 Sekunden, Agent-Läufe beim nächsten `status`, und der Kanban-Dispatcher nimmt nichts an und bricht aktive Aufgaben ab. Inbox-Aufträge bleiben liegen. Nur `neu resume` hebt das auf, nie der Automatismus.
+
+### Umgebung der Limbs
+
+Limbs erben die Host-Umgebung nicht. Sie bekommen `PATH`, `LANG`, `LC_ALL`, `TZ`, ein eigenes `HOME` und `TMPDIR` unter `workspace/limbs/<name>/` und die Namen aus ihrem `env_allow` in `limbs/registry.json`. Namen mit `KEY`, `TOKEN`, `SECRET` oder `PASSWORD` scheitern beim Laden. Die einzige Ausnahme ist `FREELLMAPI_KEY`.
 
 ### Prozessleichen finden
 
