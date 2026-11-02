@@ -306,6 +306,14 @@ class Dispatcher:
                 else: # failed
                     await self.breaker.record_failure(task.id, worker.uid, outcome.reason, exit_code=result.exit_code)
 
+            # sync_back schreibt vor dem Statuswechsel, die Notiz braucht den Endstand.
+            final_task = await self.store.get_task(task.id)
+            if final_task:
+                try:
+                    self.vault.write_task(final_task)
+                except (OSError, ValueError) as e:
+                    self.log.warning(f"Vault-Notiz fuer {task.id} nicht aktualisiert: {e}")
+
         except Exception as e:
             self.log.exception(f"Error in _run_worker for {task.id}: {e}")
             await self.breaker.record_failure(task.id, worker.uid, f"Internal error: {e}")
