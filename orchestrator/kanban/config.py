@@ -47,7 +47,7 @@ class KanbanConfig:
     pg_dsn: str = ""
     bus: str = "memory"  # memory | redis
     redis_url: str = "redis://127.0.0.1:6379/0"
-    sandbox: str = "subprocess"  # subprocess | docker
+    sandbox: str = "docker"  # subprocess | docker
     # Docker-JIT-Sandbox
     image: str = "python:3.12-slim"
     cpus: str = "1.0"
@@ -90,7 +90,7 @@ class KanbanConfig:
             pg_dsn=e.get("NIO_KANBAN_PG_DSN", ""),
             bus=e.get("NIO_KANBAN_BUS", "memory").strip() or "memory",
             redis_url=e.get("NIO_KANBAN_REDIS_URL", "redis://127.0.0.1:6379/0"),
-            sandbox=e.get("NIO_KANBAN_SANDBOX", "subprocess").strip() or "subprocess",
+            sandbox=e.get("NIO_KANBAN_SANDBOX", "docker").strip() or "docker",
             image=e.get("NIO_KANBAN_IMAGE", "python:3.12-slim"),
             cpus=e.get("NIO_KANBAN_CPUS", "1.0"),
             memory=e.get("NIO_KANBAN_MEMORY", "512m"),
