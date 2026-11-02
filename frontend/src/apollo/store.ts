@@ -9,7 +9,15 @@ import {
   SEED_KEYS,
   SEED_NODES,
 } from "./catalog";
-import { callVault, runSandboxCommand, requestSynthesis, kanbanRequest, secureKanbanRequest } from "./client";
+import {
+  callVault,
+  createApolloTask,
+  fetchRuns,
+  kanbanRequest,
+  requestSynthesis,
+  runSandboxCommand,
+  secureKanbanRequest,
+} from "./client";
 import {
   COMMANDS,
   coerceConfigValue,
@@ -760,13 +768,11 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
 
       switch (parsed.kind) {
         case "spawn": {
-          emit("APOLLO", "INFO", `[SPAWN] Dispatching worker spawn request via Kanban API`);
+          emit("APOLLO", "INFO", `[SPAWN] Creating task via Kanban API`);
 
-          const spawnRes = await secureKanbanRequest<{ uid: string }>(
-            "/api/v1/workers",
-            "POST",
-            "",
-            { uid: parsed.name, name: parsed.name, skills: [], soul_md: "" }
+          const spawnRes = await createApolloTask(
+            `Spawn ${parsed.type} ${parsed.name}`,
+            JSON.stringify({ type: parsed.type, name: parsed.name }),
           );
 
           if (!spawnRes.ok) {
@@ -778,11 +784,7 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
         }
         case "dispatch": {
           emit("APOLLO", "INFO", `[DISPATCH] Dispatching task via Kanban API`);
-          const taskRes = await kanbanRequest<{ id: string }>(
-            "/api/v1/kanban/tasks",
-            "POST",
-            { board_id: "apollo", title: "Apollo Dispatch", description: JSON.stringify(parsed.payload), dependencies: [], required_skills: [] }
-          );
+          const taskRes = await createApolloTask("Apollo Dispatch", JSON.stringify(parsed.payload));
 
           if (!taskRes.ok) {
              emit("APOLLO", "ERROR", `[DISPATCH] Failed: ${taskRes.error}`);
@@ -879,26 +881,35 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
           return { ok: result.ok, entries, data: { matches: notes.length } };
         }
         case "agent": {
-          emit("APOLLO", "INFO", `Agent command: ${parsed.command}`);
+          const workers = await kanbanRequest<{ uid: string; name: string; status: string }[]>("/api/v1/workers", "GET");
+          if (!workers.ok) {
+             emit("APOLLO", "ERROR", `Agent list failed: ${workers.error}`);
+             return { ok: false, entries };
+          }
+          const rows = workers.data ?? [];
+          emit("APOLLO", "INFO", rows.length ? `${rows.length} worker(s)` : "No workers registered.");
+          rows.forEach((worker) => emit("APOLLO", "INFO", `${worker.uid} · ${worker.name} · ${worker.status}`));
           return { ok: true, entries };
         }
         case "runs": {
-          emit("APOLLO", "INFO", `Runs view requested`);
+          const runs = await fetchRuns();
+          if (!runs.ok) {
+             emit("APOLLO", "ERROR", `Run list failed: ${runs.error}`);
+             return { ok: false, entries };
+          }
+          const rows = runs.data ?? [];
+          emit("APOLLO", "INFO", rows.length ? `${rows.length} recent run(s)` : "No runs recorded.");
+          rows.forEach((run) => emit("APOLLO", "INFO", `${run.run_id} · ${run.agent} · ${run.state}`));
           return { ok: true, entries };
         }
         case "approve": {
-          emit("APOLLO", "INFO", `Approving action...`);
-          const appRes = await secureKanbanRequest("/api/v1/approvals/issue", "POST", parsed.pin, { intent: {}, ttl_seconds: 60 });
-          if (!appRes.ok) {
-             emit("APOLLO", "ERROR", appRes.error === "HTTP 404" ? "Approval API not yet implemented (J4 missing)" : `Approval failed: ${appRes.error}`);
-             return { ok: false, entries };
-          }
-          emit("APOLLO", "INFO", `Action approved`);
-          return { ok: true, entries };
+          /* A ticket binds one concrete intent, and nothing queues intents for Apollo yet. */
+          emit("APOLLO", "WARN", "No pending approval in Apollo. Issue tickets with `neu approve`.");
+          return { ok: false, entries };
         }
         case "deny": {
-          emit("APOLLO", "INFO", `Action denied`);
-          return { ok: true, entries };
+          emit("APOLLO", "WARN", "No pending approval to deny.");
+          return { ok: false, entries };
         }
         case "stop":
         case "stopall": {

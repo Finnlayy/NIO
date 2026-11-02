@@ -68,7 +68,6 @@ class KanbanConfig:
     breaker_threshold: int = 3
     breaker_cooldown_s: float = 600.0
     # Dateisystem
-    runtime_dir: Path = _REPO_ROOT / "runtime" / "kanban"
     workspace_dir: Path = _REPO_ROOT / "workspace" / "kanban"
     vault_dir: Path = _REPO_ROOT / "workspace" / "obsidian"
     # Geheimnisse / API
@@ -109,7 +108,6 @@ class KanbanConfig:
             max_concurrent=max(1, _int(e, "NIO_KANBAN_MAX_CONCURRENT", 1)),
             breaker_threshold=max(1, _int(e, "NIO_KANBAN_BREAKER_THRESHOLD", 3)),
             breaker_cooldown_s=_float(e, "NIO_KANBAN_BREAKER_COOLDOWN_S", 600.0),
-            runtime_dir=_path(e, "NIO_KANBAN_RUNTIME", root, "runtime/kanban"),
             workspace_dir=_path(e, "NIO_KANBAN_WORKSPACE", root, "workspace/kanban"),
             vault_dir=_path(e, "NIO_OBSIDIAN_VAULT", root, "workspace/obsidian"),
             secret_allowlist=_csv(e, "NIO_KANBAN_SECRET_ALLOWLIST"),

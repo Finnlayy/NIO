@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { ApolloDeck } from "@/apollo/ApolloDeck";
 import { ApolloOrb } from "@/apollo/ApolloOrb";
+import { EmergencyStopButton } from "@/apollo/ApolloRuns";
 import { NeuralGraph } from "@/apollo/NeuralGraph";
 import { HybridTerminal } from "@/apollo/Terminal";
 import { NODE_CATEGORY_STYLE, PALETTE, POOL_ENDPOINTS, POOL_PROVIDERS } from "@/apollo/catalog";
@@ -253,6 +254,15 @@ export default function ApolloStagePage() {
 
       <ApolloDeck />
       <HybridTerminal />
+      <EmergencyStopButton
+        active
+        onStop={() => {
+          /* The outcome lands in the terminal, so a failed stop must not stay hidden. */
+          const { setTerminalOpen, runCommand } = useApolloStore.getState();
+          setTerminalOpen(true);
+          void runCommand("/stop");
+        }}
+      />
     </div>
   );
 }

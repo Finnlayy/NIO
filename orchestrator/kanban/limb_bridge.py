@@ -8,6 +8,7 @@ from core.policy import Policy
 from core.protocol import Intent, Operations, utc_now_iso
 from orchestrator.runner import Orchestrator
 
+
 def run_limb_request(
     request_file: Path,
     operations: Operations,
@@ -16,6 +17,10 @@ def run_limb_request(
     task_id: str,
     active_soul_md: str
 ) -> tuple[bool, str, dict[str, Any] | None]:
+    # Die Datei schreibt der Worker: Ein Symlink wuerde Host-Dateien lesen.
+    if request_file.is_symlink():
+        return False, "limb request forged or unreadable", None
+
     try:
         if request_file.stat().st_size > 64 * 1024:
             return False, "limb request too large (max 64 KiB)", None
@@ -85,5 +90,4 @@ def run_limb_request(
 
     if status == "success":
         return True, "success", payload
-    else:
-        return False, status, payload
+    return False, status, payload
