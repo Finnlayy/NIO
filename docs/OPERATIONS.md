@@ -9,15 +9,14 @@ antwortet.
 
 | Dienst | Port | Bindung | Start |
 |---|---:|---|---|
-| Next-UI (Apollo-Bühne, `/ops`) | **4001** | `0.0.0.0` | `npm run ui:dev` |
+| Next-UI (Apollo-Bühne, `/ops`) | **4001** | `127.0.0.1` | `npm run ui:dev`, dauerhaft `nio-apollo.service` |
+| Kanban-API und Dispatcher | **8740** | `127.0.0.1` | `neu kanban serve`, dauerhaft `nio-kanban.service` |
 | Orchestrator-API | 4000 | `127.0.0.1` | `npm run start` (nach `npm run build`) |
 | Sigma-Worker (Trading-Limb) | **8731** | `127.0.0.1` | `trading.start` |
 | Sigma-Scraper (Sidecar) | 8001 | `127.0.0.1` | im Worker erwartet, nicht gestartet |
 | speaches (Spracherkennung) | 8011 | `127.0.0.1` | Docker, siehe [`SPEECH.md`](SPEECH.md) |
 
-**Warum `0.0.0.0` für die UI:** In einer Sandbox wird die Vorschau über einen
-Proxy-Host (`*.e2b.app`) ausgeliefert. Bindet der Dev-Server nur an
-`127.0.0.1`, ist er von außen nicht erreichbar.
+**Dauerbetrieb:** `bash deploy/install.sh` im Live-Checkout richtet Python-Umgebung, Apollo-Build, Worker-Image, `~/.config/nio/nio.env` (Rechte 600) und die systemd-User-Units ein. Mit `--ohne-dienste` bleibt systemd unberührt. `make health` meldet jeden Dienst einzeln. Geheimnisse liegen nur in dieser Datei.
 
 **Warum 8731 und nicht 8000:** 8000 ist der FastAPI-Default, 8001 erwartet
 Sigma für den Contagion-Endpunkt. Ein eigener Port vermeidet die Kollision.
