@@ -41,13 +41,14 @@ def _csv(env: Mapping[str, str], key: str) -> tuple[str, ...]:
 @dataclass(frozen=True)
 class KanbanConfig:
     repo_root: Path = _REPO_ROOT
+    stop_file: Path = _REPO_ROOT / "runtime" / "STOP"
     # Backends
     store: str = "sqlite"  # sqlite | postgres
     sqlite_path: Path = _REPO_ROOT / "runtime" / "kanban" / "kanban.db"
     pg_dsn: str = ""
     bus: str = "memory"  # memory | redis
     redis_url: str = "redis://127.0.0.1:6379/0"
-    sandbox: str = "subprocess"  # subprocess | docker
+    sandbox: str = "docker"  # subprocess | docker
     # Docker-JIT-Sandbox
     image: str = "python:3.12-slim"
     cpus: str = "1.0"
@@ -85,12 +86,13 @@ class KanbanConfig:
         root = Path(e.get("NEU_ROOT") or repo_root or _REPO_ROOT).resolve()
         return cls(
             repo_root=root,
+            stop_file=root / "runtime" / "STOP",
             store=e.get("NIO_KANBAN_STORE", "sqlite").strip() or "sqlite",
             sqlite_path=_path(e, "NIO_KANBAN_SQLITE_PATH", root, "runtime/kanban/kanban.db"),
             pg_dsn=e.get("NIO_KANBAN_PG_DSN", ""),
             bus=e.get("NIO_KANBAN_BUS", "memory").strip() or "memory",
             redis_url=e.get("NIO_KANBAN_REDIS_URL", "redis://127.0.0.1:6379/0"),
-            sandbox=e.get("NIO_KANBAN_SANDBOX", "subprocess").strip() or "subprocess",
+            sandbox=e.get("NIO_KANBAN_SANDBOX", "docker").strip() or "docker",
             image=e.get("NIO_KANBAN_IMAGE", "python:3.12-slim"),
             cpus=e.get("NIO_KANBAN_CPUS", "1.0"),
             memory=e.get("NIO_KANBAN_MEMORY", "512m"),

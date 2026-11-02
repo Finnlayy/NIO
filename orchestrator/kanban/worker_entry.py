@@ -184,6 +184,20 @@ def main() -> int:
                 ctx.experience_summary = f"Command failed: {argv[0]}"
                 ctx.experience_lessons.append(f"Stderr: {stderr_tail}")
 
+        elif runtime == "limb":
+            op = frontmatter.get("limb_operation", "").strip()
+            if not op:
+                raise ValueError("Runtime limb benoetigt limb_operation im Frontmatter")
+
+            req = {
+                "operation": op,
+                "params": task_data.get("params", {})
+            }
+            _atomic_write(ctx.out_dir / "limb_request.json", json.dumps(req).encode("utf-8"))
+
+            ctx.status = "completed"
+            ctx.experience_summary = f"Limb-Request: {op}"
+
         elif runtime == "opencode":
             prompt = (
                 f"Mission und Regeln:\n{ctx.soul_md}\n\n"
