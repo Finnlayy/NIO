@@ -28,7 +28,10 @@ export function PatternScanner({ data }: { data: Record<string, unknown> }) {
   const total = bullish + bearish || 1;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      <div className="absolute top-0 right-0 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 uppercase">
+        Simulated
+      </div>
       <p className="text-lg font-bold text-white">{patterns.length} forming, none broken yet</p>
 
       {/* bull/bear progress */}

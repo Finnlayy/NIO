@@ -283,3 +283,17 @@ class TestKanbanDockerSandbox(unittest.TestCase):
             await task
 
         asyncio.run(run_and_inspect())
+
+    def test_subprocess_limb(self) -> None:
+        self._write_soul("limb", "limb_operation: sys.echo\n")
+        runner = build_sandbox(self.config)
+
+        result = asyncio.run(runner.run(self.spec, on_heartbeat=lambda: None))
+
+        self.assertEqual(result.exit_code, 0)
+
+        limb_req = json.loads((self.out_dir / "limb_request.json").read_text())
+        self.assertEqual(limb_req["operation"], "sys.echo")
+
+        out_res = json.loads((self.out_dir / "result.json").read_text())
+        self.assertEqual(out_res["status"], "completed")

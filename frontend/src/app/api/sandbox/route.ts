@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
  *     `; | && $(…) > <` are inert text, not operators.
  *  2. Allowlist of binaries. Anything else is refused before a process exists.
  *  3. Fixed working directory (`<tmp>/nio-sandbox`), created on demand.
- *     `cat` refuses path separators and `..`, so it cannot read outside it.
+ *     Every argument except for `echo` must stay inside it (`refuseArg`).
  *  4. Hard 5 s timeout, 64 KiB output cap, output trimmed to 8 KiB in the reply.
  *
  * This is a demo jail, not a security boundary against a hostile operator:
@@ -50,8 +50,27 @@ async function ensureJail(): Promise<string> {
   return JAIL;
 }
 
+/** Why an argument may not reach a binary, or null. Options can carry a path of their own. */
+async function refuseArg(arg: string, jail: string): Promise<string | null> {
+  if (arg.startsWith("--files0")) return "--files0-from is not allowed";
+  const outside = "paths must stay inside the jail (no '..', no absolute paths)";
+  if (arg.includes("..")) return outside;
+  if (arg.startsWith("-")) return arg.includes("/") ? outside : null;
+  if (arg.startsWith("/")) return outside;
+  try {
+    const real = await fs.realpath(path.resolve(jail, arg));
+    const realJail = await fs.realpath(jail);
+    if (real !== realJail && !real.startsWith(realJail + path.sep)) {
+      return "paths must stay inside the jail (no symlinks outside)";
+    }
+  } catch {
+    // Nothing there to follow; the binary reports the missing file itself.
+  }
+  return null;
+}
+
 /** Minimal POSIX-ish tokeniser: quotes group, nothing else is special. */
-export function tokenize(input: string): string[] | { error: string } {
+function tokenize(input: string): string[] | { error: string } {
   const tokens: string[] = [];
   let current = "";
   let quote: '"' | "'" | null = null;
@@ -114,15 +133,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const unsafeArg = args.find((arg) => arg.includes("..") || arg.startsWith("/"));
-  if ((command === "cat" || command === "head") && unsafeArg) {
-    return NextResponse.json(
-      { ok: false, error: "paths must stay inside the jail (no '..', no absolute paths)", code: 2, mode: "jail" },
-      { status: 400 },
-    );
-  }
-
   const cwd = await ensureJail();
+
+  if (command !== "echo") {
+    for (const arg of args) {
+      const refusal = await refuseArg(arg, cwd);
+      if (refusal) return NextResponse.json({ ok: false, error: refusal, code: 2, mode: "jail" }, { status: 400 });
+    }
+  }
 
   return new Promise<NextResponse>((resolve) => {
     execFile(

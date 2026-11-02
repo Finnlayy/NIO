@@ -10,6 +10,6 @@ qdrant-client
 pydantic
 pydantic-settings
 ccxt
-google-genai
+google-genai==2.34.0
 scikit-learn
 hdbscan

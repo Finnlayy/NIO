@@ -171,18 +171,21 @@ class TestSyncBack(unittest.TestCase):
 
                 self.assertEqual(outcome.status, "completed")
                 self.assertEqual(outcome.reason, "done")
-                self.assertEqual(outcome.result_payload, {"x": 1})
+                self.assertEqual(outcome.result_payload["x"], 1)
+                self.assertIn("proposed_soul", outcome.result_payload)
+                self.assertEqual(outcome.result_payload["proposed_soul"]["content"], "updated soul")
                 self.assertEqual(outcome.soul_md, "updated soul")
                 self.assertEqual(outcome.experience.summary, "great success")
 
-                # Check DB
+                # Check DB (SOUL changes are proposed, not applied)
                 db_worker = await s.get_worker("test-worker")
-                self.assertEqual(db_worker.soul_md, "updated soul")
+                self.assertEqual(db_worker.soul_md, "")
 
                 # Check Vault
-                self.assertTrue((self.vault_dir / "workers" / "test-worker" / "SOUL.md").exists())
+                # SOUL updates are no longer written back immediately
+                self.assertFalse((self.vault_dir / "workers" / "test-worker" / "SOUL.md").exists())
                 self.assertTrue((self.vault_dir / "tasks" / "task-t-1234567890ab.md").exists())
-                self.assertTrue((self.workspace_dir / "workers" / "test-worker" / "SOUL.md").exists())
+                self.assertFalse((self.workspace_dir / "workers" / "test-worker" / "SOUL.md").exists())
 
                 exps = await s._run(lambda conn: conn.execute("SELECT vault_synced FROM experiences WHERE id = ?", (outcome.experience.id,)).fetchall())
                 self.assertTrue(exps[0]["vault_synced"])
