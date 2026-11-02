@@ -7,12 +7,10 @@ is the PyQt6 shell wired into `GMTMainWindow`.
 """
 
 import logging
-from pathlib import Path
 
-from core.alignment.alignment_tracker import AlignmentTracker
 from core.alignment.alignment_dashboard import AlignmentDashboard
+from core.alignment.alignment_tracker import AlignmentTracker
 from core.learning.risk_guards import RiskGuardStorage
-from core.self_model.insight_display import InsightDisplay
 
 logger = logging.getLogger(__name__)
 
@@ -22,13 +20,13 @@ class AlignmentDashboardModel:
 
     def __init__(self, alignment_service: AlignmentDashboard = None,
                  tracker: AlignmentTracker = None, risk_storage: RiskGuardStorage = None,
-                 plan_id: str = None):
+                 plan_id: str | None = None):
         self.alignment_service = alignment_service or AlignmentDashboard()
         self.tracker = tracker or AlignmentTracker()
         self.risk_storage = risk_storage or RiskGuardStorage()
         self.plan_id = plan_id
 
-    def compose(self, plan_id: str = None) -> dict:
+    def compose(self, plan_id: str | None = None) -> dict:
         """Return display-ready metrics for the latest plan snapshot."""
         plan_id = plan_id or self.plan_id
         latest = self.alignment_service.latest(plan_id) if plan_id else {}
@@ -55,7 +53,7 @@ class AlignmentDashboardModel:
             },
         }
 
-    def format_summary(self, plan_id: str = None) -> str:
+    def format_summary(self, plan_id: str | None = None) -> str:
         data = self.compose(plan_id)
         lines = [f"Plan: {data['plan_id'] or 'n/a'}"]
         for key, value in data["rows"]:
@@ -66,7 +64,7 @@ class AlignmentDashboardModel:
 # ---- PyQt6 shell (import-guarded) ---------------------------------------------
 
 try:  # pragma: no cover - exercised only when PyQt6 is installed
-    from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QTextEdit
+    from PyQt6.QtWidgets import QLabel, QPushButton, QTextEdit, QVBoxLayout, QWidget
 
     PYQT6_AVAILABLE = True
 except ImportError:  # pragma: no cover
@@ -104,7 +102,7 @@ if PYQT6_AVAILABLE:
             self.refresh_btn.clicked.connect(self.refresh)
             layout.addWidget(self.refresh_btn)
 
-        def refresh(self, plan_id: str = None):
+        def refresh(self, plan_id: str | None = None):
             """Reload latest metrics and update the labels."""
             data = self.model.compose(plan_id)
             for key, value in data["rows"]:

@@ -1,6 +1,7 @@
-from sklearn.decomposition import IncrementalPCA
 import hdbscan
 import numpy as np
+from sklearn.decomposition import IncrementalPCA
+
 
 class HDBSCANEngine:
     def __init__(self):
@@ -13,5 +14,4 @@ class HDBSCANEngine:
             return np.array([-1] * len(data))
 
         reduced_data = self.ipca.partial_fit(data).transform(data)
-        labels = self.clusterer.fit_predict(reduced_data)
-        return labels
+        return self.clusterer.fit_predict(reduced_data)

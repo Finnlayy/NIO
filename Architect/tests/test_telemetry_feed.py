@@ -159,7 +159,7 @@ class TestTelemetryFeed(unittest.TestCase):
     def test_ein_tick_sendet_drei_events(self):
         bids, asks, trades = tape()
         sent = self.feed.on_tape(bids, asks, trades)
-        self.assertEqual(sent, {k: True for k in VALID})
+        self.assertEqual(sent, dict.fromkeys(VALID, True))
         self.assertEqual([r["event_kind"] for r in self.sink.records], list(VALID))
         self.assertEqual(self.feed.sent, 3)
         self.assertEqual(self.feed.rejected, 0)
@@ -194,7 +194,7 @@ class TestTelemetryFeed(unittest.TestCase):
             self.feed.micro.calculate_footprint_map("kein-array", 0.0, 1.0)
         self.feed.micro.calculate_footprint_map = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("feed down"))
         sent = self.feed.on_tape(*tape())
-        self.assertEqual(sent, {k: False for k in VALID})
+        self.assertEqual(sent, dict.fromkeys(VALID, False))
         self.assertEqual(self.sink.records, [])
         self.assertEqual(self.feed.rejected, 1)
 

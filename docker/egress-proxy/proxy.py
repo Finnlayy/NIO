@@ -13,7 +13,6 @@ import select
 import socket
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
 
 # Format for Python logging in German without secrets
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
@@ -31,9 +30,7 @@ def is_ip_allowed(ip_str: str) -> bool:
     except ValueError:
         return False
 
-    if not ip.is_global:
-        return False
-    return True
+    return ip.is_global
 
 class EgressProxyHandler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
@@ -68,7 +65,6 @@ class EgressProxyHandler(BaseHTTPRequestHandler):
         clean_host = self._strip_control_chars(host)
 
         allowlist_match = False
-        allowed_port = 443
 
         for allowed_entry in self.allowlist:
             if ":" in allowed_entry:
@@ -90,7 +86,7 @@ class EgressProxyHandler(BaseHTTPRequestHandler):
 
         try:
             addr_info = socket.getaddrinfo(clean_host, port, socket.AF_UNSPEC, socket.SOCK_STREAM)
-        except socket.gaierror as e:
+        except socket.gaierror:
             self.send_error_response(502, f"DNS-Fehler fuer {clean_host}.")
             return
 
@@ -98,7 +94,7 @@ class EgressProxyHandler(BaseHTTPRequestHandler):
         allowed_ip = None
         allowed_af = None
         allowed_sockaddr = None
-        for af, socktype, proto, canonname, sockaddr in addr_info:
+        for af, _socktype, _proto, _canonname, sockaddr in addr_info:
             ip = sockaddr[0]
             if not is_ip_allowed(ip):
                 self.send_error_response(403, f"Ziel-IP abgelehnt fuer {clean_host} ({ip} nicht global).")
@@ -185,7 +181,7 @@ def main():
     parser.add_argument("--allowlist", type=str, default="", help="Kommagetrennte Liste erlaubter Hosts")
     args = parser.parse_args()
 
-    allowlist = set(host.strip() for host in args.allowlist.split(",") if host.strip())
+    allowlist = {host.strip() for host in args.allowlist.split(",") if host.strip()}
 
     server_address = ('', args.port)
     httpd = EgressProxyServer(server_address, EgressProxyHandler, allowlist)

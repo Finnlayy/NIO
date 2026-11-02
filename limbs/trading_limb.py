@@ -46,7 +46,6 @@ import json
 import os
 import shutil
 import signal
-import socket
 import subprocess
 import sys
 import time
@@ -58,8 +57,9 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from base import LimbBase, LimbContext, LimbError  # noqa: E402
-from core.protocol import ErrorCode  # noqa: E402
+from base import LimbBase, LimbContext, LimbError  # type: ignore[import-not-found]
+
+from core.protocol import ErrorCode
 
 #: Sigma-Repository und der gepinnte Commit, gegen den getestet wurde.
 SIGMA_REPOSITORY = "https://github.com/Finnlayy/Sigma.git"
@@ -150,7 +150,7 @@ class TradingLimb(LimbBase):
         return data if isinstance(data, dict) else None
 
     def _env(self, layout: Layout, port: int) -> dict[str, str]:
-        env = {
+        return {
             "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
             "HOME": str(layout.home),
             "TMPDIR": str(layout.tmp),
@@ -163,7 +163,6 @@ class TradingLimb(LimbBase):
             # der Worker startet mit Fakes, damit er ohne Netz hochkommt.
             "SIGMA_ALLOW_FAKE_REDIS": "1",
         }
-        return env
 
     # ----------------------------------------------------------- Werkzeuge
     def _run(
@@ -179,7 +178,7 @@ class TradingLimb(LimbBase):
     ) -> subprocess.CompletedProcess[str]:
         """argv-Liste, kein Shell-String. ``check`` meldet Fehlschlaege als LimbError."""
         try:
-            proc = subprocess.run(  # noqa: S603 - argv-Liste, kein Shell
+            proc = subprocess.run(
                 argv,
                 cwd=str(cwd or layout.install),
                 env=self._env(layout, DEFAULT_PORT),
@@ -209,7 +208,7 @@ class TradingLimb(LimbBase):
         remaining = ctx.soft_remaining_s()
         if remaining is None:
             return default_s
-        return max(1.0, min(default_s, remaining - 0.5))
+        return float(max(1.0, min(default_s, remaining - 0.5)))
 
     def _port(self, ctx: LimbContext) -> int:
         raw = ctx.intent.task.params.get("port", DEFAULT_PORT)
@@ -240,7 +239,7 @@ class TradingLimb(LimbBase):
             headers["Content-Type"] = "application/json"
         request = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(request, timeout=max(1.0, timeout_s)) as response:  # noqa: S310 - festes 127.0.0.1
+            with urllib.request.urlopen(request, timeout=max(1.0, timeout_s)) as response:
                 payload = response.read().decode("utf-8", "replace")
                 status = response.status
         except urllib.error.HTTPError as exc:
@@ -250,7 +249,7 @@ class TradingLimb(LimbBase):
                 f"Worker antwortete HTTP {exc.code} auf {path}: {detail}",
                 hint="Parameter pruefen (z. B. /api/backtest/ohlc erwartet 'pair', nicht 'symbol').",
             ) from exc
-        except (urllib.error.URLError, socket.timeout, TimeoutError) as exc:
+        except (urllib.error.URLError, TimeoutError) as exc:
             raise LimbError(
                 ErrorCode.IO,
                 f"Worker nicht erreichbar ({url}): {exc}",
@@ -426,7 +425,7 @@ class TradingLimb(LimbBase):
         ]
         log_handle = layout.log.open("ab")
         try:
-            proc = subprocess.Popen(  # noqa: S603 - argv-Liste
+            proc = subprocess.Popen(
                 argv,
                 cwd=str(layout.install),
                 env=self._env(layout, port),

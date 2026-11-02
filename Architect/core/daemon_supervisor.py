@@ -1,5 +1,6 @@
 import asyncio
 import logging
+
 import ccxt.pro as ccxt
 
 logger = logging.getLogger(__name__)
@@ -20,14 +21,13 @@ class FeedDaemon:
             for symbol in self.symbols:
                 try:
                     ticker = await self.exchange.watch_ticker(symbol)
-                    price = str(ticker['last'])
+                    str(ticker['last'])
                     # Safely emit to GUI in thread-safe manner (if needed in real PyQt context, use Signals)
                     # For MVP, we update directly or just let the main thread do it via queues.
                     # As a stub to satisfy live data, we update the app window directly
-                    if hasattr(self.app_window, 'tape'):
-                        if symbol not in self.app_window.tape.feeds:
-                            # Use QMetaObject.invokeMethod for thread safety in PyQt
-                            pass
+                    if hasattr(self.app_window, 'tape') and symbol not in self.app_window.tape.feeds:
+                        # Use QMetaObject.invokeMethod for thread safety in PyQt
+                        pass
                         # Dummy call for now, but proves CCXT is used
                 except Exception as e:
                     logger.error(f"Error fetching {symbol} from {self.exchange_id}: {e}")

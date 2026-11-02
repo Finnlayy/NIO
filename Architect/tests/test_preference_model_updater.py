@@ -1,10 +1,11 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import tempfile
 import json
+import tempfile
 from pathlib import Path
 
 from core.events import EventBus
@@ -75,8 +76,8 @@ class TestPreferenceModelUpdater(unittest.TestCase):
         trained = self.updater.load_model()
         preds = [self.updater._predict_score(trained, s["agentOutput"]) for s in samples]
         targets = [s["feedbackScore"] for s in samples]
-        high_pred = max(p for p, t in zip(preds, targets) if t > 0.8)
-        low_pred = min(p for p, t in zip(preds, targets) if t < 0.6)
+        high_pred = max(p for p, t in zip(preds, targets, strict=False) if t > 0.8)
+        low_pred = min(p for p, t in zip(preds, targets, strict=False) if t < 0.6)
         self.assertGreater(high_pred, low_pred)
 
     def test_validate_emits_model_updated(self):

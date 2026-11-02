@@ -120,7 +120,7 @@ class KanbanToolbox:
             return {"task": task.to_dict()}
 
         if name == "kanban_complete":
-            result_payload = arguments.get("result_payload")
+            result_payload = arguments.get("result_payload") or {}
             if isinstance(result_payload, dict) and "proposed_soul" in result_payload:
                 result_payload.pop("proposed_soul", None)
             task = await self._service.complete(task_id, result_payload=result_payload, actor=actor)

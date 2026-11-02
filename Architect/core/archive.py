@@ -1,6 +1,6 @@
-import logging
-import json
 import hashlib
+import json
+import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -12,7 +12,7 @@ class Archive:
         self.archive_dir = Path(archive_dir)
         self.archive_dir.mkdir(parents=True, exist_ok=True)
 
-    def save(self, job_id: str, job_data: dict, history_lines: list = None):
+    def save(self, job_id: str, job_data: dict, history_lines: list | None = None):
         """Save job data to archive with digest."""
         archive_path = self.archive_dir / f"{job_id}.json"
         # Compact serialization (machine format) for performance; CLI pretty-prints on lookup
@@ -41,7 +41,7 @@ class Archive:
             logger.warning("Archive lookup failed: %s not found", archive_path)
             return {}
         try:
-            with open(archive_path, "r", encoding="utf-8") as f:
+            with open(archive_path, encoding="utf-8") as f:
                 data = json.load(f)
             # Verify digest
             expected_digest = data.get("digest_sha256", "")
@@ -72,7 +72,7 @@ class Archive:
             if file_path.name.endswith(".history.jsonl"):
                 continue
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     data = json.load(f)
                 expected_digest = data.get("digest_sha256", "")
                 content_str = json.dumps(data.get("data", {}), separators=(",", ":"))

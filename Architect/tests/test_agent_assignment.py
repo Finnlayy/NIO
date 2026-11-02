@@ -1,9 +1,11 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from core.agent_assignment import AgentAssignment, AGENT_REGISTRY
+from core.agent_assignment import AGENT_REGISTRY, AgentAssignment
+
 
 class TestAgentAssignment(unittest.TestCase):
     def setUp(self):

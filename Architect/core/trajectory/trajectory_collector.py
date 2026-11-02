@@ -9,10 +9,10 @@ Data flow (OMEGA_JULES_TODO.md Phase 5):  event bus -> trajectory collector
 -> visualizer / alignment tracker.
 """
 
-import json
-import hashlib
-import logging
 import datetime
+import hashlib
+import json
+import logging
 from pathlib import Path
 
 from core.state_machine import SystemExecutionState
@@ -40,9 +40,9 @@ KIND_TO_STATE = {
 class TrajectoryPoint:
     """One step of a plan's execution trajectory."""
 
-    def __init__(self, timestamp: str, state, metrics: dict = None,
-                 event_ids: list = None, plan_version: int = 1, agent_assignments: list = None,
-                 event_kind: str = None, message: str = ""):
+    def __init__(self, timestamp: str, state, metrics: dict | None = None,
+                 event_ids: list | None = None, plan_version: int = 1, agent_assignments: list | None = None,
+                 event_kind: str | None = None, message: str = ""):
         self.timestamp = timestamp
         # Accept SystemExecutionState or a plain string.
         if isinstance(state, SystemExecutionState):
@@ -103,7 +103,7 @@ class TrajectoryCollector:
         if not path.exists():
             return []
         pairs = []
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -202,7 +202,7 @@ class TrajectoryCollector:
         if not path.exists():
             return []
         points = []
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:

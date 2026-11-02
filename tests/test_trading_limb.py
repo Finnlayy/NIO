@@ -65,7 +65,7 @@ def fresh_intent(
     """
     import datetime as dt
 
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     iso = lambda t: t.strftime("%Y-%m-%dT%H:%M:%S.") + f"{t.microsecond // 1000:03d}Z"  # noqa: E731
     payload = json.loads(INTENT_EXAMPLE.read_text(encoding="utf-8"))
     payload["target"]["limb"] = "trading"
@@ -250,7 +250,7 @@ class TradingBacktestParamsTests(unittest.TestCase):
         self.sent: list[dict] = []
         limb = self.limb
 
-        def fake_request(ctx, method, path, *, body=None, timeout_s=30.0):  # noqa: ANN001
+        def fake_request(ctx, method, path, *, body=None, timeout_s=30.0):
             self.sent.append({"method": method, "path": path, "body": body})
             return {"ok": True}
 
@@ -258,10 +258,11 @@ class TradingBacktestParamsTests(unittest.TestCase):
         limb._request = fake_request  # type: ignore[method-assign]
         self.addCleanup(lambda: setattr(limb, "_request", self._original))
 
-    def _ctx(self):  # noqa: ANN202
+    def _ctx(self):
         import tempfile
 
         from base import LimbContext
+
         from core.policy import Policy
 
         config = NeuConfig.load()

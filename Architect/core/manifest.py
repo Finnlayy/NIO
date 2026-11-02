@@ -16,7 +16,7 @@ class Manifest:
         """Read and parse manifest JSON file."""
         if not self.manifest_path.exists():
             raise FileNotFoundError(f"Manifest not found: {self.manifest_path}")
-        with open(self.manifest_path, "r", encoding="utf-8") as f:
+        with open(self.manifest_path, encoding="utf-8") as f:
             self.data = json.load(f)
         required = ["manifest_version", "author", "timestamp", "changes", "checksum", "approval_level"]
         for field in required:
@@ -39,7 +39,7 @@ class Manifest:
             "model_update": False,
         })
 
-    def verify_checksum(self, base_dir: Path = None) -> bool:
+    def verify_checksum(self, base_dir: Path | None = None) -> bool:
         """Verify SHA-256 checksums for all changed files against current disk content."""
         import hashlib
         changes = self.extract_changes()
@@ -52,9 +52,8 @@ class Manifest:
                 if change.get("change_type") == "delete":
                     # For deletes, current file should not exist; checksum comparison is skipped
                     continue
-                else:
-                    logger.error("Manifest checksum verification failed: file missing: %s", file_path)
-                    return False
+                logger.error("Manifest checksum verification failed: file missing: %s", file_path)
+                return False
             # Compute SHA-256 of current file
             hasher = hashlib.sha256()
             with open(file_path, "rb") as f:

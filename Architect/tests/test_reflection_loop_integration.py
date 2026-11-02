@@ -1,17 +1,19 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import tempfile
 from pathlib import Path
 
 from core.agent_assignment import AgentAssignment
-from core.post_mortem_trigger import PostMortemTrigger
 from core.baseline_retriever import BaselineRetriever
-from core.state_machine import SystemExecutionState, TRANSITION_MAP, GUARD_CONDITIONS
-from limbs.intelligence.memory_planner import MemoryPlanner
+from core.post_mortem_trigger import PostMortemTrigger
+from core.state_machine import TRANSITION_MAP, SystemExecutionState
 from limbs.intelligence.genai_client import GenAIClient
+from limbs.intelligence.memory_planner import MemoryPlanner
+
 
 # Minimal mock config for integration
 class MockConfig:
@@ -91,7 +93,7 @@ class TestReflectionLoopIntegration(unittest.TestCase):
         self.assertIn("timestamp", journal_result)
         self.assertTrue(Path(str(journal_result.get("timestamp", "")).replace(":", "-")).exists() is False)  # We don't verify exact file names in integration; just that mode is set
         # Verify a file was saved in reflections dir
-        reflection_files = list(self.genai_client.runtime_dir.glob("journal_*.json"))
+        list(self.genai_client.runtime_dir.glob("journal_*.json"))
         # Note: file naming uses timestamp, so we just verify directory has content after generation
         # Actually the generate_journal saves a file; we can verify at least one file exists after the call
         # Since file names use timestamp with dashes, let's just check that the runtime dir has files

@@ -11,10 +11,10 @@ with a keyword fallback for unclassified errors.
 Storage: `Architect/runtime/learning/error_patterns/<pattern_id>.json`
 """
 
-import json
-import logging
 import datetime
 import hashlib
+import json
+import logging
 import re
 from pathlib import Path
 
@@ -68,7 +68,7 @@ def classify_error(error) -> str:
 
 def make_pattern_id(error_type: str, tokens: list) -> str:
     """Deterministic fingerprint for an error signature (blueprint `fingerprint`)."""
-    fingerprint = "|".join([error_type] + sorted(tokens))
+    fingerprint = "|".join([error_type, *sorted(tokens)])
     return "ep_" + hashlib.sha1(fingerprint.encode("utf-8")).hexdigest()[:12]
 
 
@@ -76,8 +76,8 @@ class ErrorPattern:
     """A recurring failure signature with occurrence statistics."""
 
     def __init__(self, pattern_id: str, error_type: str, frequency: int = 0,
-                 first_seen: str = None, last_seen: str = None,
-                 sample_messages: list = None, tokens: list = None):
+                 first_seen: str | None = None, last_seen: str | None = None,
+                 sample_messages: list | None = None, tokens: list | None = None):
         self.pattern_id = pattern_id
         self.error_type = error_type
         self.frequency = frequency
@@ -212,14 +212,14 @@ class ErrorPatternStorage:
         path = self.patterns_dir / f"{pattern_id}.json"
         if not path.exists():
             return None
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return ErrorPattern.from_dict(json.load(f))
 
     def load_all(self) -> list:
         patterns = []
         for path in sorted(self.patterns_dir.glob("*.json")):
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     patterns.append(ErrorPattern.from_dict(json.load(f)))
             except Exception as exc:
                 logger.error("Failed to load error pattern %s: %s", path, exc)

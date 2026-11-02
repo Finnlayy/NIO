@@ -1,21 +1,22 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import tempfile
 import json
+import tempfile
 from pathlib import Path
 
-from core.manifest import Manifest
-from core.manifest_validation import validate_manifest_update, ALLOWED_REPO_GLOBS, DENIED_GLOBS
+from core.manifest_validation import validate_manifest_update
+
 
 class TestManifestValidation(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
         self.manifest_path = Path(self.tmpdir) / "test_manifest.json"
 
-    def create_manifest(self, data_overrides: dict = None):
+    def create_manifest(self, data_overrides: dict | None = None):
         data = {
             "manifest_version": "1.0",
             "author": "test",

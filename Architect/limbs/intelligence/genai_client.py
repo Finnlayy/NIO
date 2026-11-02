@@ -1,7 +1,6 @@
-import logging
-import json
-import os
 import datetime
+import json
+import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -312,13 +311,13 @@ class GenAIClient:
             if any(key in lower for key in ["diagnosis", "root cause"]):
                 current_section = "diagnosis"
                 continue
-            elif any(key in lower for key in ["summary", "what happened"]):
+            if any(key in lower for key in ["summary", "what happened"]):
                 current_section = "summary"
                 continue
-            elif any(key in lower for key in ["recommendation", "corrective", "action"]):
+            if any(key in lower for key in ["recommendation", "corrective", "action"]):
                 current_section = "recommendation"
                 continue
-            elif any(key in lower for key in ["confidence", "certainty"]):
+            if any(key in lower for key in ["confidence", "certainty"]):
                 current_section = "confidence"
                 # Try to extract numeric confidence from line
                 try:
@@ -328,7 +327,7 @@ class GenAIClient:
                 except ValueError:
                     pass
                 continue
-            elif any(key in lower for key in ["risk", "flag", "concern"]):
+            if any(key in lower for key in ["risk", "flag", "concern"]):
                 current_section = "risk_flags"
                 continue
 
@@ -338,9 +337,8 @@ class GenAIClient:
                 summary_lines.append(line_stripped)
             elif current_section == "recommendation":
                 recommendation_lines.append(line_stripped)
-            elif current_section == "risk_flags":
-                if line_stripped:
-                    risk_flags.append(line_stripped)
+            elif current_section == "risk_flags" and line_stripped:
+                risk_flags.append(line_stripped)
 
         diagnosis = " ".join(diagnosis_lines) or text[:300]
         summary = " ".join(summary_lines) or text[:500]
