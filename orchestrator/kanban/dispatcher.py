@@ -68,6 +68,11 @@ class Dispatcher:
     async def tick(self, wait: bool = False) -> TickReport:
         report = TickReport()
 
+        if self.config.stop_file.exists():
+            for task_id in list(self._active):
+                await self.cancel(task_id)
+            return report
+
         # 1. Triage
         triage_tasks = await self.store.list_tasks(status=TaskStatus.TRIAGE)
         for task in triage_tasks:

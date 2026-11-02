@@ -54,7 +54,9 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import getpass
 import json
+import os
 import sys
 import time
 from collections.abc import Mapping, Sequence
@@ -68,6 +70,7 @@ if str(_REPO_ROOT) not in sys.path:
 from core.config import ABSOLUTE_MAX_ITERATIONS, SCALE_PROFILES, NeuConfig  # noqa: E402
 from core.job import JOB_KIND_SCHEDULED, JOB_RESOLVED, JobStore, summarize  # noqa: E402
 from core.protocol import (  # noqa: E402
+    DEFAULT_TICKET_TTL_S,
     PROTOCOL_INTENT,
     PROTOCOL_RESULT,
     PROTOCOL_VERSION,
@@ -76,6 +79,8 @@ from core.protocol import (  # noqa: E402
     Operations,
     ProtocolError,
     Result,
+    issue_ticket,
+    utc_now_iso,
 )
 from core.schemacheck import validate as schema_validate  # noqa: E402 - sys.path-Bootstrap oben ist Absicht
 
@@ -518,6 +523,35 @@ def cmd_job_show(args: argparse.Namespace) -> int:
     for event in history[-12:]:
         _say(f"  {event.get('at', '?')}  {event.get('event', '?')}  {json.dumps({k: v for k, v in event.items() if k not in {'event', 'at', 'history', 'outcome'}}, ensure_ascii=False)[:180]}")
     _rule("=")
+    return EXIT_OK
+
+
+def cmd_approve(args: argparse.Namespace) -> int:
+    """Stellt ein Freigabe-Ticket aus. Das ist eine Handlung des Menschen, kein Agent ruft das."""
+    config = _config_from_args(args)
+    key = os.environ.get("NIO_APPROVAL_KEY")
+    if not key:
+        _say("[fehler] NIO_APPROVAL_KEY ist nicht gesetzt")
+        return 1
+    raw = sys.stdin.read() if args.intent == "-" else Path(args.intent).read_text(encoding="utf-8")
+    try:
+        intent = Intent.from_dict(json.loads(raw), operations=Operations.load(config.protocol_dir / "operations.json"))
+        issued = issue_ticket(key, intent, args.ttl_seconds)
+    except (json.JSONDecodeError, ProtocolError) as exc:
+        _say(f"[fehler] Auftrag nicht freigabefaehig: {exc}")
+        return EXIT_USAGE
+    audit = config.runtime_dir / "approvals" / "issued.jsonl"
+    audit.parent.mkdir(parents=True, exist_ok=True)
+    entry = {
+        "at": utc_now_iso(),
+        "actor": getpass.getuser(),
+        "intent_id": intent.intent_id,
+        "operation": intent.operation,
+        "expires_at": issued["expires_at"],
+    }
+    with audit.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    _dump(issued)
     return EXIT_OK
 
 
@@ -1260,6 +1294,23 @@ def cmd_loop(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+
+def cmd_stop(args: argparse.Namespace) -> int:
+    config = _config_from_args(args)
+    stop_file = config.runtime_dir / "STOP"
+    stop_file.parent.mkdir(parents=True, exist_ok=True)
+    stop_file.touch()
+    _say("[not-aus] gesetzt: Laufende Limbs enden, neue werden abgelehnt.")
+    return EXIT_OK
+
+
+def cmd_resume(args: argparse.Namespace) -> int:
+    config = _config_from_args(args)
+    (config.runtime_dir / "STOP").unlink(missing_ok=True)
+    _say("[not-aus] aufgehoben.")
+    return EXIT_OK
+
+
 def cmd_scale(args: argparse.Namespace) -> int:
     """Skalierungsprofil dauerhaft setzen -- nur mit menschlicher Freigabe."""
     config = _config_from_args(args)
@@ -1579,6 +1630,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_status = sub.add_parser("status", help="Konfiguration, Queues, Jobs, Limbs, Agent-Slots")
     p_status.set_defaults(func=cmd_status)
 
+    p_approve = sub.add_parser("approve", help="Freigabe-Ticket fuer einen Auftrag ausstellen (Mensch)")
+    p_approve.add_argument("intent", help="Pfad zur Intent-JSON oder - fuer stdin")
+    p_approve.add_argument("--ttl-seconds", type=int, default=DEFAULT_TICKET_TTL_S, help="Gueltigkeit, 1 bis 3600")
+    p_approve.set_defaults(func=cmd_approve)
+
     p_job = sub.add_parser("job", help="Job-Lebenszyklus (run/list/show)")
     job_sub = p_job.add_subparsers(dest="job_command", required=True, parser_class=_NeuArgumentParser)
 
@@ -1692,6 +1748,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_loop.add_argument("--once", action="store_true", default=True, help="Ein Durchlauf (Default)")
     p_loop.add_argument("--watch", action="store_true", help="Dauerbetrieb (ab Phase 4)")
     p_loop.set_defaults(func=cmd_loop)
+    p_stop = sub.add_parser("stop", help="Not-Aus: laufende Limbs beenden, neue ablehnen")
+    p_stop.set_defaults(func=cmd_stop)
+    p_resume = sub.add_parser("resume", help="Not-Aus aufheben")
+    p_resume.set_defaults(func=cmd_resume)
 
     p_subagent = sub.add_parser(
         "subagent",

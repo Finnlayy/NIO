@@ -48,7 +48,8 @@
         "sys.noop",
         "sys.simulate"
       ],
-      "description": "Protokoll-Testdouble und Konformanz-Harness. Beweist den Round-Trip Intent -> Limb -> Result ohne Nebenwirkungen und erzwingt auf Wunsch Fehlpfade (fail/timeout/partial/crash)."
+      "description": "Protokoll-Testdouble und Konformanz-Harness. Beweist den Round-Trip Intent -> Limb -> Result ohne Nebenwirkungen und erzwingt auf Wunsch Fehlpfade (fail/timeout/partial/crash).",
+      "env_allow": []
     },
     "speech": {
       "entrypoint": "limbs/speech_limb.py",
@@ -61,7 +62,12 @@
         "speech.ping",
         "speech.transcribe"
       ],
-      "description": "Sprache zu Text ueber das lokale speaches auf 127.0.0.1:8011. Kostenlos, Audio verlaesst den Rechner nicht, ein Ausfall ergibt einen Fehler statt erfundenem Text. Spezifikation: prompts/limbs/speech_limb.md"
+      "description": "Sprache zu Text ueber das lokale speaches auf 127.0.0.1:8011. Kostenlos, Audio verlaesst den Rechner nicht, ein Ausfall ergibt einen Fehler statt erfundenem Text. Spezifikation: prompts/limbs/speech_limb.md",
+      "env_allow": [
+        "STT_ENDPOINT_URL",
+        "STT_MODEL",
+        "STT_LANGUAGE"
+      ]
     },
     "bootstrap": {
       "entrypoint": "limbs/bootstrap_limb.py",
@@ -77,7 +83,8 @@
         "fs.list",
         "fs.mkdir"
       ],
-      "description": "Erster echter Arm: schreibt/patcht Dateien in der Sandbox und (mit elevation.level=repo_write) am System selbst. Spezifikation: prompts/limbs/bootstrap_limb.md"
+      "description": "Erster echter Arm: schreibt/patcht Dateien in der Sandbox und (mit elevation.level=repo_write) am System selbst. Spezifikation: prompts/limbs/bootstrap_limb.md",
+      "env_allow": []
     },
     "vault": {
       "entrypoint": "limbs/vault_limb.py",
@@ -92,7 +99,10 @@
         "vault.read",
         "vault.search"
       ],
-      "description": "Obsidian-Vault unter workspace/obsidian: Suche mit SQLite FTS5, Lesen, Notizen ablegen. Schreiben nur nach Inbox/, workers/, tasks/. Notizen sind Fremdinhalt. Spezifikation: prompts/limbs/vault_limb.md"
+      "description": "Obsidian-Vault unter workspace/obsidian: Suche mit SQLite FTS5, Lesen, Notizen ablegen. Schreiben nur nach Inbox/, workers/, tasks/. Notizen sind Fremdinhalt. Spezifikation: prompts/limbs/vault_limb.md",
+      "env_allow": [
+        "NIO_OBSIDIAN_VAULT"
+      ]
     },
     "rea": {
       "entrypoint": "limbs/rea_limb.py",
@@ -108,7 +118,10 @@
         "rea.capabilities",
         "rea.analyze"
       ],
-      "description": "Subagent-Knoten mit eigener Sandbox: installiert und betreibt REA (Reverse Engineer Anything) und liefert Evidence statt Behauptungen. Spezifikation: prompts/limbs/rea_limb.md"
+      "description": "Subagent-Knoten mit eigener Sandbox: installiert und betreibt REA (Reverse Engineer Anything) und liefert Evidence statt Behauptungen. Spezifikation: prompts/limbs/rea_limb.md",
+      "env_allow": [
+        "NEU_NODE_BIN"
+      ]
     },
     "openmanus": {
       "entrypoint": "limbs/openmanus_limb.py",
@@ -124,7 +137,13 @@
         "openmanus.status",
         "openmanus.stop"
       ],
-      "description": "Lokales OpenManus im abgeschotteten Container mit Lauf-Modell aus limbs/agent_base.py. GESPERRT: status bleibt planned, bis Container, Netz (Harness 2.8, 2.9) und die Freigabe-Tickets aus J4 gemergt sind. Spezifikation: prompts/limbs/openmanus_limb.md"
+      "description": "Lokales OpenManus im abgeschotteten Container mit Lauf-Modell aus limbs/agent_base.py. GESPERRT: status bleibt planned, bis Container, Netz (Harness 2.8, 2.9) und die Freigabe-Tickets aus J4 gemergt sind. Spezifikation: prompts/limbs/openmanus_limb.md",
+      "env_allow": [
+        "FREELLMAPI_KEY",
+        "OPENMANUS_LLM_URL",
+        "OPENMANUS_MODEL",
+        "DOCKER_HOST"
+      ]
     },
     "trading": {
       "entrypoint": "limbs/trading_limb.py",
@@ -143,7 +162,8 @@
         "trading.status",
         "trading.stop"
       ],
-      "description": "Handels-Knoten: Sigma (TradingView-Scraper + tvremix/TradingView-MCP CSV + DuckDB/Parquet-Lake) laeuft als eigener Worker; dieser Limb liefert den Orchestrator, den Sigma verloren hat. Kein Fork: Sigmas 912 Tests bleiben der Vertrag. Spezifikation: prompts/limbs/trading_limb.md"
+      "description": "Handels-Knoten: Sigma (TradingView-Scraper + tvremix/TradingView-MCP CSV + DuckDB/Parquet-Lake) laeuft als eigener Worker; dieser Limb liefert den Orchestrator, den Sigma verloren hat. Kein Fork: Sigmas 912 Tests bleiben der Vertrag. Spezifikation: prompts/limbs/trading_limb.md",
+      "env_allow": []
     },
     "toolbox": {
       "entrypoint": "limbs/toolbox_limb.py",
@@ -157,7 +177,8 @@
         "toolbox.ping",
         "toolbox.search"
       ],
-      "description": "Werkzeugkiste der Agenten: Katalog aller NEU-Operationen und externen Tools. Agenten suchen hier und laden Details erst bei Bedarf, statt alle Tools im Kontext zu tragen. Spezifikation: prompts/limbs/toolbox_limb.md"
+      "description": "Werkzeugkiste der Agenten: Katalog aller NEU-Operationen und externen Tools. Agenten suchen hier und laden Details erst bei Bedarf, statt alle Tools im Kontext zu tragen. Spezifikation: prompts/limbs/toolbox_limb.md",
+      "env_allow": []
     }
   }
 }

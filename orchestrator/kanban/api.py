@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import json
+import os
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.atomic import atomic_write_bytes
+from core.protocol import DEFAULT_TICKET_TTL_S, MAX_TICKET_TTL_S, Intent, Operations, ProtocolError, issue_ticket
 from orchestrator.kanban.models import RustLimb, RustLimbRequest, RustLimbResponse, TaskStatus, TransitionError
 from orchestrator.kanban.runtime import KanbanRuntime
 from orchestrator.kanban.service import ConflictError
@@ -41,6 +43,18 @@ __all__ = [
 ]
 
 _LIMB_TIMEOUT_S = 30.0
+
+
+class TicketIssueIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    intent: dict[str, Any]
+    ttl_seconds: int = Field(default=DEFAULT_TICKET_TTL_S, ge=1, le=MAX_TICKET_TTL_S)
+
+
+class TicketIssueOut(BaseModel):
+    ticket: str
+    expires_at: str
+    intent_hash: str
 
 
 class _Out(BaseModel):
@@ -343,6 +357,25 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
             actor=actor, action="rust_limb.register", category="system", subject=limb.name, payload=limb.to_dict()
         )
         return limb.to_dict()
+
+    @router.post("/approvals/issue", response_model=TicketIssueOut)
+    async def issue_approval(body: TicketIssueIn, actor: str = Depends(operator)) -> dict[str, str]:
+        key = os.environ.get("NIO_APPROVAL_KEY")
+        if not key:
+            raise HTTPException(status_code=503, detail="NIO_APPROVAL_KEY ist nicht gesetzt")
+        try:
+            intent = Intent.from_dict(body.intent, operations=Operations.load())
+            issued = issue_ticket(key, intent, body.ttl_seconds)
+        except ProtocolError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        await runtime.ledger.append(
+            actor=actor,
+            action="approval.issued",
+            category="system",
+            subject=intent.intent_id,
+            payload={"operation": intent.operation, "expires_at": issued["expires_at"]},
+        )
+        return issued
 
     @router.post("/rust-limbs/{name}/invoke", response_model=RustLimbResponseOut)
     async def invoke_rust_limb(name: str, body: RustLimbRequestIn, actor: str = Depends(operator)) -> dict[str, Any]:
