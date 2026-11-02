@@ -238,3 +238,22 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 | Marktdaten | Key serverseitig; Adapter statt Durchreich |
 | Trading-Limb | Pin auf Commit, Sandbox-Home, eigene Prozessgruppe, nur eine Operation mit Netz |
 | Orbit/Graph | keine Nutzereingabe wird ausgeführt |
+
+## Agenten-Netzwerk und Egress-Proxy
+
+### Architektur
+Agenten-Container laufen isoliert und können nicht direkt auf das Internet oder das Host-Netzwerk zugreifen. Sie sind mit dem internen Docker-Netzwerk `nio-agents` verbunden. Ausgehende Verbindungen erfolgen ausschließlich über den `egress-proxy`, der im Container `nio-egress-proxy` betrieben werden kann, oder sie beschränken sich nur auf das Erreichen des internen FreeLLMAPI-Containers, der in dasselbe Netzwerk verbunden wird.
+
+### Setup prüfen
+1. Das Netzwerk muss existieren und isoliert sein:
+   ```bash
+   docker network inspect nio-agents
+   ```
+   Achten Sie darauf, dass `Internal` auf `true` steht und in `Options` `com.docker.network.bridge.inhibit_ipv4` aktiviert ist.
+2. Das Setup-Skript ist idempotent und kann jederzeit ausgeführt werden, um das Netzwerk anzulegen und den FreeLLMAPI-Container (`freellmapi-freellmapi-1`) zu verbinden:
+   ```bash
+   bash scripts/agents_network.sh
+   ```
+
+### Proxy Logs
+Wenn der Proxy aktiv ist, protokolliert er jede CONNECT-Entscheidung auf Stdout, ohne Header oder Body-Inhalte mitzuschneiden. Alle Loopback-, Link-Local- und privaten IPs sind hardcodiert gesperrt.
