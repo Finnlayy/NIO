@@ -8,6 +8,7 @@ from core.policy import Policy
 from core.protocol import Intent, Operations, utc_now_iso
 from orchestrator.runner import Orchestrator
 
+
 def run_limb_request(
     request_file: Path,
     operations: Operations,
@@ -85,5 +86,4 @@ def run_limb_request(
 
     if status == "success":
         return True, "success", payload
-    else:
-        return False, status, payload
+    return False, status, payload
