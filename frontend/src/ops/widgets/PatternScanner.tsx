@@ -35,9 +35,9 @@ export function PatternScanner({ data }: { data: Record<string, unknown> }) {
       <p className="text-lg font-bold text-white">{patterns.length} forming, none broken yet</p>
 
       {/* bull/bear progress */}
-      <div className="flex h-1.5 rounded-full overflow-hidden mt-2.5">
-        <div style={{ width: "100%", background: upBar, transform: `scaleX(${bullish / total})`, transformOrigin: "left" }} />
-        <div style={{ width: "100%", background: downBar, transform: `scaleX(${bearish / total})`, transformOrigin: "left" }} />
+      <div className="relative h-1.5 rounded-full overflow-hidden w-full mt-2.5">
+        <div className="absolute inset-0" style={{ background: downBar, transform: `scaleX(1)`, transformOrigin: "left" }} />
+        <div className="absolute inset-0" style={{ background: upBar, transform: `scaleX(${bullish / total})`, transformOrigin: "left" }} />
       </div>
       <p className="flex items-center gap-3 mt-1.5 text-[10px]">
         <span className="flex items-center gap-1 text-slate-400">
