@@ -119,7 +119,8 @@ export function HybridTerminal() {
       return;
     }
     setInput("");
-    setHistory((prev) => [...prev.slice(-49), text]);
+    /* /resume carries the operator PIN, which must not come back on ArrowUp. */
+    if (!/^\/resume\b/i.test(text)) setHistory((prev) => [...prev.slice(-49), text]);
     setHistoryIndex(-1);
     setPinned(true);
     await runCommand(text);
