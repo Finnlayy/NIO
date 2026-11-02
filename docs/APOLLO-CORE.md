@@ -76,6 +76,8 @@ as a zustand selector, and returning a fresh object each call trips React's
 
 ## Endpoints
 
+`FREELLMAPI_HOST` names the gateway host with port. Unset, `127.0.0.1:3001` and `localhost:3001` count as the gateway. `FREELLMAPI_KEY` goes only there, provider keys only to their exact HTTPS host, and any other target gets a 403 without a request leaving the server.
+
 `POST /api/apollo` — `{endpointUrl, model, messages, temperature?, maxTokens?}`.
 Keys come from the server environment only (`FREELLMAPI_KEY`,
 `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`,
@@ -173,9 +175,11 @@ Zwei Fehler, die dabei behoben wurden und leicht zurückkommen:
 | Eigenschaft | Wert |
 |---|---|
 | Autofokus | 40 ms nach dem Öffnen (nach der Einblend-Animation) |
+| Notizen | `/note <text>` und `/vault <suche>`, siehe [`VAULT.md`](VAULT.md) |
 | Copy | `navigator.clipboard` mit `execCommand`-Fallback, danach ein „copied"-Badge |
 | Busy-Gate | während eines Turns sind Senden und `/clear` gesperrt; die Fußzeile zeigt `mid-turn · command held` |
 | Verlauf | ↑/↓, Tab vervollständigt Kommandos |
+| Diktat | Mikrofon-Button, Text landet im Feld und wird nie automatisch gesendet, siehe [`SPEECH.md`](SPEECH.md) |
 
 Das Busy-Gate ist Absicht: ein `/clear` mitten im Turn zerstörte den Kontext,
 aus dem die Antwort gerade gebaut wurde.

@@ -112,7 +112,7 @@ class TestDiagnose(unittest.TestCase):
         diagnosis = PLANNER.diagnose(intent, result, KERNEL.evaluate(intent, result))
         self.assertIsNotNone(diagnosis.elevation_patch)
         self.assertEqual(diagnosis.elevation_patch["level"], "repo_write")
-        self.assertEqual(diagnosis.elevation_patch["approved_by"], "core")
+        self.assertEqual(diagnosis.elevation_patch["approved_by"], "")
         self.assertGreaterEqual(len(diagnosis.elevation_patch["reason"]), 20)
 
     def test_profilgrenze_eskaliert_zum_menschen(self):

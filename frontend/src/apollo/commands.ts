@@ -14,7 +14,16 @@ export type ParsedCommand =
   | { kind: "router-status" }
   | { kind: "config-set"; key: string; value: string | number | boolean; raw: string }
   | { kind: "sandbox-exec"; command: string }
+  | { kind: "note"; text: string }
+  | { kind: "vault-search"; query: string }
   | { kind: "clear" }
+    | { kind: "agent"; command: string }
+  | { kind: "runs" }
+  | { kind: "approve"; pin: string }
+  | { kind: "deny" }
+  | { kind: "stop" }
+  | { kind: "stopall" }
+  | { kind: "resume"; pin: string }
   | { kind: "help" }
   | { kind: "unknown"; input: string }
   | { kind: "error"; message: string; hint?: string };
@@ -26,7 +35,16 @@ export const COMMANDS = [
   { command: "/router", usage: "/router status", detail: "providers, pool estimates, score ranking" },
   { command: "/config", usage: "/config set <key> <value>", detail: "mutate Apollo runtime parameters" },
   { command: "/sandbox", usage: "/sandbox exec <cmd>", detail: "run a read-only command in the sandbox jail" },
+  { command: "/note", usage: "/note <text>", detail: "save a note to the vault inbox (works with dictation)" },
+  { command: "/vault", usage: "/vault <search>", detail: "search the Obsidian vault" },
   { command: "/clear", usage: "/clear", detail: "flush terminal history" },
+    { command: "/agent", usage: "/agent <command>", detail: "agent orchestration" },
+  { command: "/runs", usage: "/runs", detail: "show run view with cost and artifacts" },
+  { command: "/approve", usage: "/approve <pin>", detail: "approve pending action" },
+  { command: "/deny", usage: "/deny", detail: "deny pending action" },
+  { command: "/stop", usage: "/stop", detail: "emergency stop" },
+  { command: "/stopall", usage: "/stopall", detail: "emergency stop all runs" },
+  { command: "/resume", usage: "/resume <pin>", detail: "resume operations" },
   { command: "/help", usage: "/help", detail: "list commands" },
 ] as const;
 
@@ -212,8 +230,28 @@ export function parseCommand(input: string): ParsedCommand {
       }
       return { kind: "sandbox-exec", command };
     }
+    case "/note":
+      if (!rest) return { kind: "error", message: "usage: /note <text>", hint: "dictate into the input after typing /note" };
+      return { kind: "note", text: rest };
+    case "/vault":
+      if (!rest) return { kind: "error", message: "usage: /vault <search>" };
+      return { kind: "vault-search", query: rest };
     case "/clear":
       return { kind: "clear" };
+    case "/agent":
+      return { kind: "agent", command: rest };
+    case "/runs":
+      return { kind: "runs" };
+    case "/approve":
+      return { kind: "approve", pin: rest };
+    case "/deny":
+      return { kind: "deny" };
+    case "/stop":
+      return { kind: "stop" };
+    case "/stopall":
+      return { kind: "stopall" };
+    case "/resume":
+      return { kind: "resume", pin: rest };
     case "/help":
     case "/?":
       return { kind: "help" };

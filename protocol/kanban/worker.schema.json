@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Worker",
+  "type": "object",
+  "properties": {
+    "uid": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "soul_md": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "idle",
+        "busy",
+        "disabled"
+      ]
+    },
+    "fail_count": {
+      "type": "integer"
+    },
+    "breaker_open_until": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "updated_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "uid",
+    "name",
+    "skills",
+    "soul_md",
+    "status",
+    "fail_count",
+    "breaker_open_until",
+    "updated_at"
+  ],
+  "additionalProperties": false
+}

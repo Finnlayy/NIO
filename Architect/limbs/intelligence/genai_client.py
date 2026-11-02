@@ -111,6 +111,7 @@ class GenAIClient:
 
         if self.real_client and self.client:
             try:
+                from google.genai import types
                 prompt = (
                     "You are OMEGA's reflection engine. Generate a concise journal entry "
                     "based on the following execution context. Include: (1) summary, "
@@ -120,6 +121,9 @@ class GenAIClient:
                 response = self.client.models.generate_content(
                     model=self.model_deep,
                     contents=prompt,
+                    config=types.GenerateContentConfig(
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+                    )
                 )
                 output_text = response.text
                 output_structured = {
@@ -203,6 +207,7 @@ class GenAIClient:
 
         if self.real_client and self.client:
             try:
+                from google.genai import types
                 prompt = (
                     "You are OMEGA's post-mortem reflection engine (DSR: Diagnosis, Summary, Recommendation). "
                     "Analyze the following post-mortem data and produce a structured reflection with these exact sections: "
@@ -213,6 +218,9 @@ class GenAIClient:
                 response = self.client.models.generate_content(
                     model=self.model_deep,
                     contents=prompt,
+                    config=types.GenerateContentConfig(
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+                    )
                 )
                 output_text = response.text
                 output_structured = self._parse_dsr_output(output_text, timestamp, post_mortem_data, mode="real")

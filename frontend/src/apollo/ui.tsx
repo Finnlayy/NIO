@@ -256,6 +256,8 @@ export function MiniBar({ value, color, height = 3 }: { value: number; color: st
       <div
         className="absolute inset-y-0 left-0 h-full w-full origin-left rounded-full transition-transform duration-500"
         style={{ transform: `scaleX(${Math.max(0.02, Math.min(1, value / 100))})`, background: color }}
+        className="h-full rounded-full transition-transform duration-500 origin-left"
+        style={{ width: "100%", transform: `scaleX(${Math.max(2, Math.min(100, value)) / 100})`, background: color }}
       />
     </div>
   );
