@@ -287,7 +287,68 @@ class AgentLimb(LimbBase):
         if path.is_relative_to(self.config.repo_root):  # --runtime-dir darf ausserhalb liegen, Artefaktpfade nicht
             ctx.record(path, "create")
         self.runs.event(run["run_id"], "run.collected")
+
+        self._log_system_run(run, payload)
+
         return {**redact(payload, self.secrets()), **self.view(run), "result_path": ctx.rel(path)}
+
+    def _log_system_run(self, run: dict[str, Any], payload: dict[str, Any]) -> None:
+        import re
+        from core.protocol import utc_now_iso
+
+        def _strip_control(v: Any) -> Any:
+            if isinstance(v, str):
+                return re.sub(r'[\x00-\x1f\x7f-\x9f]', '', v)
+            if isinstance(v, dict):
+                return {str(k): _strip_control(val) for k, val in v.items()}
+            if isinstance(v, list):
+                return [_strip_control(i) for i in v]
+            return v
+
+        now = time.time()
+        started = float(run.get("started_s", now))
+        ended = float(run.get("ended_s", now))
+
+        cost = payload.get("cost")
+        artifacts = payload.get("artifacts", [])
+
+        log_payload = {
+            "run_id": run.get("run_id", ""),
+            "agent": run.get("agent", self.name),
+            "start": str(run.get("created_at", utc_now_iso())),
+            "end": utc_now_iso(),
+            "final_state": run.get("state", "unknown"),
+            "runtime_s": round(ended - started, 3),
+        }
+        if "error" in run:
+            log_payload["error"] = run["error"]
+        if cost is not None:
+            log_payload["cost"] = cost
+        if isinstance(artifacts, list) and len(artifacts) > 0:
+            log_payload["artifacts"] = len(artifacts)
+
+        clean_payload = _strip_control(log_payload)
+        safe_payload = redact(clean_payload, self.secrets())
+
+        record = {
+            "seq": 0,
+            "timestamp": utc_now_iso(),
+            "kind": "agent.run.summary",
+            "job_id": str(run.get("run_id", "")),
+            "trace_id": "",
+            "intent_id": "",
+            "limb": self.name,
+            "clock_s": None,
+            "payload": safe_payload
+        }
+
+        try:
+            line = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+            system_log = Path(self.config.runtime_dir) / "system.log"
+            with system_log.open("a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except OSError:
+            pass
 
     # ------------------------------------------------------------------ Ablauf
     def _finish(self, run: dict[str, Any], state: str, *, error: str = "") -> None:
@@ -295,6 +356,8 @@ class AgentLimb(LimbBase):
         if error:
             run["error"] = error
         run.pop("confirmation", None)
+        if "ended_s" not in run:
+            run["ended_s"] = time.time()
         self.runs.save(run)
         self.runs.event(run["run_id"], "run.finished", state=state, error=error)
 

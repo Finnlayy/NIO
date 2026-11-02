@@ -111,7 +111,17 @@ Einrichtung und Variablen stehen in [`OPENMANUS.md`](OPENMANUS.md). `FREELLMAPI_
 
 ---
 
-## 4. Prozessverwaltung
+## 4. Logs und Systemereignisse
+
+Der Orchestrator schreibt alle zentralen Ereignisse (inklusive Agenten-Starts und -Ergebnisse) in die Datei `runtime/system.log`.
+- **Format:** JSON-Lines, wobei jede Zeile ein kompaktes Event ist.
+- **Rotation:** Das Log rotiert automatisch nach Größe (Standard: 10 MB pro Datei). Es werden maximal 3 alte Versionen behalten (`system.log.1`, `system.log.2`, etc.). Die Rotation erfordert keine externen Abhängigkeiten oder Logrotate-Daemon.
+- **Fehlertoleranz:** Schreibfehler in das Log (z. B. fehlende Rechte) brechen den Prozess nicht ab, sondern werden nur einmalig auf der Standardfehlerausgabe (`stderr`) vermerkt.
+- **Sicherheit:** In Agenten-Rückgaben werden Newlines/Steuerzeichen entfernt, und konfigurierte Secrets vor dem Schreiben ins Log redigiert (`[REDACTED]`).
+
+---
+
+## 5. Prozessverwaltung
 
 ### Vordergrund vs. Hintergrund
 
@@ -157,7 +167,7 @@ Gruppe mit `os.killpg`.
 
 ---
 
-## 5. Sandbox-Zustand
+## 6. Sandbox-Zustand
 
 In dieser Umgebung wird der Workspace zwischen Sitzungen teilweise
 zurückgesetzt:
@@ -184,7 +194,7 @@ git diff --stat FETCH_HEAD          # leer = identisch
 
 ---
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 | Symptom | Wahrscheinliche Ursache | Prüfung / Abhilfe |
 |---|---|---|
@@ -201,7 +211,7 @@ git diff --stat FETCH_HEAD          # leer = identisch
 
 ---
 
-## 7. Health-Checks
+## 8. Health-Checks
 
 ```bash
 curl -s http://127.0.0.1:4001/            | head -c 100   # UI
@@ -219,7 +229,7 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 
 ---
 
-## 8. Sicherheitsmodell in Kurzform
+## 9. Sicherheitsmodell in Kurzform
 
 | Fläche | Schutz |
 |---|---|
