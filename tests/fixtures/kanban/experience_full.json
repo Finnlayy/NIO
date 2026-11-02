@@ -1,0 +1,15 @@
+{
+  "id": "x-2",
+  "worker_uid": "w-1",
+  "task_id": "t-1",
+  "summary": "sum",
+  "lessons": [
+    "l1"
+  ],
+  "skills_delta": [
+    "s1"
+  ],
+  "outcome": "failed",
+  "vault_synced": true,
+  "created_at": "2026-10-29T16:15:12.224Z"
+}

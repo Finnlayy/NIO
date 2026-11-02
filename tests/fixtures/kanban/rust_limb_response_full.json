@@ -1,0 +1,8 @@
+{
+  "request_id": "r",
+  "ok": false,
+  "result": {
+    "x": 1
+  },
+  "error": "e"
+}

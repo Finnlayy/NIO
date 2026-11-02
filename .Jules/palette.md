@@ -4,3 +4,7 @@
 ## 2024-10-28 - Replacing native :disabled with aria-disabled for accessibility
 **Learning:** When replacing a native `disabled` attribute with `aria-disabled="true"` to enable focus and hover tooltips on disabled elements, you must manually guard the `onClick` handler to prevent execution, as `aria-disabled` does not natively swallow pointer events or clicks. Additionally, the corresponding CSS styles must be updated to exclude `[aria-disabled="true"]` from hover states and include it in disabled styles.
 **Action:** Always manually guard the click handler and update the `:disabled` and hover CSS rules when switching from `disabled` to `aria-disabled="true"` for better keyboard navigation and accessibility.
+
+## 2025-02-12 - Added ARIA attributes to Map Iterated Toggle Buttons
+**Learning:** For dynamic toggle buttons mapped over arrays (like domain filters), using `aria-pressed={active}` and `type="button"` combined with an explicit `aria-label` provides a massive accessibility win for screen readers. Simply showing visual background colors is insufficient.
+**Action:** Always add semantic `aria-pressed` states to toggle buttons, ensure they have `type="button"` to avoid form submission side-effects, and include a descriptive `aria-label` when the button text alone (like "All") doesn't provide enough context.
