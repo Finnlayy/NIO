@@ -105,6 +105,9 @@ export const KanbanBoard: React.FC = () => {
           >
             <Plus className="w-4 h-4" />
             Neue Karte
+            <span className="hidden sm:inline-flex items-center gap-0.5 text-[9px] font-mono text-cyan-900/50 bg-cyan-100/30 border border-cyan-800/30 px-1 py-0.5 rounded shadow-sm leading-none ml-1">
+              <kbd>C</kbd>
+            </span>
           </button>
         </div>
       </header>
