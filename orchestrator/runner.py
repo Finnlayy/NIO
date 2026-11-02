@@ -81,6 +81,7 @@ from core.protocol import (
     StatusReport,
     format_timestamp,
     new_id,
+    ticket_marker,
     utc_now,
     utc_now_iso,
 )
@@ -922,6 +923,17 @@ class Orchestrator:
         self._emit("policy.decided", decision.to_dict(), intent, job_id=intent.job_id)
         if not decision.allowed:
             return self._short_circuit(intent, decision.code, decision.reason, decision=decision, hint="Intent anpassen (Rechte, Pfade, Operation, Budget).")
+
+        # Policy.check laeuft je Auftrag mehrfach und prueft nur. Verbraucht wird hier,
+        # genau einmal und vor dem Start. Scheitert das, startet kein Limb.
+        if intent.elevation.ticket:
+            marker = ticket_marker(self.config.runtime_dir, intent.elevation.ticket)
+            try:
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                os.close(os.open(marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
+            except OSError as exc:
+                reason = "Ticket wurde bereits verwendet." if isinstance(exc, FileExistsError) else f"Ticket nicht verbuchbar: {exc}"
+                return self._short_circuit(intent, ErrorCode.TICKET_INVALID, reason, decision=decision)
 
         # ---- Timer VOR Anbeginn schaerfen (Uhr ist bereits auf den Job gebunden) ----
         armed_intent = arm_timer(intent, config=self.config)

@@ -52,6 +52,8 @@ Designregeln:
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import re
 import time
@@ -112,6 +114,7 @@ class ErrorCode:
     TIMEOUT = "E_TIMEOUT"
     DEADLINE_EXCEEDED = "E_DEADLINE_EXCEEDED"
     SAFETY_NET = "E_SAFETY_NET"
+    TICKET_INVALID = "E_TICKET_INVALID"
     TRIGGER_INVALID = "E_TRIGGER_INVALID"
     BUDGET_EXHAUSTED = "E_BUDGET_EXHAUSTED"
     SHELL_BLOCKED = "E_SHELL_BLOCKED"
@@ -132,6 +135,7 @@ class ErrorCode:
         TIMEOUT,
         DEADLINE_EXCEEDED,
         SAFETY_NET,
+        TICKET_INVALID,
         TRIGGER_INVALID,
         BUDGET_EXHAUSTED,
         SHELL_BLOCKED,
@@ -387,6 +391,9 @@ class OperationSpec:
         return self.risk in {"write", "high", "destructive"}
 
 
+VALID_RISKS = ("none", "read", "write", "high", "destructive", "external")
+
+
 class Operations:
     """Liest ``protocol/operations.json`` -- das normative Operations-Register."""
 
@@ -403,10 +410,11 @@ class Operations:
         specs: dict[str, OperationSpec] = {}
         for name, body in entries.items():
             body = _as_dict(body, f"$.operations.{name}")
+            _reject_unknown(body, ("phase", "risk", "requires_elevation", "params", "implemented_by", "path_params", "description"), f"$.operations.{name}")
             specs[name] = OperationSpec(
                 name=name,
                 phase=int(body.get("phase", 1)),
-                risk=_as_str(body.get("risk", "unknown"), f"$.operations.{name}.risk", max_len=32),
+                risk=_as_enum(_req(body, "risk", f"$.operations.{name}"), f"$.operations.{name}.risk", VALID_RISKS),
                 requires_elevation=_as_str(body.get("requires_elevation", "none"), f"$.operations.{name}.requires_elevation", max_len=32),
                 params=_as_dict(body.get("params", {}), f"$.operations.{name}.params"),
                 implemented_by=tuple(str(x) for x in body.get("implemented_by", ())),
@@ -496,9 +504,11 @@ class Elevation:
     level: str = "none"
     reason: str = ""
     approved_by: str = ""
+    ticket: str = ""
+    expires_at: str = ""
     requested_paths: tuple[str, ...] = ()
 
-    ALLOWED_KEYS = ("level", "reason", "approved_by", "requested_paths")
+    ALLOWED_KEYS = ("level", "reason", "approved_by", "ticket", "expires_at", "requested_paths")
     MIN_REASON_LEN = 20
 
     def to_dict(self) -> dict[str, Any]:
@@ -506,6 +516,8 @@ class Elevation:
             "level": self.level,
             "reason": self.reason,
             "approved_by": self.approved_by,
+            "ticket": self.ticket,
+            "expires_at": self.expires_at,
             "requested_paths": list(self.requested_paths),
         }
 
@@ -518,6 +530,10 @@ class Elevation:
         level = _as_enum(_opt(body, "level", "none"), f"{path}.level", VALID_ELEVATION_LEVELS)
         reason = _as_str(_opt(body, "reason", ""), f"{path}.reason", min_len=0, max_len=2048)
         approved_by = _as_str(_opt(body, "approved_by", ""), f"{path}.approved_by", min_len=0, max_len=64)
+        ticket = _as_str(_opt(body, "ticket", ""), f"{path}.ticket", min_len=0, max_len=64)
+        if ticket and not re.fullmatch(r"[0-9a-f]{64}", ticket):
+            raise ProtocolError(ErrorCode.SCHEMA_INVALID, "elevation.ticket muss 64 Hex-Zeichen haben", f"{path}.ticket")
+        expires_at = _as_str(_opt(body, "expires_at", ""), f"{path}.expires_at", min_len=0, max_len=32)
         requested = _as_str_list(_opt(body, "requested_paths", ()), f"{path}.requested_paths")
 
         if level != "none":
@@ -527,15 +543,15 @@ class Elevation:
                     f"Elevation '{level}' braucht eine Begruendung (>= {cls.MIN_REASON_LEN} Zeichen)",
                     f"{path}.reason",
                 )
-            if approved_by not in {"core", "human"}:
+            if approved_by not in {"", "core", "human"}:
                 raise ProtocolError(
                     ErrorCode.SCHEMA_INVALID,
-                    "elevation.approved_by muss 'core' oder 'human' sein",
+                    "elevation.approved_by muss '', 'core' oder 'human' sein",
                     f"{path}.approved_by",
                 )
             for item in requested:
                 _as_rel_path(item, f"{path}.requested_paths")
-        return cls(level=level, reason=reason, approved_by=approved_by, requested_paths=requested)
+        return cls(level=level, reason=reason, approved_by=approved_by, ticket=ticket, expires_at=expires_at, requested_paths=requested)
 
 
 @dataclass(frozen=True)
@@ -1611,3 +1627,48 @@ class Result:
         if not file_path.is_file():
             raise ProtocolError(ErrorCode.PATH_NOT_FOUND, f"Result-Datei fehlt: {file_path}")
         return cls.from_json(file_path.read_text(encoding="utf-8"), intent=intent)
+
+
+# ---------------------------------------------------------- Freigabe-Tickets
+TICKET_GATED_RISKS = frozenset({"high", "destructive", "external"})
+MAX_TICKET_TTL_S = 3600
+DEFAULT_TICKET_TTL_S = 900
+
+
+def hash_intent(intent: Mapping[str, Any]) -> str:
+    """SHA-256 ueber das kanonische Intent-JSON ohne die Felder der Freigabe.
+
+    Ticket, Ablauf und ``approved_by`` kommen erst nach der Unterschrift dazu und
+    duerfen den Hash deshalb nicht aendern. Alles andere ist gebunden.
+    """
+    cleaned = json.loads(json.dumps(intent))
+    elevation = cleaned.get("elevation")
+    if isinstance(elevation, dict):
+        for name in ("ticket", "expires_at", "approved_by"):
+            elevation.pop(name, None)
+    canonical = json.dumps(cleaned, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return sha256_text(canonical)
+
+
+def sign_ticket(key: str, intent_hash: str, operation: str, expires_at: str) -> str:
+    """HMAC-SHA256 ueber Intent, Operation und Ablauf. Die Trennzeichen machen die Felder eindeutig."""
+    message = f"{intent_hash}\n{operation}\n{expires_at}"
+    return hmac.new(key.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def issue_ticket(key: str, intent: Intent, ttl_seconds: int = DEFAULT_TICKET_TTL_S) -> dict[str, str]:
+    """Stellt ein Ticket aus. Nur CLI und Operator-API rufen das, nie Limbs oder Worker."""
+    if not 1 <= ttl_seconds <= MAX_TICKET_TTL_S:
+        raise ProtocolError(ErrorCode.SCHEMA_INVALID, f"ttl_seconds muss zwischen 1 und {MAX_TICKET_TTL_S} liegen")
+    expires_at = format_timestamp(utc_now() + timedelta(seconds=ttl_seconds))
+    intent_hash = hash_intent(intent.to_dict())
+    return {
+        "ticket": sign_ticket(key, intent_hash, intent.operation, expires_at),
+        "expires_at": expires_at,
+        "intent_hash": intent_hash,
+    }
+
+
+def ticket_marker(runtime_dir: Path, ticket: str) -> Path:
+    """Verbrauchsmarke eines Tickets. Der Hash haelt den Dateinamen frei von Fremdzeichen."""
+    return Path(runtime_dir) / "approvals" / "used" / sha256_text(ticket)
