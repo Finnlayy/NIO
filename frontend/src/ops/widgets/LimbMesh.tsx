@@ -26,32 +26,29 @@ export function LimbMesh({ data }: { data: Record<string, unknown> }) {
         if (!res.ok) throw new Error("Failed to fetch");
         const json = await res.json();
 
-        const limbs = json.limbs?.registry || [];
-        const nodes: MeshNode[] = [
-          { id: "neural-core", label: "Neural Core", kind: "core", color: "amber" }
-        ];
-        const edges: MeshEdge[] = [];
+        if (json.errors?.limbs) throw new Error("registry unavailable");
 
-        limbs.forEach((l: any, i: number) => {
-          const id = l.id || `node-${i}`;
-          nodes.push({
-            id,
-            label: l.name || id,
-            kind: l.kind || "agent",
-            color: "purple"
-          });
-          edges.push({
-            from: "neural-core",
-            to: id,
-            color: "purple"
-          });
-        });
+        const limbs: Array<{ name: string; status: string; runtime: string }> = json.limbs ?? [];
+        const nodes: MeshNode[] = [
+          { id: "neural-core", label: "Neural Core", kind: "core", color: "amber" },
+          ...limbs.map((limb) => ({
+            id: limb.name,
+            label: limb.name,
+            kind: limb.runtime,
+            color: limb.status === "active" ? "purple" : "slate",
+          })),
+        ];
+        const edges: MeshEdge[] = limbs.map((limb) => ({
+          from: "neural-core",
+          to: limb.name,
+          color: limb.status === "active" ? "purple" : "slate",
+        }));
 
         if (active) {
           setLiveData({ nodes, edges });
           setError(false);
         }
-      } catch (err) {
+      } catch {
         if (active) setError(true);
       }
     }
@@ -149,8 +146,9 @@ export function LimbMesh({ data }: { data: Record<string, unknown> }) {
       </div>
 
       <Insight>
-        NIO limb mesh hydrated from the orchestrator registry: {byId.size} nodes routed through
-        neural-core — MCP hydration keeps topology in sync with the Python limb registry.
+        {liveData
+          ? `Limb mesh from limbs/registry.json: ${byId.size} nodes routed through neural-core.`
+          : `Simulated limb mesh: ${byId.size} placeholder nodes until the registry answers.`}
       </Insight>
     </div>
   );

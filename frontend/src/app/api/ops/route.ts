@@ -1,95 +1,115 @@
-import { NextResponse } from 'next/server';
-import { readFileSync, readdirSync, statSync } from 'fs';
-import { join, resolve } from 'path';
+import { readFile, readdir } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { NextResponse } from "next/server";
 
-export async function GET(req: Request) {
-  let kanban = { tasks: [], workers: [] };
-  let limbs: { registry: any[] } = { registry: [] };
-  let runs: Array<{ id: string; modified: number; status: string; task_id?: string }> = [];
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
+const KANBAN_TIMEOUT_MS = 3_000;
+const MAX_RUNS = 5;
+
+/**
+ * Read-only telemetry for /ops. Takes nothing from the request and returns only
+ * the fields the widgets need: task descriptions, results, souls and agent
+ * output stay on the server. A failing source sets its own flag, so one outage
+ * shows "keine Daten" for that source and leaves the others alone.
+ */
+
+interface OpsTask {
+  id: string;
+  title: string;
+  status: string;
+  assigned_worker_uid: string | null;
+}
+interface OpsWorker {
+  uid: string;
+  name: string;
+  status: string;
+}
+interface OpsLimb {
+  name: string;
+  status: string;
+  runtime: string;
+}
+interface OpsRun {
+  run_id: string;
+  agent: string;
+  state: string;
+  created_at: string;
+}
+
+const text = (value: unknown): string => (typeof value === "string" ? value : "");
+
+async function kanbanList(path: string, token: string): Promise<Array<Record<string, unknown>>> {
+  const host = process.env.NIO_KANBAN_API_HOST || "127.0.0.1";
+  const port = process.env.NIO_KANBAN_API_PORT || "8740";
+  const response = await fetch(`http://${host}:${port}${path}`, {
+    headers: { authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(KANBAN_TIMEOUT_MS),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`kanban HTTP ${response.status}`);
+  const body: unknown = await response.json();
+  if (!Array.isArray(body)) throw new Error("kanban response is not a list");
+  return body as Array<Record<string, unknown>>;
+}
+
+async function readKanban(): Promise<{ tasks: OpsTask[]; workers: OpsWorker[] }> {
+  const token = process.env.NIO_KANBAN_API_TOKEN;
+  if (!token) throw new Error("NIO_KANBAN_API_TOKEN is not set");
+  const [tasks, workers] = await Promise.all([kanbanList("/api/v1/kanban/tasks", token), kanbanList("/api/v1/workers", token)]);
+  return {
+    tasks: tasks.map((task) => ({
+      id: text(task.id),
+      title: text(task.title),
+      status: text(task.status),
+      assigned_worker_uid: typeof task.assigned_worker_uid === "string" ? task.assigned_worker_uid : null,
+    })),
+    workers: workers.map((worker) => ({ uid: text(worker.uid), name: text(worker.name), status: text(worker.status) })),
+  };
+}
+
+async function readLimbs(repoRoot: string): Promise<OpsLimb[]> {
+  const raw = JSON.parse(await readFile(join(repoRoot, "limbs", "registry.json"), "utf8")) as {
+    limbs?: Record<string, Record<string, unknown>>;
+  };
+  if (!raw.limbs || typeof raw.limbs !== "object") throw new Error("registry has no limbs map");
+  return Object.entries(raw.limbs).map(([name, limb]) => ({ name, status: text(limb.status), runtime: text(limb.runtime) }));
+}
+
+async function readRuns(repoRoot: string): Promise<OpsRun[]> {
+  const dir = join(repoRoot, "runtime", "agents");
+  let names: string[];
   try {
-    const cwd = process.cwd();
-    // In Next.js, cwd is frontend/. Repo root is one level up.
-    const repoRoot = resolve(cwd, '..');
-
-    // Read Kanban via API
-    try {
-      const token = process.env.NIO_KANBAN_API_TOKEN;
-      if (token) {
-        const port = process.env.NIO_KANBAN_API_PORT || 8740;
-        const host = process.env.NIO_KANBAN_API_HOST || "127.0.0.1";
-        const [apiRes, workerRes] = await Promise.all([
-          fetch(`http://${host}:${port}/api/v1/kanban/tasks`, {
-            headers: { "Authorization": `Bearer ${token}` }
-          }).catch(() => null),
-          fetch(`http://${host}:${port}/api/v1/workers`, {
-            headers: { "Authorization": `Bearer ${token}` }
-          }).catch(() => null)
-        ]);
-
-        if (apiRes?.ok) {
-           kanban.tasks = await apiRes.json();
-        }
-
-        if (workerRes?.ok) {
-           kanban.workers = await workerRes.json();
-        }
-      }
-    } catch(e) {
-      // Ignored
-    }
-
-    // Read Limb registry from repo root
-    try {
-        const rawLimbs = JSON.parse(readFileSync(join(repoRoot, 'limbs/registry.json'), 'utf8'));
-        // Only return required fields
-        if (Array.isArray(rawLimbs)) {
-          limbs.registry = rawLimbs.map(l => ({
-            id: l.id,
-            name: l.name,
-            kind: l.kind
-          }));
-        }
-    } catch(e) {
-      // Ignored
-    }
-
-    // Read agents
-    try {
-        const agentsDir = join(repoRoot, 'runtime/agents');
-        const agentFiles = readdirSync(agentsDir);
-        for (const file of agentFiles) {
-            const agentPath = join(agentsDir, file);
-            const stat = statSync(agentPath);
-            if (stat.isDirectory()) {
-                let status = "unknown";
-                let task_id;
-                try {
-                   const stateJson = JSON.parse(readFileSync(join(agentPath, 'state.json'), 'utf8'));
-                   status = stateJson.status || status;
-                   task_id = stateJson.task_id;
-                } catch(e) {}
-                runs.push({
-                   id: file,
-                   modified: stat.mtimeMs,
-                   status,
-                   task_id
-                });
-            }
-        }
-        runs.sort((a,b) => b.modified - a.modified);
-        runs = runs.slice(0, 5); // recent 5
-    } catch(e) {
-      // Ignored
-    }
-  } catch (e) {
-     // Ignored
+    names = await readdir(dir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; // no agent has run yet
+    throw error;
   }
-
-  // If we couldn't load any data, fail closed.
-  if (kanban.tasks.length === 0 && limbs.registry.length === 0 && runs.length === 0) {
-     return NextResponse.json({ error: "keine Daten" }, { status: 500 });
+  const runs: OpsRun[] = [];
+  for (const name of names) {
+    try {
+      const state = JSON.parse(await readFile(join(dir, name, "state.json"), "utf8")) as Record<string, unknown>;
+      runs.push({ run_id: text(state.run_id), agent: text(state.agent), state: text(state.state), created_at: text(state.created_at) });
+    } catch {
+      // A run being written or removed is not a broken source.
+    }
   }
+  return runs.sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, MAX_RUNS);
+}
 
-  return NextResponse.json({ kanban, limbs, runs });
+export async function GET() {
+  // Next runs with frontend/ as working directory.
+  const repoRoot = resolve(process.cwd(), "..");
+  const [kanban, limbs, runs] = await Promise.allSettled([readKanban(), readLimbs(repoRoot), readRuns(repoRoot)]);
+  return NextResponse.json({
+    kanban: kanban.status === "fulfilled" ? kanban.value : { tasks: [], workers: [] },
+    limbs: limbs.status === "fulfilled" ? limbs.value : [],
+    runs: runs.status === "fulfilled" ? runs.value : [],
+    errors: {
+      kanban: kanban.status === "rejected",
+      limbs: limbs.status === "rejected",
+      runs: runs.status === "rejected",
+    },
+  });
 }

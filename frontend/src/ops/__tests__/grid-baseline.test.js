@@ -104,5 +104,5 @@ test("DOM node budget of the default layout is stable (1086)", () => {
     total += countOpenTags(frameHtml(widget, i));
   }
   resetStore();
-  assert.equal(total, 1086, "default layout DOM node count"); // Update expected count to 1086
+  assert.equal(total, 1086, "default layout DOM node count");
 });
