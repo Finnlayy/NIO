@@ -487,10 +487,10 @@ function NodeCard({
           </div>
         )}
 
-        <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-white/5">
+        <div className="relative mt-1.5 h-[3px] overflow-hidden rounded-full bg-white/5">
           <div
-            className="h-full rounded-full transition-[width] duration-700"
-            style={{ width: `${Math.max(3, load)}%`, background: hexToRgba(style.color, 0.75) }}
+            className="absolute inset-y-0 left-0 h-full w-full rounded-full transition-transform duration-700"
+            style={{ transform: `scaleX(${Math.max(3, load) / 100})`, transformOrigin: "left", background: hexToRgba(style.color, 0.75) }}
           />
         </div>
 

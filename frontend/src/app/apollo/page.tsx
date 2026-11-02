@@ -143,24 +143,26 @@ export default function ApolloStagePage() {
       </header>
 
       {/* failover ribbon */}
-      <div
-        className={`relative z-20 overflow-hidden border-b transition-all duration-500 ${
-          failover ? "max-h-12 border-amber-400/25 bg-amber-400/[0.07]" : "max-h-0 border-transparent"
-        }`}
-        aria-live="polite"
-      >
-        <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 sm:px-4">
-          <span className="flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-amber-300">
-            <Zap size={11} /> failover active
-          </span>
-          <span className="text-[11px] text-amber-100/90">
-            {config.primaryModel} quota spent — answering through <strong className="font-semibold">{activeModel.name}</strong> ({activeModel.provider}).
-          </span>
-          {router.lastHandoffNote && (
-            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-amber-300/60">
-              · context handoff attached ({router.lastHandoffNote.length} chars)
+      <div className="relative z-20">
+        <div
+          className={`absolute inset-x-0 top-0 border-b border-amber-400/25 bg-amber-400/[0.07] transition-all duration-500 ${
+            failover ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none"
+          }`}
+          aria-live="polite"
+        >
+          <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 sm:px-4">
+            <span className="flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-amber-300">
+              <Zap size={11} /> failover active
             </span>
-          )}
+            <span className="text-[11px] text-amber-100/90">
+              {config.primaryModel} quota spent — answering through <strong className="font-semibold">{activeModel.name}</strong> ({activeModel.provider}).
+            </span>
+            {router.lastHandoffNote && (
+              <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-amber-300/60">
+                · context handoff attached ({router.lastHandoffNote.length} chars)
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
