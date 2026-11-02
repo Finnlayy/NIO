@@ -144,7 +144,7 @@ export default function ApolloStagePage() {
 
       {/* failover ribbon */}
       <div
-        className={`relative z-20 overflow-hidden border-b transition-all duration-500 ${
+        className={`relative z-20 overflow-hidden border-b transition-colors duration-500 ${
           failover ? "max-h-12 border-amber-400/25 bg-amber-400/[0.07]" : "max-h-0 border-transparent"
         }`}
         aria-live="polite"
