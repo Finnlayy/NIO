@@ -108,6 +108,8 @@ jobs:
 
       - name: Exit-Code-Vertrag (Nutzungsfehler = 3, Protokollfehler = 1)
         run: |
+          # GitHub startet bash -e, die erwarteten Exit-Codes duerfen hier nicht abbrechen.
+          set +e
           set -uo pipefail
           tmp="$(mktemp -d)"
           python -m orchestrator --runtime-dir "$tmp/rt" --json job run --op sys.ping
