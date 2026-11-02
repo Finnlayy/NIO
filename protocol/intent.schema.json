@@ -576,6 +576,14 @@
             "type": "string"
           },
           "description": "Deklaration aller Zielpfade; nicht deklarierte Pfade werden abgelehnt"
+        },
+        "ticket": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "expires_at": {
+          "type": "string",
+          "maxLength": 32
         }
       }
     },

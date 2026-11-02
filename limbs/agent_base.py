@@ -91,6 +91,9 @@ class Poll:
     detail: Mapping[str, Any] | None = None
 
 
+import math
+from core.budget import BudgetError, BudgetTracker, Usage
+
 class RunStore:
     """Ablage der Laeufe unter ``runtime/agents/``."""
 
@@ -207,7 +210,18 @@ class AgentLimb(LimbBase):
         return view
 
     # ---------------------------------------------------------------- Handler
+    def _stop_requested(self) -> bool:
+        return (Path(self.config.runtime_dir) / "STOP").exists()
+
     def _start(self, params: Mapping[str, Any], ctx: LimbContext) -> dict[str, Any]:
+        tracker = BudgetTracker(Path(self.config.runtime_dir) / "budget")
+        try:
+            tracker.check_start()
+        except BudgetError as e:
+            raise LimbError(ErrorCode.POLICY_DENIED, str(e))
+        if self._stop_requested():
+            raise LimbError(ErrorCode.STOPPED, "Not-Aus aktiv (runtime/STOP).")
+
         fields = self.prepare(params, ctx)
         run = self.runs.create(self.name, **fields)
         self.runs.event(run["run_id"], "run.created")
@@ -224,6 +238,10 @@ class AgentLimb(LimbBase):
     def _status(self, params: Mapping[str, Any], ctx: LimbContext) -> dict[str, Any]:
         run = self._load(params)
         now = time.time()
+        if self._stop_requested() and run["state"] not in TERMINAL_STATES:
+            self._halt_and_finish(run, ctx, STOPPED, "Not-Aus aktiv (runtime/STOP).")
+            return self.view(run)
+
         if run["state"] in TERMINAL_STATES or now < float(run["next_poll_s"]):
             return self.view(run)
 
@@ -231,6 +249,61 @@ class AgentLimb(LimbBase):
         try:
             poll = self.poll(run, ctx)
             reason = self.over_budget(run, poll, ctx)
+            if not reason:
+                # Update budget and check constraints
+                detail = poll.detail or {}
+
+                raw_tokens = detail.get("tokens")
+                raw_credits = detail.get("credits", 0.0)
+
+                try:
+                    tokens = int(raw_tokens) if raw_tokens is not None else None
+                    if tokens is not None and tokens < 0:
+                        raise ValueError
+                    credits_used = float(raw_credits)
+                    if not math.isfinite(credits_used) or credits_used < 0:
+                        raise ValueError
+                except (ValueError, TypeError):
+                    reason = "Ungueltige Nutzungswerte (tokens/credits) vom Agenten."
+
+                if not reason:
+                    # Delta berechnen
+                    last_tokens = run.get("last_tokens")
+                    last_credits = float(run.get("last_credits", 0.0))
+                    last_seconds = float(run.get("last_seconds", float(run["started_s"])))
+
+                    d_tokens = tokens - last_tokens if (tokens is not None and last_tokens is not None) else tokens if (last_tokens is None and tokens is not None) else None
+                    if d_tokens is not None:
+                        d_tokens = max(0, d_tokens)
+
+                    if tokens is None and last_tokens is not None:
+                        # API failed to report tokens this time; don't reset last_tokens so we can diff correctly later
+                        tokens = last_tokens
+
+                    d_credits = max(0.0, credits_used - last_credits)
+                    d_seconds = max(0.0, now - last_seconds)
+
+                    delta = Usage(seconds=d_seconds, tokens=d_tokens, credits=d_credits)
+
+                    total_run = Usage(
+                        seconds=now - float(run["started_s"]),
+                        tokens=tokens,
+                        credits=credits_used
+                    )
+
+                    tracker = BudgetTracker(Path(self.config.runtime_dir) / "budget")
+                    try:
+                        new_reason = tracker.record_and_check(run["run_id"], delta, total_run)
+                        if new_reason and not over_time:
+                            reason = new_reason
+                    except BudgetError as e:
+                        if not over_time:
+                            reason = str(e)
+
+                    run["last_tokens"] = tokens
+                    run["last_credits"] = credits_used
+                    run["last_seconds"] = now
+
         except ServiceDown as exc:
             run["failures"] = int(run["failures"]) + 1
             run["degraded"] = True
@@ -277,7 +350,68 @@ class AgentLimb(LimbBase):
         if path.is_relative_to(self.config.repo_root):  # --runtime-dir darf ausserhalb liegen, Artefaktpfade nicht
             ctx.record(path, "create")
         self.runs.event(run["run_id"], "run.collected")
+
+        self._log_system_run(run, payload)
+
         return {**redact(payload, self.secrets()), **self.view(run), "result_path": ctx.rel(path)}
+
+    def _log_system_run(self, run: dict[str, Any], payload: dict[str, Any]) -> None:
+        import re
+        from core.protocol import utc_now_iso
+
+        def _strip_control(v: Any) -> Any:
+            if isinstance(v, str):
+                return re.sub(r'[\x00-\x1f\x7f-\x9f]', '', v)
+            if isinstance(v, dict):
+                return {str(k): _strip_control(val) for k, val in v.items()}
+            if isinstance(v, list):
+                return [_strip_control(i) for i in v]
+            return v
+
+        now = time.time()
+        started = float(run.get("started_s", now))
+        ended = float(run.get("ended_s", now))
+
+        cost = payload.get("cost")
+        artifacts = payload.get("artifacts", [])
+
+        log_payload = {
+            "run_id": run.get("run_id", ""),
+            "agent": run.get("agent", self.name),
+            "start": str(run.get("created_at", utc_now_iso())),
+            "end": utc_now_iso(),
+            "final_state": run.get("state", "unknown"),
+            "runtime_s": round(ended - started, 3),
+        }
+        if "error" in run:
+            log_payload["error"] = run["error"]
+        if cost is not None:
+            log_payload["cost"] = cost
+        if isinstance(artifacts, list) and len(artifacts) > 0:
+            log_payload["artifacts"] = len(artifacts)
+
+        clean_payload = _strip_control(log_payload)
+        safe_payload = redact(clean_payload, self.secrets())
+
+        record = {
+            "seq": 0,
+            "timestamp": utc_now_iso(),
+            "kind": "agent.run.summary",
+            "job_id": str(run.get("run_id", "")),
+            "trace_id": "",
+            "intent_id": "",
+            "limb": self.name,
+            "clock_s": None,
+            "payload": safe_payload
+        }
+
+        try:
+            line = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+            system_log = Path(self.config.runtime_dir) / "system.log"
+            with system_log.open("a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except OSError:
+            pass
 
     # ------------------------------------------------------------------ Ablauf
     def _finish(self, run: dict[str, Any], state: str, *, error: str = "") -> None:
@@ -285,6 +419,8 @@ class AgentLimb(LimbBase):
         if error:
             run["error"] = error
         run.pop("confirmation", None)
+        if "ended_s" not in run:
+            run["ended_s"] = time.time()
         self.runs.save(run)
         self.runs.event(run["run_id"], "run.finished", state=state, error=error)
 

@@ -1,11 +1,14 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useKanbanStore } from "./useKanbanStore";
 import { STATUSES, TaskStatus, STATUS_LABELS } from "./types";
 import { BoardToolbar } from "./BoardToolbar";
 import { KanbanColumn } from "./KanbanColumn";
 import { createDragState, dropSlot } from "./dragState";
+import { TaskDialog } from "./TaskDialog";
+import { UndoToast } from "./UndoToast";
+import { kanbanHotkey } from "./hotkeys";
 import { columnTasks, filterTasks } from "./board-logic";
 import { Plus } from "lucide-react";
 
@@ -21,12 +24,21 @@ export const KanbanBoard: React.FC = () => {
   // Need to force re-render when drag state changes
   const [, forceRender] = useState({});
 
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [dialogInitialStatus, setDialogInitialStatus] = useState<TaskStatus>("backlog");
+  // Column the pointer was last over; "C" creates the card there unless focus says otherwise.
+  const hoveredStatus = useRef<TaskStatus | null>(null);
+
   useEffect(() => {
     hydrate();
   }, [hydrate]);
 
-  // Placeholder until UI-03 wires the card dialog: taskId to edit, or null + status for a new card.
-  const handleOpenEditor = useCallback((_taskId: string | null, _status?: TaskStatus) => {}, []);
+  const handleOpenEditor = useCallback((taskId: string | null, status?: TaskStatus) => {
+    setEditingTaskId(taskId);
+    if (status) setDialogInitialStatus(status);
+    setDialogOpen(true);
+  }, []);
 
   const handleDragBegin = useCallback((taskId: string, status: TaskStatus) => {
     ds.begin(taskId, status);
@@ -55,6 +67,35 @@ export const KanbanBoard: React.FC = () => {
       if (e.key === "Escape" && ds.active) {
         ds.cancel();
         forceRender({});
+        return;
+      }
+
+      // Menus/popovers listen on window too, so they cannot stop this listener; ask the DOM instead.
+      const menuOpen = document.querySelector('[role="menu"], #label-filter-menu, #person-filter-menu') !== null;
+      const action = kanbanHotkey(
+        {
+          key: e.key,
+          metaKey: e.metaKey,
+          ctrlKey: e.ctrlKey,
+          altKey: e.altKey,
+          shiftKey: e.shiftKey,
+          repeat: e.repeat,
+          isComposing: e.isComposing,
+          target: e.target,
+        },
+        { dialogOpen, menuOpen }
+      );
+
+      if (action === "new-card") {
+        e.preventDefault();
+        const focused = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("[data-status]");
+        const status = (focused?.dataset.status as TaskStatus | undefined) ?? hoveredStatus.current ?? "backlog";
+        handleOpenEditor(null, status);
+      } else if (action === "save") {
+        e.preventDefault();
+        window.dispatchEvent(new Event("kanban:save-dialog"));
+      } else if (action === "close-dialog") {
+        window.dispatchEvent(new Event("kanban:close-dialog"));
       }
     };
 
@@ -71,7 +112,7 @@ export const KanbanBoard: React.FC = () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("dragend", handleDragEnd);
     };
-  }, [ds]);
+  }, [ds, dialogOpen, handleOpenEditor]);
 
   const currentState = ds.current;
 
@@ -115,7 +156,13 @@ export const KanbanBoard: React.FC = () => {
       </div>
 
       {/* Board Area */}
-      <main className="flex-1 overflow-x-auto overflow-y-hidden snap-x">
+      <main
+        className="flex-1 overflow-x-auto overflow-y-hidden snap-x"
+        onPointerOver={(e) => {
+          const col = (e.target as HTMLElement).closest<HTMLElement>("[data-status]");
+          hoveredStatus.current = (col?.dataset.status as TaskStatus | undefined) ?? null;
+        }}
+      >
         <div className="h-full p-4 sm:p-6 flex items-start gap-4 sm:gap-6 min-w-max">
           {!hydrated ? (
             /* Skeleton Columns (Must match real columns structure) */
@@ -145,6 +192,16 @@ export const KanbanBoard: React.FC = () => {
           )}
         </div>
       </main>
+
+      {dialogOpen && (
+        <TaskDialog
+          taskId={editingTaskId}
+          initialStatus={dialogInitialStatus}
+          onClose={() => setDialogOpen(false)}
+        />
+      )}
+
+      <UndoToast />
     </div>
   );
 };

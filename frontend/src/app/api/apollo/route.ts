@@ -73,23 +73,33 @@ function validate(payload: ProxyPayload): { url: URL; messages: ChatMessage[]; m
   return { url, messages, model, temperature, maxTokens };
 }
 
+/* Exact hosts only: a substring match would hand a key to openrouter.evil.example. */
+function providerKeys(): Map<string, string | undefined> {
+  return new Map([
+    ["openrouter.ai", process.env.OPENROUTER_API_KEY],
+    ["api.groq.com", process.env.GROQ_API_KEY],
+    ["generativelanguage.googleapis.com", process.env.GOOGLE_API_KEY],
+    ["api.mistral.ai", process.env.MISTRAL_API_KEY],
+    ["api.cerebras.ai", process.env.CEREBRAS_API_KEY],
+  ]);
+}
+
+function freeLlmHosts(): string[] {
+  const configured = process.env.FREELLMAPI_HOST?.trim().toLowerCase();
+  return configured ? [configured] : ["127.0.0.1:3001", "localhost:3001"];
+}
+
+/** Providers need TLS, the local gateway does not. Everything else is refused. */
+function targetAllowed(url: URL): boolean {
+  if (freeLlmHosts().includes(url.host)) return true;
+  return url.protocol === "https:" && providerKeys().has(url.host);
+}
+
 /** Optional server-side credential; never accepted from the client. */
 function authHeaders(url: URL): Record<string, string> {
   const headers: Record<string, string> = { "content-type": "application/json" };
-  const keys: Array<[RegExp, string | undefined]> = [
-    [/openrouter/i, process.env.OPENROUTER_API_KEY],
-    [/groq/i, process.env.GROQ_API_KEY],
-    [/googleapis|generativelanguage/i, process.env.GOOGLE_API_KEY],
-    [/mistral/i, process.env.MISTRAL_API_KEY],
-    [/cerebras/i, process.env.CEREBRAS_API_KEY],
-  ];
-  for (const [pattern, key] of keys) {
-    if (key && pattern.test(url.host)) {
-      headers.authorization = `Bearer ${key}`;
-      return headers;
-    }
-  }
-  if (process.env.FREELLMAPI_KEY) headers.authorization = `Bearer ${process.env.FREELLMAPI_KEY}`;
+  const key = freeLlmHosts().includes(url.host) ? process.env.FREELLMAPI_KEY : providerKeys().get(url.host);
+  if (key) headers.authorization = `Bearer ${key}`;
   return headers;
 }
 
@@ -116,6 +126,10 @@ export async function POST(request: NextRequest) {
       },
       { status: 400 },
     );
+  }
+
+  if (!targetAllowed(checked.url)) {
+    return NextResponse.json({ ok: false, error: "forbidden target host" }, { status: 403 });
   }
 
   // Der Katalog im Client kennt Anzeigenamen, der Anbieter braucht seine eigene Modell-ID.
