@@ -1,0 +1,20 @@
+{
+  "id": "t-1",
+  "board_id": "b-1",
+  "title": "Min",
+  "description": "",
+  "status": "triage",
+  "priority": 0,
+  "assigned_worker_uid": null,
+  "parent_id": null,
+  "dependencies": [],
+  "required_skills": [],
+  "is_rollup": false,
+  "attempts": 0,
+  "result_payload": null,
+  "block_reason": "",
+  "workspace_repo": null,
+  "created_at": "2026-10-29T16:15:12.224Z",
+  "updated_at": "2026-10-29T16:15:12.224Z",
+  "started_at": null
+}

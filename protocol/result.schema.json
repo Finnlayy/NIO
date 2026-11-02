@@ -290,6 +290,7 @@
             "E_BUDGET_EXHAUSTED",
             "E_DEADLINE_EXCEEDED",
             "E_INTERNAL",
+            "E_STOPPED",
             "E_IO",
             "E_LIMB_CRASH",
             "E_PATCH_NO_MATCH",
@@ -300,6 +301,7 @@
             "E_SCHEMA_INVALID",
             "E_SHELL_BLOCKED",
             "E_TARGET_NOT_FOUND",
+            "E_TICKET_INVALID",
             "E_TIMEOUT",
             "E_TRIGGER_INVALID",
             "E_UNSUPPORTED_OP"

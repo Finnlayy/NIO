@@ -9,10 +9,14 @@ import {
   CornerDownLeft,
   Eraser,
   ListFilter,
+  LoaderCircle,
+  Mic,
+  Square,
   TerminalSquare,
   X,
 } from "lucide-react";
 import { COMMANDS } from "./commands";
+import { joinDictation, useDictation } from "./dictation";
 import { useApolloStore, type LogEntry } from "./store";
 import { Badge, Segmented, type Tone } from "./ui";
 import type { TerminalMode } from "./types";
@@ -43,6 +47,7 @@ export function HybridTerminal() {
   const runCommand = useApolloStore((s) => s.runCommand);
   const clear = useApolloStore((s) => s.clearTerminal);
   const busy = useApolloStore((s) => s.busy);
+  const setSpeech = useApolloStore((s) => s.setSpeech);
 
   const [input, setInput] = useState("");
   const [history, setHistory] = useState<string[]>([]);
@@ -53,6 +58,23 @@ export function HybridTerminal() {
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const dictation = useDictation((text) => {
+    const joined = joinDictation(inputRef.current?.value ?? "", text);
+    if (joined === null) dictation.reject("approvals are typed, not dictated");
+    else setInput(joined);
+    inputRef.current?.focus({ preventScroll: true });
+  });
+  const { cancel: cancelDictation, probe: probeDictation, speech } = dictation;
+
+  useEffect(() => {
+    if (open) void probeDictation();
+    else cancelDictation();
+  }, [open, cancelDictation, probeDictation]);
+
+  useEffect(() => {
+    setSpeech(speech);
+  }, [speech, setSpeech]);
 
   useEffect(() => {
     if (!open) return;
@@ -320,7 +342,10 @@ export function HybridTerminal() {
           <input
             ref={inputRef}
             value={input}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(event) => {
+              setInput(event.target.value);
+              dictation.clearError();
+            }}
             onKeyDown={onKeyDown}
             placeholder={busy ? "apollo is working…" : "ask apollo, or /spawn inference Vision Cortex"}
             aria-label="Apollo terminal input"
@@ -329,6 +354,28 @@ export function HybridTerminal() {
             className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-slate-100 outline-none placeholder:text-slate-400"
             data-testid="terminal-input"
           />
+          <button
+            type="button"
+            onClick={dictation.toggle}
+            disabled={dictation.state === "transcribing"}
+            aria-label={dictation.state === "recording" ? "Stop dictation" : "Start dictation"}
+            aria-pressed={dictation.state === "recording"}
+            title={dictation.state === "recording" ? "Stop dictation" : "Dictate"}
+            data-testid="terminal-mic"
+            className={`grid h-6 w-6 place-items-center rounded-md border transition-colors disabled:opacity-40 ${
+              dictation.state === "recording"
+                ? "border-rose-400/60 text-rose-300"
+                : "border-white/10 text-slate-400 hover:border-cyan-400/40 hover:text-cyan-200"
+            }`}
+          >
+            {dictation.state === "recording" ? (
+              <Square size={10} />
+            ) : dictation.state === "transcribing" ? (
+              <LoaderCircle size={11} className="animate-spin" />
+            ) : (
+              <Mic size={11} />
+            )}
+          </button>
           <button
             type="button"
             onClick={() => void submit()}
@@ -341,8 +388,21 @@ export function HybridTerminal() {
           </button>
         </div>
         <div className="mt-1 flex items-center justify-between font-mono text-[8.5px] uppercase tracking-[0.14em] text-slate-400">
-          <span aria-live="polite" className={blocked ? "text-amber-300" : undefined}>
-            {blocked ? "mid-turn · command held" : busy ? "apollo is working · input held" : "↑↓ history · tab complete · /help"}
+          <span
+            aria-live="polite"
+            className={dictation.error ? "text-rose-300" : blocked ? "text-amber-300" : undefined}
+            data-testid="terminal-status"
+          >
+            {dictation.error ??
+              (dictation.state === "recording"
+                ? "listening · click stop when done"
+                : dictation.state === "transcribing"
+                  ? "transcribing…"
+                  : blocked
+                    ? "mid-turn · command held"
+                    : busy
+                      ? "apollo is working · input held"
+                      : "↑↓ history · tab complete · /help")}
           </span>
           <span className="flex items-center gap-1"><ListFilter size={8} /> {entries.length} entries</span>
         </div>

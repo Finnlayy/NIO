@@ -267,6 +267,7 @@ export function ApolloOrb({ className = "" }: { className?: string }) {
   const [mounted, setMounted] = useState(false);
 
   const orbState = useApolloStore((s) => s.orbState);
+  const speech = useApolloStore((s) => s.speech);
   const flare = useApolloStore((s) => s.flare);
   const setDeckOpen = useApolloStore((s) => s.setDeckOpen);
   const snapshot = useApolloStore((s) => s.router);
@@ -516,6 +517,15 @@ export function ApolloOrb({ className = "" }: { className?: string }) {
           <div className="font-mono text-[10px] uppercase tracking-[0.3em]" style={{ color: style.color }}>
             {style.label}
           </div>
+          {speech === "offline" || speech === "transcribing" ? (
+            <div
+              className="font-mono text-[9px] uppercase tracking-[0.2em]"
+              style={{ color: speech === "offline" ? PALETTE.amber : PALETTE.cyan }}
+              data-testid="orb-speech"
+            >
+              {speech === "offline" ? "speech engine is not running" : "transcribing"}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -552,8 +562,8 @@ export function ApolloOrb({ className = "" }: { className?: string }) {
             </div>
             <div className="h-1 overflow-hidden rounded-full bg-white/5">
               <div
-                className="h-full rounded-full transition-[width] duration-500"
-                style={{ width: `${Math.max(2, quota)}%`, background: quotaColor }}
+                className="h-full rounded-full transition-transform duration-500 origin-left"
+                style={{ width: "100%", transform: `scaleX(${Math.max(2, quota) / 100})`, background: quotaColor }}
               />
             </div>
             <div className="flex items-baseline justify-between gap-2">

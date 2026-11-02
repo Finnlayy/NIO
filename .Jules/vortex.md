@@ -6,3 +6,6 @@
 ## 2026-10-29 - Apollo components `transition-all` thrashes layout
 **Learning:** `transition-all` on elements in `ApolloOrb`, `NeuralGraph`, and `page` was causing unnecessary layout recalculations and CPU reflow on every frame when toggling visibility or styles.
 **Action:** Replaced `transition-all` with specific transitions (`transition-colors`, `transition-opacity`, and standard `transition`) to restrict animations to composite properties and avoid layout thrashing.
+## 2026-11-02 - [Graphics / Rendering Insight]
+**Learning:** Animating `width` via CSS transitions (`transition-[width]`) in the Apollo orchestrator UI triggers synchronous layout recalculations and CPU layout thrashing.
+**Action:** Replaced `width` animations with `transform: scaleX(...)` and `transformOrigin: left` combined with `transition-transform` to offload animations to the GPU composite layer and maintain 120 FPS frame budgets.

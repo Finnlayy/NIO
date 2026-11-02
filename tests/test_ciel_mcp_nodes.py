@@ -445,3 +445,46 @@ def test_load_and_register_fail_closed_per_node(tmp_path: Path) -> None:
     assert "good.stalk_lookup" in registry
     assert "ciel.mcp.node_registered" in sink.kinds()
     assert "ciel.mcp.node_failed" in sink.kinds()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX-Prozessgruppen erforderlich")
+@pytest.mark.parametrize("timeout", [True, False])
+def test_stdio_terminates_process_group(tmp_path: Path, timeout: bool) -> None:
+    """Timeout und explizites Stoppen beenden auch den gestarteten Kindprozess."""
+    from apollo.ciel.mcp_nodes import StdioMCPTransport
+
+    pidfile = tmp_path / "child.pid"
+    script = """
+import signal, subprocess, sys, time
+child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+open(sys.argv[1], 'w').write(str(child.pid))
+def shutdown(*args):
+    child.wait(timeout=5)
+    sys.exit(0)
+signal.signal(signal.SIGTERM, shutdown)
+while True: time.sleep(1)
+"""
+
+    async def run() -> None:
+        import os
+
+        transport = StdioMCPTransport("group", sys.executable, ["-c", script, str(pidfile)], timeout_sec=0.3)
+        await transport.start()
+        parent = transport._proc.pid
+        for _ in range(100):
+            if pidfile.exists():
+                break
+            await asyncio.sleep(0.01)
+        child = int(pidfile.read_text())
+        if timeout:
+            with pytest.raises(MCPTransportError, match="Timeout"):
+                await transport.request("hang")
+        else:
+            await transport.stop()
+        assert not transport.running
+        for pid in (parent, child):
+            with pytest.raises(ProcessLookupError):
+                os.kill(pid, 0)
+        await transport.stop()
+
+    asyncio.run(run())

@@ -135,3 +135,6 @@ Belegt am 2026-10-27 in dieser Sandbox:
 * **Kein Qdrant.** Candles sind tabellarisch, nicht vektoriell; ein Embedding
   einer OHLC-Zeile hat keinen Sinn. Semantische Erinnerung bleibt Sache von
   `Architect/limbs/intelligence/qdrant_memory_engine.py`.
+* **TradingView-Tools stehen in der Werkzeugkiste.** Beschreibungen des offiziellen
+  MCP-Servers kommen aus `toolbox.search` und `toolbox.describe`, nicht aus diesem Prompt.
+  Überblick und Regeln: `docs/knowledge/tradingview-mcp/README.md`.
