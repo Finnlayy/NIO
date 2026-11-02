@@ -287,13 +287,14 @@ class DockerSandbox(_ProcessSandbox):
             "/tmp:rw,size=64m",
             "--cap-drop",
             "ALL",
-            "--security-opt",
-            "no-new-privileges",
             "--user",
             "1000:1000",
             "--network",
             config.network,
         ]
+
+        if config.docker_no_new_privileges:
+            argv.extend(["--security-opt", "no-new-privileges"])
 
         if config.network != "none":
             argv.extend(["--add-host", "host.docker.internal:host-gateway"])

@@ -56,6 +56,8 @@ class KanbanConfig:
     pids_limit: int = 256
     network: str = "none"
     docker_bin: str = "docker"
+    # Nur abschalten, wenn das Image keine Setuid-Dateien hat: Snap-Docker bricht damit schon ``exec`` ab.
+    docker_no_new_privileges: bool = True
     # Takt und Fristen
     tick_s: float = 2.0
     heartbeat_s: float = 5.0
@@ -99,6 +101,7 @@ class KanbanConfig:
             pids_limit=_int(e, "NIO_KANBAN_PIDS", 256),
             network=e.get("NIO_KANBAN_NETWORK", "none"),
             docker_bin=e.get("NIO_KANBAN_DOCKER_BIN", "docker"),
+            docker_no_new_privileges=e.get("NIO_KANBAN_DOCKER_NO_NEW_PRIVILEGES", "1").strip() != "0",
             tick_s=_float(e, "NIO_KANBAN_TICK_S", 2.0),
             heartbeat_s=_float(e, "NIO_KANBAN_HEARTBEAT_S", 5.0),
             heartbeat_ttl_s=_float(e, "NIO_KANBAN_HEARTBEAT_TTL_S", 20.0),

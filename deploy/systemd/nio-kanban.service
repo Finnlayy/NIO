@@ -1,0 +1,17 @@
+[Unit]
+Description=NIO Kanban (API, Dispatcher, Reaper)
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+WorkingDirectory=@ROOT@
+EnvironmentFile=%h/.config/nio/nio.env
+ExecStart=@ROOT@/.venv/bin/python -m orchestrator kanban serve
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+MemoryMax=1G
+TasksMax=256
+
+[Install]
+WantedBy=default.target
