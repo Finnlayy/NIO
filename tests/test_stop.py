@@ -49,7 +49,13 @@ def alive(pid: int) -> bool:
     except ProcessLookupError:
         return False
     stat = Path(f"/proc/{pid}/stat")
-    return not stat.exists() or stat.read_text().rsplit(")", 1)[1].split()[0] != "Z"
+    if not stat.exists():
+        return True
+    try:
+        text = stat.read_text()
+    except OSError:  # Zwischen kill und read beendet
+        return False
+    return text.rsplit(")", 1)[1].split()[0] != "Z"
 
 
 class StopCase(unittest.TestCase):

@@ -1,14 +1,15 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import tempfile
 import json
+import tempfile
 from pathlib import Path
 
-from gui.views.feedback_dialog import FeedbackSubmission, FeedbackDialog, PYQT6_AVAILABLE
 from core.schema_utils import SchemaInvalid
+from gui.views.feedback_dialog import PYQT6_AVAILABLE, FeedbackDialog, FeedbackSubmission
 
 OUTCOME_SUMMARY = {
     "outcome_id": "job_77",
@@ -60,14 +61,14 @@ class TestFeedbackSubmission(unittest.TestCase):
         path = self.submission.submit(feedback)
         self.assertTrue(Path(path).exists())
         self.assertIn("job_77", str(path))
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             stored = json.load(f)
         self.assertEqual(stored["rating"], 2)
         log_text = self.system_log.read_text(encoding="utf-8")
         self.assertIn("feedback_submitted", log_text)
 
     def test_submission_matches_feedback_schema(self):
-        from core.schema_utils import load_schema, validate_against_schema, default_schema_path
+        from core.schema_utils import default_schema_path, load_schema, validate_against_schema
         feedback = self.submission.build_feedback(OUTCOME_SUMMARY, rating=1, preference="B > A")
         schema = load_schema(default_schema_path("feedback.schema.json"))
         errors = validate_against_schema(feedback, schema)
@@ -80,7 +81,7 @@ class TestFeedbackDialogWidget(unittest.TestCase):
 
     def test_dialog_flow(self):
         from PyQt6.QtWidgets import QApplication
-        app = QApplication.instance() or QApplication(sys.argv)
+        self.app = QApplication.instance() or QApplication(sys.argv)
         tmpdir = tempfile.mkdtemp()
         submission = FeedbackSubmission(feedback_dir=str(Path(tmpdir) / "feedback"))
         dialog = FeedbackDialog(OUTCOME_SUMMARY, submission=submission)
@@ -93,7 +94,7 @@ class TestFeedbackDialogWidget(unittest.TestCase):
 
     def test_dialog_requires_dict_summary(self):
         from PyQt6.QtWidgets import QApplication
-        app = QApplication.instance() or QApplication(sys.argv)
+        self.app = QApplication.instance() or QApplication(sys.argv)
         with self.assertRaises(TypeError):
             FeedbackDialog("not a dict")
 

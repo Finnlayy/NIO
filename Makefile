@@ -26,7 +26,7 @@ test-core:  ## NEU-Kern, Orchestrator, Limbs, Protokoll 1.2 (echte Subprozesse u
 	$(PYTHON) -W error::ResourceWarning -m unittest discover -s tests -t . -q
 
 test-architect:  ## Architect-Suite (Core, Learning, Limbs, GUI-Modelle)
-	cd Architect && $(PYTHON) -W error::ResourceWarning -m unittest discover -s tests -t . -q
+	cd Architect && QT_QPA_PLATFORM=offscreen $(PYTHON) -W error::ResourceWarning -m unittest discover -s tests -t . -q
 
 test-frontend: ui-test  ## Alias, damit `make test-*` das Frontend eindeutig einschliesst
 
