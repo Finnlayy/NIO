@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, Play, Terminal } from "lucide-react";
 import { ModuleHeader, StatusDot, Tile } from "./shared";
+import { isTypingTarget } from "@/ops/hotkeys";
 import type { RunState } from "./types";
 import { isTypingTarget } from "@/ops/hotkeys";
 
@@ -27,6 +28,17 @@ export function TaskConsole({
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Store the latest state and callbacks to avoid recreating the effect or missing updates.
+  const stateRef = useRef({ isRunning, taskText, onRun });
+  useEffect(() => {
+    stateRef.current = { isRunning, taskText, onRun };
+  }, [isRunning, taskText, onRun]);
+
+  // Ergonomic pattern: Global shortcut for task dispatching
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        // Suppress triggers when typing in other inputs, but allow if focused on our textarea
   const stateRef = useRef({ taskText, isRunning, onRun });
   useEffect(() => {
     stateRef.current = { taskText, isRunning, onRun };
@@ -43,6 +55,9 @@ export function TaskConsole({
         }
 
         e.preventDefault();
+        const { isRunning, taskText, onRun } = stateRef.current;
+        if (!isRunning && taskText.trim()) {
+          onRun();
         const { taskText: currentTaskText, isRunning: currentIsRunning, onRun: currentOnRun } = stateRef.current;
         if (!currentIsRunning && currentTaskText.trim()) {
           currentOnRun();
