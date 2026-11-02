@@ -91,6 +91,9 @@ class Poll:
     detail: Mapping[str, Any] | None = None
 
 
+import math
+from core.budget import BudgetError, BudgetTracker, Usage
+
 class RunStore:
     """Ablage der Laeufe unter ``runtime/agents/``."""
 
@@ -211,6 +214,11 @@ class AgentLimb(LimbBase):
         return (Path(self.config.runtime_dir) / "STOP").exists()
 
     def _start(self, params: Mapping[str, Any], ctx: LimbContext) -> dict[str, Any]:
+        tracker = BudgetTracker(Path(self.config.runtime_dir) / "budget")
+        try:
+            tracker.check_start()
+        except BudgetError as e:
+            raise LimbError(ErrorCode.POLICY_DENIED, str(e))
         if self._stop_requested():
             raise LimbError(ErrorCode.STOPPED, "Not-Aus aktiv (runtime/STOP).")
 
@@ -241,6 +249,61 @@ class AgentLimb(LimbBase):
         try:
             poll = self.poll(run, ctx)
             reason = self.over_budget(run, poll, ctx)
+            if not reason:
+                # Update budget and check constraints
+                detail = poll.detail or {}
+
+                raw_tokens = detail.get("tokens")
+                raw_credits = detail.get("credits", 0.0)
+
+                try:
+                    tokens = int(raw_tokens) if raw_tokens is not None else None
+                    if tokens is not None and tokens < 0:
+                        raise ValueError
+                    credits_used = float(raw_credits)
+                    if not math.isfinite(credits_used) or credits_used < 0:
+                        raise ValueError
+                except (ValueError, TypeError):
+                    reason = "Ungueltige Nutzungswerte (tokens/credits) vom Agenten."
+
+                if not reason:
+                    # Delta berechnen
+                    last_tokens = run.get("last_tokens")
+                    last_credits = float(run.get("last_credits", 0.0))
+                    last_seconds = float(run.get("last_seconds", float(run["started_s"])))
+
+                    d_tokens = tokens - last_tokens if (tokens is not None and last_tokens is not None) else tokens if (last_tokens is None and tokens is not None) else None
+                    if d_tokens is not None:
+                        d_tokens = max(0, d_tokens)
+
+                    if tokens is None and last_tokens is not None:
+                        # API failed to report tokens this time; don't reset last_tokens so we can diff correctly later
+                        tokens = last_tokens
+
+                    d_credits = max(0.0, credits_used - last_credits)
+                    d_seconds = max(0.0, now - last_seconds)
+
+                    delta = Usage(seconds=d_seconds, tokens=d_tokens, credits=d_credits)
+
+                    total_run = Usage(
+                        seconds=now - float(run["started_s"]),
+                        tokens=tokens,
+                        credits=credits_used
+                    )
+
+                    tracker = BudgetTracker(Path(self.config.runtime_dir) / "budget")
+                    try:
+                        new_reason = tracker.record_and_check(run["run_id"], delta, total_run)
+                        if new_reason and not over_time:
+                            reason = new_reason
+                    except BudgetError as e:
+                        if not over_time:
+                            reason = str(e)
+
+                    run["last_tokens"] = tokens
+                    run["last_credits"] = credits_used
+                    run["last_seconds"] = now
+
         except ServiceDown as exc:
             run["failures"] = int(run["failures"]) + 1
             run["degraded"] = True
