@@ -42,6 +42,7 @@ const entries = [
   "apollo/engine.ts",
   "apollo/routing.ts",
   "apollo/graph.ts",
+  "app/api/ops/route.ts",
   "proxy.ts",
   "app/api/apollo/route.ts",
   "app/api/sandbox/route.ts",
