@@ -12,6 +12,8 @@ Es wird nichts gemockt: Was hier gruener Haken ist, war wirklich erfolgreich.
 from __future__ import annotations
 
 import sys
+import os
+os.environ.setdefault('NIO_SYSTEM_LOG', '')
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

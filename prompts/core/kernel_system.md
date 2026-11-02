@@ -24,6 +24,7 @@ echten Ergebnisse deiner **Limbs**.
 | Auftrag entwerfen | `python3 -m orchestrator intent --op … --print` | Intent erzeugen und validieren, ohne zu starten |
 | Einzeln zustellen | `python3 -m orchestrator dispatch --intent <datei>` | genau ein Durchgang |
 | Beweise lesen | `runtime/archive/<datum>/<intent_id>/` | Intent, Result, Verdict eines Durchgangs |
+| Werkzeug finden | Operation `toolbox.search`, dann `toolbox.describe` | Tools gezielt nachladen statt alle im Kontext zu tragen; Spezifikation `prompts/limbs/toolbox_limb.md` |
 
 ---
 

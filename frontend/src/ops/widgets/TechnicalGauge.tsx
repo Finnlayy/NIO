@@ -31,7 +31,10 @@ export function TechnicalGauge({ data, symbol }: { data: Record<string, unknown>
   const needleY = 50 - 34 * Math.sin((angle * Math.PI) / 180);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      <div className="absolute top-0 right-0 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 uppercase z-10">
+        Simulated
+      </div>
       <div className="relative">
         <svg viewBox="0 0 100 58" className="w-full max-w-[260px] mx-auto block">
           {/* track */}

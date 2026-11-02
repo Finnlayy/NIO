@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Experience",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "worker_uid": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "lessons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "skills_delta": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "outcome": {
+      "type": "string"
+    },
+    "vault_synced": {
+      "type": "boolean"
+    },
+    "created_at": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "worker_uid",
+    "task_id",
+    "summary",
+    "lessons",
+    "skills_delta",
+    "outcome",
+    "vault_synced",
+    "created_at"
+  ],
+  "additionalProperties": false
+}

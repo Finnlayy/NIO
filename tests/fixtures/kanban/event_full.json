@@ -1,0 +1,11 @@
+{
+  "kind": "k",
+  "task_id": "t-1",
+  "board_id": "b-1",
+  "status": "s",
+  "worker_uid": "w-1",
+  "payload": {
+    "x": 1
+  },
+  "ts": "2026-10-29T16:15:12.224Z"
+}

@@ -491,6 +491,8 @@ function NodeCard({
           <div
             className="absolute inset-y-0 left-0 h-full w-full origin-left rounded-full transition-transform duration-700"
             style={{ transform: `scaleX(${Math.max(3, load) / 100})`, background: hexToRgba(style.color, 0.75) }}
+            className="h-full rounded-full transition-transform duration-700 origin-left"
+            style={{ width: "100%", transform: `scaleX(${Math.max(3, load) / 100})`, background: hexToRgba(style.color, 0.75) }}
           />
         </div>
 
