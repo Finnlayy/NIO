@@ -1,12 +1,13 @@
 import os
+import sys
 import unittest
 from pathlib import Path
 
-import sys
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
-from limbs.container import ContainerConfig, build_docker_run_args, ConfigError
+from limbs.container import ConfigError, ContainerConfig, build_docker_run_args  # noqa: E402
+
 
 class TestContainer(unittest.TestCase):
     def setUp(self):
@@ -152,6 +153,26 @@ class TestContainer(unittest.TestCase):
         config = ContainerConfig(name="t", image="i", agent_name="a", run_dir=self.run_dir, user="root")
         with self.assertRaisesRegex(ConfigError, "User oder Gruppe root"):
             build_docker_run_args(config)
+
+    def test_read_only_mounts_werden_geprueft_und_markiert(self):
+        config = ContainerConfig(
+            name="test_container", image="test_image", run_dir=self.run_dir, agent_name="test_agent",
+            read_only_mounts={self.valid_mount: "/app/config"},
+        )
+        args, _ = build_docker_run_args(config)
+        self.assertIn(f"{self.valid_mount.resolve()}:/app/config:ro", args)
+
+        config = ContainerConfig(
+            name="test_container", image="test_image", run_dir=self.run_dir, agent_name="test_agent",
+            read_only_mounts={Path("/etc"): "/app/config"},
+        )
+        with self.assertRaises(ConfigError):
+            build_docker_run_args(config)
+
+    def test_no_new_privileges_ist_standard(self):
+        base = {"name": "c", "image": "i", "run_dir": self.run_dir, "agent_name": "a"}
+        self.assertIn("no-new-privileges", build_docker_run_args(ContainerConfig(**base))[0])
+        self.assertNotIn("no-new-privileges", build_docker_run_args(ContainerConfig(**base, no_new_privileges=False))[0])
 
 if __name__ == '__main__':
     unittest.main()
