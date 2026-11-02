@@ -1,6 +1,8 @@
 import { AlertTriangle, CheckCircle2, Loader2, Play, Terminal } from "lucide-react";
 import { ModuleHeader, StatusDot, Tile } from "./shared";
 import type { RunState } from "./types";
+import { useEffect, useRef } from "react";
+import { isTypingTarget } from "@/ops/hotkeys";
 
 export function TaskConsole({
   taskText,
@@ -23,6 +25,40 @@ export function TaskConsole({
   apiUrl: string;
   onRun: () => void;
 }) {
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const stateRef = useRef({ isRunning, taskText, onRun });
+
+  useEffect(() => {
+    stateRef.current = { isRunning, taskText, onRun };
+  }, [isRunning, taskText, onRun]);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        // Suppress trigger if the user is typing in another text field
+        const activeElement = document.activeElement;
+        if (
+          isTypingTarget(activeElement) &&
+          activeElement !== inputRef.current
+        ) {
+          return;
+        }
+
+        e.preventDefault();
+        const { isRunning: currentIsRunning, taskText: currentTaskText, onRun: currentOnRun } = stateRef.current;
+
+        if (!currentIsRunning && currentTaskText.trim()) {
+          currentOnRun();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+    };
+  }, []);
+
   return (
     <Tile className="p-4 h-full flex flex-col">
       <ModuleHeader
@@ -43,16 +79,9 @@ export function TaskConsole({
       />
 
       <textarea
+        ref={inputRef}
         value={taskText}
         onChange={(event) => onTaskText(event.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            if (!isRunning && taskText.trim()) {
-              onRun();
-            }
-          }
-        }}
         rows={3}
         className="console-input resize-none text-[12.5px] leading-relaxed"
         placeholder="Describe a task for the Neural Core …"
