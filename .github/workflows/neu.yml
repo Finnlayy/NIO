@@ -74,7 +74,7 @@ jobs:
       - name: Entwicklungswerkzeuge installieren
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "ruff>=0.16" "mypy>=1.11"
+          python -m pip install "ruff>=0.16" "mypy>=1.11" "fastapi>=0.110" "pydantic>=2"
 
       - name: ruff (Lint, Konfiguration aus pyproject.toml)
         run: ruff check .
@@ -100,9 +100,11 @@ jobs:
       - name: Protokoll-Selbstauskunft zeigt 1.2
         run: |
           set -euo pipefail
-          python -m orchestrator spec | grep -q "NEU-Protokoll 1.2"
-          python -m orchestrator spec | grep -q "unlimited"
-          python -m orchestrator spec | grep -q "finish_job"
+          # Erst speichern: grep -q schliesst die Pipe frueh, das waere mit pipefail ein Fehler.
+          spec="$(python -m orchestrator spec)"
+          grep -q "NEU-Protokoll 1.2" <<<"$spec"
+          grep -q "unlimited" <<<"$spec"
+          grep -q "finish_job" <<<"$spec"
 
       - name: Exit-Code-Vertrag (Nutzungsfehler = 3, Protokollfehler = 1)
         run: |
