@@ -1,17 +1,20 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import hashlib
+import json
 import tempfile
 from pathlib import Path
-import json
-import hashlib
 
 from core.manifest import Manifest
 from core.manifest_validation import validate_manifest_update
 from core.self_modification_safety import SelfModificationSafety
+
 from core.policy import Policy
+
 
 class TestOuroboros(unittest.TestCase):
     """Ouroboros test: full self-modification loop in sandbox using BootstrapLimb + Manifest + Safety."""
@@ -80,7 +83,7 @@ class TestOuroboros(unittest.TestCase):
         self.target_file.write_text(new_content)
 
         # Verify backup hash matches original
-        original_hash_from_backup = hashlib.sha256(original_content.encode("utf-8")).hexdigest()
+        hashlib.sha256(original_content.encode("utf-8")).hexdigest()
         # Check backup content equals original
         backup_content = backup_path.read_text()
         self.assertEqual(backup_content, original_content)
@@ -111,7 +114,7 @@ class TestOuroboros(unittest.TestCase):
     def test_rollback_on_failure(self):
         # Create a manifest with incorrect checksum (stale)
         original_content = self.target_file.read_text()
-        original_hash = hashlib.sha256(original_content.encode("utf-8")).hexdigest()
+        hashlib.sha256(original_content.encode("utf-8")).hexdigest()
         manifest_data = {
             "manifest_version": "1.0",
             "checksum": "rollback_checksum_12345",

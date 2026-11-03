@@ -1,16 +1,16 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import tempfile
-import json
 from pathlib import Path
 
-from core.events import EventBus
-from core.alignment.alignment_tracker import AlignmentTracker
 from core.alignment.alignment_dashboard import AlignmentDashboard
-from gui.views.alignment_dashboard import AlignmentDashboardModel, PYQT6_AVAILABLE
+from core.alignment.alignment_tracker import AlignmentTracker
+from core.events import EventBus
+from gui.views.alignment_dashboard import PYQT6_AVAILABLE, AlignmentDashboardModel
 
 
 class _Point:
@@ -176,7 +176,7 @@ class TestAlignmentDashboard(unittest.TestCase):
 class TestAlignmentDashboardTab(unittest.TestCase):
     def test_tab_refresh(self):
         from PyQt6.QtWidgets import QApplication
-        app = QApplication.instance() or QApplication(sys.argv)
+        self.app = QApplication.instance() or QApplication(sys.argv)
         from gui.views.alignment_dashboard import AlignmentDashboardTab
         tmpdir = Path(tempfile.mkdtemp())
         service = AlignmentDashboard(alignment_dir=str(tmpdir / "alignment"))

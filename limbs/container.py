@@ -28,9 +28,12 @@ class ContainerConfig:
     network: str = "nio-agents"
     user: str = f"{os.getuid()}:{os.getgid()}"
     mounts: dict[Path, str] = field(default_factory=dict)
+    read_only_mounts: dict[Path, str] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)
     tmpfs: list[str] = field(default_factory=list)
     remove: bool = True
+    # Nur abschalten, wenn das Image keine Setuid-Dateien hat: Snap-Docker bricht damit schon ``exec`` ab.
+    no_new_privileges: bool = True
 
 def build_docker_run_args(config: ContainerConfig) -> tuple[list[str], dict[str, str]]:
     """Baut die hardened `docker run` Argumente.
@@ -75,7 +78,7 @@ def build_docker_run_args(config: ContainerConfig) -> tuple[list[str], dict[str,
     if not run_dir_resolved.is_relative_to(agents_dir):
         raise ConfigError(f"run_dir muss innerhalb von {agents_dir} liegen, ist aber {run_dir_resolved}.")
 
-    for host_path, container_path in config.mounts.items():
+    for host_path, container_path in (*config.mounts.items(), *config.read_only_mounts.items()):
         if ":" in str(host_path):
              raise ConfigError(f"Doppelpunkt in Host-Pfad verboten: {host_path}")
         if ":" in str(container_path):
@@ -112,13 +115,15 @@ def build_docker_run_args(config: ContainerConfig) -> tuple[list[str], dict[str,
         "--user", config.user,
         "--read-only",
         "--cap-drop", "ALL",
-        "--security-opt", "no-new-privileges",
         "--cpus", config.cpus,
         "--memory", config.memory,
         "--memory-swap", config.memory_swap,
         "--pids-limit", str(config.pids_limit),
         "--network", config.network,
     ]
+
+    if config.no_new_privileges:
+        args.extend(["--security-opt", "no-new-privileges"])
 
     if config.remove:
         args.append("--rm")
@@ -129,6 +134,10 @@ def build_docker_run_args(config: ContainerConfig) -> tuple[list[str], dict[str,
     for host_path, container_path in config.mounts.items():
         resolved_host = host_path.resolve(strict=False)
         args.extend(["--volume", f"{resolved_host}:{container_path}"])
+
+    for host_path, container_path in config.read_only_mounts.items():
+        resolved_host = host_path.resolve(strict=False)
+        args.extend(["--volume", f"{resolved_host}:{container_path}:ro"])
 
     sub_env = {}
     for k, v in config.env.items():

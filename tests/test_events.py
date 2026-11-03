@@ -1,11 +1,10 @@
 import json
-import os
-import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from orchestrator.events import build_event_bus, FileSink
+from orchestrator.events import FileSink
+
 
 class TestEvents(unittest.TestCase):
     def test_filesink_rotation(self):
@@ -45,9 +44,8 @@ class TestEvents(unittest.TestCase):
 
 class TestAgentLogging(unittest.TestCase):
     def test_agent_log_redaction_and_newline_injection(self):
-        from limbs.agent_base import AgentLimb, redact
         from core.config import NeuConfig
-        import json
+        from limbs.agent_base import AgentLimb
 
         class MockAgentLimb(AgentLimb):
             name = "mock"

@@ -1,16 +1,17 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from core.state_machine import (
-    SystemExecutionState,
-    TRANSITION_MAP,
     GUARD_CONDITIONS,
-    TrancheLifecycleState,
+    TRANSITION_MAP,
     FeedConnectionState,
-    MarketRegimeState,
+    SystemExecutionState,
+    TrancheLifecycleState,
 )
+
 
 class TestStateMachineTransitions(unittest.TestCase):
     def test_system_states_exist(self):

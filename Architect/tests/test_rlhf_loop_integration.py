@@ -6,25 +6,26 @@
 Runs end-to-end in a sandboxed tempdir with stubbed AI supply (no network).
 """
 
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import tempfile
 import json
+import tempfile
 from pathlib import Path
 
+from core.evaluation.define_eval import EvalPipeline, define_eval
+from core.evaluation.evaluators import correctness_evaluator
 from core.events import EventBus
-from core.outcome_parser import OutcomeIngestion, OutcomeParser
 from core.feedback_processor import FeedbackProcessor
-from core.learning.skill_profiles import SkillProfileUpdater, WilsonScoreCalculator
-from core.learning.spaced_repetition import SpacedRepetitionEngine
 from core.learning.error_patterns import ErrorPatternDetector, ErrorPatternStorage
 from core.learning.knowledge_base import KnowledgeBase, KnowledgeEntryParser
 from core.learning.preference_model_updater import PreferenceModelUpdater
-from core.evaluation.define_eval import define_eval, EvalPipeline
-from core.evaluation.evaluators import correctness_evaluator
+from core.learning.skill_profiles import SkillProfileUpdater, WilsonScoreCalculator
+from core.learning.spaced_repetition import SpacedRepetitionEngine
+from core.outcome_parser import OutcomeIngestion
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RLHF_DATASET = str(REPO_ROOT / "evals" / "datasets" / "rlhf_samples.json")
@@ -116,7 +117,7 @@ class TestRLHFLoopIntegration(unittest.TestCase):
         self.feedback.save_aggregate("job_b1", aggregate_bad)
 
         # 4. Skill profiles updated from outcomes.
-        skill_good = self.skills.record_outcome("skill_micro", True, name="Microstructure")
+        self.skills.record_outcome("skill_micro", True, name="Microstructure")
         skill_bad = self.skills.record_outcome("skill_micro", False)
         self.assertEqual(skill_bad.total_attempts, 2)
         self.assertAlmostEqual(skill_bad.wilson_score,

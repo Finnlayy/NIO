@@ -6,6 +6,7 @@ schreibt die Erfahrung in den Kanban-Store und spiegelt alles in den Obsidian Va
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import hashlib
 import json
@@ -14,15 +15,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from core.protocol import utc_now_iso
 from core.config import NeuConfig
-from core.protocol import Operations
 from core.policy import Policy
+from core.protocol import Operations, utc_now_iso
 from orchestrator.runner import Orchestrator
-from .limb_bridge import run_limb_request
-import asyncio
 
 from .audit import AuditDraft
+from .limb_bridge import run_limb_request
 from .models import Experience, KanbanTask, Worker
 from .sandbox import SandboxResult
 from .store import KanbanStore
@@ -97,7 +96,7 @@ async def sync_back(
                 ),
                 timeout=120.0
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             success, l_reason, l_payload = False, "limb request timed out", None
         status = "completed" if success else "failed"
         reason = l_reason

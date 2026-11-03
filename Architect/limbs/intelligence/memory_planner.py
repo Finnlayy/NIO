@@ -1,5 +1,5 @@
-import logging
 import json
+import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -14,9 +14,10 @@ class MemoryPlanner:
         self.config_dir = Path("Architect/core/planning_config")
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
-    def create_plan(self, objective: str, context_vectors: list = None) -> dict:
+    def create_plan(self, objective: str, context_vectors: list | None = None) -> dict:
         """Create a new plan with memory context retrieval."""
-        import datetime, uuid
+        import datetime
+        import uuid
         plan_id = str(uuid.uuid4())[:8]
         timestamp = datetime.datetime.utcnow().isoformat() + "Z"
 
@@ -62,7 +63,7 @@ class MemoryPlanner:
         plan_path = self.plans_dir / f"{plan_id}.json"
         if not plan_path.exists():
             raise FileNotFoundError(f"Plan {plan_id} not found at {plan_path}")
-        with open(plan_path, "r", encoding="utf-8") as f:
+        with open(plan_path, encoding="utf-8") as f:
             plan = json.load(f)
         plan.update(updates)
         self.save_plan(plan)
@@ -72,7 +73,7 @@ class MemoryPlanner:
         plan_path = self.plans_dir / f"{plan_id}.json"
         if not plan_path.exists():
             return {}
-        with open(plan_path, "r", encoding="utf-8") as f:
+        with open(plan_path, encoding="utf-8") as f:
             return json.load(f)
 
     def save_plan(self, plan: dict):

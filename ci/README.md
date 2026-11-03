@@ -1,25 +1,10 @@
-# CI-Definition für den NEU-Kern — ein Schritt zur Aktivierung
+# CI-Definition für den NEU-Kern
 
-`ci/neu.yml` ist der fertige GitHub-Actions-Workflow für den Python-Kern
-(Test-Matrix 3.11/3.12/3.13 · ruff · mypy · End-to-End-Beweis · Exit-Code-Vertrag).
+Der Workflow liegt seit dem 2026-11-02 unter `.github/workflows/neu.yml`
+(Python-Kern: Test-Matrix 3.11/3.12/3.13 · ruff · mypy · End-to-End-Beweis ·
+Exit-Code-Vertrag). Er wird per Pull Request geändert, den ein Mensch mergt.
 
-Er liegt **hier** und nicht unter `.github/workflows/`, weil die anbindende
-GitHub-App keine `workflows`-Berechtigung hat — GitHub lehnt den Push sonst ab:
-
-```
-! [remote rejected] refusing to allow a GitHub App to create or update
-  workflow `.github/workflows/neu.yml` without `workflows` permission
-```
-
-## Aktivieren (ein Befehl, von einem Menschen mit Push-Recht)
-
-```bash
-git mv ci/neu.yml .github/workflows/neu.yml
-git commit -m "ci(neu): Workflow aktivieren"
-git push
-```
-
-Danach läuft bei jedem Push und jedem Pull Request:
+Bei jedem Push und jedem Pull Request läuft:
 
 | Job | Inhalt |
 |---|---|
@@ -33,7 +18,7 @@ Lokal identisch ohne GitHub: `make check`.
 
 `Architect/tests/` (214 Tests) und `frontend/` (23 UI-Tests) laufen seit dem
 2026-09-08 in `make test` bzw. `make check`, aber **noch nicht** in diesem
-Workflow. Der CI-Teil liegt als anwendbarer Patch bereit, weil `ci/neu.yml` nach
+Workflow. Der CI-Teil liegt als anwendbarer Patch bereit, weil der Workflow nach
 `tests/test_policy.py:138` nicht vom System selbst geändert werden darf:
 
 ```bash

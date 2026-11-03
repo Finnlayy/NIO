@@ -15,7 +15,7 @@ import json
 import logging
 from pathlib import Path
 
-from core.schema_utils import SchemaInvalid, load_schema, validate_against_schema, default_schema_path
+from core.schema_utils import SchemaInvalid, default_schema_path, load_schema, validate_against_schema
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class OutcomeParser:
         path = Path(file_path)
         if not path.exists():
             raise FileNotFoundError(f"Outcome file not found: {file_path}")
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         validated = self.validate_dict(data)
         logger.info("Outcome parsed and validated: %s (job_id=%s, verdict=%s)",

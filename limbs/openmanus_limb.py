@@ -7,7 +7,7 @@ Gemountet werden nur der Arbeitsordner und die Konfiguration des einen Laufs, ni
 ``$HOME``, ``docker.sock``, Keys oder ``workspace/``.
 
 SPERRE: Der Limb steht im Register auf ``planned``. Der Orchestrator lehnt ihn ab,
-bis Container, Netz (Harness 2.8, 2.9) und Tickets aus J4 gemergt sind.
+bis ein Mensch ihn freischaltet (Deployment-Plan, Stufe 4).
 
 Der Modell-Key liegt nur fuer die Dauer des Laufs in ``config.toml``. Provider-Keys
 kommen nie in den Container, nur der Key des lokalen Gateways.
@@ -34,9 +34,11 @@ for _entry in (str(Path(__file__).resolve().parent), str(_REPO_ROOT)):
 if __package__ in (None, ""):  # direkter Skriptaufruf durch den Orchestrator
     from agent_base import FAILED, RUNNING, SUCCEEDED, TIMED_OUT, AgentLimb, Poll, ServiceDown  # type: ignore[import-not-found]
     from base import LimbContext, LimbError  # type: ignore[import-not-found]
+    from container import ConfigError, ContainerConfig, build_docker_run_args  # type: ignore[import-not-found]
 else:  # Import als Paket (Tests, Tooling)
     from limbs.agent_base import FAILED, RUNNING, SUCCEEDED, TIMED_OUT, AgentLimb, Poll, ServiceDown
     from limbs.base import LimbContext, LimbError
+    from limbs.container import ConfigError, ContainerConfig, build_docker_run_args
 
 from core.protocol import ErrorCode  # noqa: E402
 
@@ -69,10 +71,11 @@ def _toml(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def docker(*args: str, timeout: int = DOCKER_TIMEOUT_S) -> str:
+def docker(*args: str, timeout: int = DOCKER_TIMEOUT_S, env: Mapping[str, str] | None = None) -> str:
     """Docker-Aufruf. Ein Fehler heisst fuer das Lauf-Modell: Agent nicht erreichbar."""
+    full_env = {**os.environ, **env} if env else None
     try:
-        done = subprocess.run(["docker", *args], capture_output=True, text=True, timeout=timeout, check=False)
+        done = subprocess.run(["docker", *args], capture_output=True, text=True, timeout=timeout, check=False, env=full_env)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ServiceDown(f"docker {args[0]}: {type(exc).__name__}") from exc
     if done.returncode != 0:
@@ -80,29 +83,30 @@ def docker(*args: str, timeout: int = DOCKER_TIMEOUT_S) -> str:
     return done.stdout.strip()
 
 
-def container_args(run_id: str, job: Path, max_runtime_s: int, max_steps: int) -> list[str]:
-    """Die ganze Abschottung an einer Stelle. Tests pruefen genau diese Liste.
+def container_args(run_id: str, job: Path, max_runtime_s: int, max_steps: int) -> tuple[list[str], dict[str, str]]:
+    """Die Abschottung kommt aus ``limbs/container.py``, hier stehen nur die Werte dieses Limbs.
 
-    ``no-new-privileges`` fehlt bewusst: Unter Snap-Docker scheitert damit schon ``exec``.
+    ``no-new-privileges`` bleibt aus: Unter Snap-Docker scheitert damit schon ``exec``.
     Das Image hat keine Setuid-Dateien mehr, und ``--cap-drop ALL`` nimmt alle Rechte.
+    Der Container bleibt nach dem Ende stehen, damit ``poll`` seinen Status lesen kann.
     """
-    return [
-        "run", "--detach",
-        "--name", f"nio-openmanus-{run_id}",
-        "--label", "nio.agent=openmanus",
-        "--user", f"{os.getuid()}:{os.getgid()}",
-        "--read-only",
-        "--cap-drop", "ALL",
-        "--cpus", "2", "--memory", "3g", "--memory-swap", "3g", "--pids-limit", "256",
-        "--network", NETWORK,
-        "--tmpfs", "/tmp:rw,noexec,nosuid,size=256m",
-        "--tmpfs", f"{CONTAINER_ROOT}/logs:rw,noexec,nosuid,size=64m,uid={os.getuid()},gid={os.getgid()}",
-        "--volume", f"{job / 'workspace'}:{CONTAINER_ROOT}/workspace:rw",
-        "--volume", f"{job / 'config'}:{CONTAINER_ROOT}/config:ro",
-        "--env", f"NIO_MAX_RUNTIME_S={max_runtime_s}",
-        "--env", f"NIO_MAX_STEPS={max_steps}",
-        IMAGE,
-    ]
+    built: tuple[list[str], dict[str, str]] = build_docker_run_args(ContainerConfig(
+        name=f"nio-openmanus-{run_id}",
+        image=IMAGE,
+        run_dir=job,
+        agent_name="openmanus",
+        network=NETWORK,
+        mounts={job / "workspace": f"{CONTAINER_ROOT}/workspace"},
+        read_only_mounts={job / "config": f"{CONTAINER_ROOT}/config"},
+        env={"NIO_MAX_RUNTIME_S": str(max_runtime_s), "NIO_MAX_STEPS": str(max_steps)},
+        tmpfs=[
+            "/tmp:rw,noexec,nosuid,size=256m",
+            f"{CONTAINER_ROOT}/logs:rw,noexec,nosuid,size=64m,uid={os.getuid()},gid={os.getgid()}",
+        ],
+        remove=False,
+        no_new_privileges=False,
+    ))
+    return built
 
 
 class OpenManusLimb(AgentLimb):
@@ -131,7 +135,8 @@ class OpenManusLimb(AgentLimb):
         return "" if internal == "true true" else f"Netz {NETWORK} ist nicht abgeschottet, siehe docs/OPENMANUS.md."
 
     def _job(self, run_id: str) -> Path:
-        return self.runs.path(run_id) / "job"
+        job: Path = self.runs.path(run_id) / "job"
+        return job
 
     # ------------------------------------------------------------------- Hooks
     def prepare(self, params: Mapping[str, Any], ctx: LimbContext) -> dict[str, Any]:
@@ -161,7 +166,11 @@ class OpenManusLimb(AgentLimb):
         path.write_text(CONFIG.format(model=_toml(model), url=_toml(url), key=_toml(key)), encoding="utf-8")
         run["container"] = f"nio-openmanus-{run['run_id']}"
         try:
-            docker(*container_args(run["run_id"], job, run["max_runtime_s"], run["max_steps"]))
+            args, env = container_args(run["run_id"], job, run["max_runtime_s"], run["max_steps"])
+            docker(*args, env=env)
+        except ConfigError as exc:
+            self._cleanup(run)
+            raise LimbError(ErrorCode.POLICY_DENIED, str(exc)) from exc
         except ServiceDown:
             self._cleanup(run)
             raise

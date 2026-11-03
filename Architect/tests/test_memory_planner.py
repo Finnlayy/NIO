@@ -1,10 +1,12 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
 
 # Mock Qdrant engine for memory planner tests
 class MockQdrantEngine:
@@ -23,7 +25,8 @@ class MockClient:
             MockPoint("m2", 0.87, {"memory": "similar failure pattern"}),
         ]
 
-from limbs.intelligence.memory_planner import MemoryPlanner
+from limbs.intelligence.memory_planner import MemoryPlanner  # noqa: E402
+
 
 class TestMemoryPlanner(unittest.TestCase):
     def setUp(self):

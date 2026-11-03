@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class ACGravityEngine:
     def __init__(self):
         self.quantile = 0.999

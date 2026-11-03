@@ -1,5 +1,5 @@
-import logging
 import datetime
+import logging
 import time
 from pathlib import Path
 
@@ -8,9 +8,9 @@ logger = logging.getLogger(__name__)
 class Timer:
     """Timer system supporting deadline and unlimited modes with safety net."""
 
-    def __init__(self, mode: str = "deadline", deadline_s: float = None,
-                 soft_deadline_s: float = None, safety_net_s: float = None,
-                 t0: float = None, job_id: str = None):
+    def __init__(self, mode: str = "deadline", deadline_s: float | None = None,
+                 soft_deadline_s: float | None = None, safety_net_s: float | None = None,
+                 t0: float | None = None, job_id: str | None = None):
         self.mode = mode  # "deadline" or "unlimited"
         self.deadline_s = deadline_s  # budget in seconds (deadline mode)
         self.soft_deadline_s = soft_deadline_s  # soft limit for warnings
@@ -21,7 +21,7 @@ class Timer:
         self.runtime_dir = Path("Architect/runtime")
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
 
-    def tick(self, current_time: float = None) -> dict:
+    def tick(self, current_time: float | None = None) -> dict:
         """Advance timer evaluation; return status dict."""
         current_time = current_time or time.time()
         elapsed_s = current_time - self.t0
@@ -79,7 +79,7 @@ class Timer:
             logger.warning("Timer load: file not found: %s", timer_path)
             return False
         import json
-        with open(timer_path, "r", encoding="utf-8") as f:
+        with open(timer_path, encoding="utf-8") as f:
             state = json.load(f)
         self.mode = state.get("mode", self.mode)
         self.deadline_s = state.get("deadline_s")

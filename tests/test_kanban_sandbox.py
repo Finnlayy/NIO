@@ -285,10 +285,11 @@ class TestKanbanDockerSandbox(unittest.TestCase):
         asyncio.run(run_and_inspect())
 
     def test_subprocess_limb(self) -> None:
-        self._write_soul("limb", "limb_operation: sys.echo\n")
+        content = "---\nruntime: limb\nlimb_operation: sys.echo\n---\n\n## Core Skills\n"
+        (self.in_dir / "SOUL.md").write_text(content, encoding="utf-8")
         runner = build_sandbox(self.config)
 
-        result = asyncio.run(runner.run(self.spec, on_heartbeat=lambda: None))
+        result = asyncio.run(runner.run(self.spec, on_heartbeat=lambda: asyncio.sleep(0)))
 
         self.assertEqual(result.exit_code, 0)
 

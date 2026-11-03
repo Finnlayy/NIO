@@ -1,10 +1,10 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import tempfile
-import json
 from pathlib import Path
 
 from core.events import EventBus

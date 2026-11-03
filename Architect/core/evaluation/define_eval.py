@@ -10,9 +10,9 @@ heuristics with structured, weighted scorers built on real historical
 Results are persisted to `Architect/runtime/learning/evals/<eval_name>_<ts>.json`.
 """
 
+import datetime
 import json
 import logging
-import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class EvalConfig:
 
     def __init__(self, eval_name: str, criteria: dict, dataset_path: str,
                  evaluator_func, aggregator_func=None, threshold: float = 85.0,
-                 created_at: str = None):
+                 created_at: str | None = None):
         self.eval_name = eval_name
         self.criteria = criteria or {}
         self.dataset_path = dataset_path
@@ -121,7 +121,7 @@ class EvalPipeline:
         path = Path(resolve_dataset_path(dataset_path))
         if not path.exists():
             raise EvalDataError(f"Dataset not found: {dataset_path}")
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, list):
             return data

@@ -1,6 +1,5 @@
-import logging
-import json
 import hashlib
+import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -59,8 +58,8 @@ class BootstrapLimb:
                 allowed = True
                 break
         if not allowed and not str(path).startswith(str(self.sandbox_root)):
-            raise SandboxViolation(f"Read access denied: {path_str} (not in allowed paths or sandbox)")
-        with open(path, "r", encoding="utf-8") as f:
+            raise SandboxViolation(f"Read access denied: {file_path_str} (not in allowed paths or sandbox)")
+        with open(path, encoding="utf-8") as f:
             return f.read()
 
     def write_file(self, file_path_str: str, content: str, backup: bool = True) -> Path:
@@ -98,8 +97,7 @@ class BootstrapLimb:
         dir_path = self.resolve_path(directory_str)
         if not dir_path.exists() or not dir_path.is_dir():
             raise FileNotFoundError(f"Directory not found: {dir_path}")
-        files = [str(f) for f in dir_path.iterdir() if f.is_file()]
-        return files
+        return [str(f) for f in dir_path.iterdir() if f.is_file()]
 
     def mkdir(self, directory_str: str) -> Path:
         dir_path = self.resolve_path(directory_str)
