@@ -1,15 +1,8 @@
-/* ==================================================================== */
-/* Optional live bridge                                                  */
-/*                                                                       */
-/* The UI is fully functional without a backend: synthesis is simulated  */
-/* and every simulated line is labelled SIM. When an operator configures  */
-/* a FreeLLMAPI endpoint, prompts go through `/api/apollo`, which proxies */
-/* to that OpenAI-compatible endpoint. Failures degrade to simulation     */
-/* with a visible warning — never to a silent fake answer.               */
-/* ==================================================================== */
+/** Live server bridge: errors stay errors; there is no simulated fallback. */
 
 export interface SynthesisRequest {
   endpointUrl: string;
+  providerId?: string;
   model: string;
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
   temperature: number;

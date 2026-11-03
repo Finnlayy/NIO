@@ -11,6 +11,7 @@ import { UndoToast } from "./UndoToast";
 import { kanbanHotkey } from "./hotkeys";
 import { columnTasks, filterTasks } from "./board-logic";
 import { Plus } from "lucide-react";
+import { MainWindowLink } from "../components/MainWindowLink";
 
 export const KanbanBoard: React.FC = () => {
   const hydrate = useKanbanStore(s => s.hydrate);
@@ -135,6 +136,7 @@ export const KanbanBoard: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <MainWindowLink />
           {saveFailed && (
             <span role="status" className="text-[11px] font-medium text-amber-400/90 bg-amber-400/10 border border-amber-400/20 px-2 py-1 rounded">
               Nicht lokal gespeichert – Speicher nicht verfügbar

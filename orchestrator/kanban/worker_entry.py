@@ -15,9 +15,12 @@ import signal
 import subprocess
 import sys
 import threading
+import urllib.error
+import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 __all__ = ["main"]
 
@@ -119,6 +122,73 @@ def _update_soul(soul: str, new_skills: list[str]) -> str:
     return "\n".join(out) + ("\n" if soul.endswith("\n") else "")
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> None:
+        return None
+
+
+def _live_completion(soul: str, task: dict[str, Any]) -> dict[str, Any]:
+    """Exactly one bounded provider request; no tools, retries or simulated answer."""
+    if os.environ.get("NIO_LLM_ERROR"):
+        raise ValueError(os.environ["NIO_LLM_ERROR"])
+    key = os.environ.get("NIO_LLM_API_KEY", "").strip()
+    model = os.environ.get("NIO_LLM_MODEL", "").strip()
+    if not key:
+        raise ValueError("missing_secret")
+    if not model:
+        raise ValueError("model_missing")
+    endpoint = os.environ.get("NIO_LLM_ENDPOINT", "")
+    url = urlsplit(endpoint)
+    provider = os.environ.get("NIO_LLM_PROVIDER", "")
+    if url.username or url.password or url.fragment or (url.scheme != "https" and not (
+        provider == "freellm" and url.scheme == "http" and url.hostname in ("localhost", "127.0.0.1", "::1")
+    )):
+        raise ValueError("forbidden_provider_endpoint")
+    protocol = os.environ.get("NIO_LLM_PROTOCOL", "openai")
+    messages = [{"role": "system", "content": soul[:12_000]}, {"role": "user", "content": str(task.get("title", "")) + "\n" + str(task.get("description", ""))[:12_000]}]
+    headers = {"Content-Type": "application/json"}
+    body: dict[str, Any] = {"model": model, "messages": messages, "max_tokens": 64, "temperature": 0, "stream": False}
+    if protocol == "anthropic":
+        headers.update({"x-api-key": key, "anthropic-version": "2023-06-01"})
+        body["system"] = soul[:12_000]
+        body["messages"] = messages[1:]
+    else:
+        headers["Authorization"] = f"Bearer {key}"
+    request = urllib.request.Request(endpoint, data=json.dumps(body).encode(), headers=headers, method="POST")
+    try:
+        with urllib.request.build_opener(_NoRedirect()).open(request, timeout=20) as response:
+            data = json.loads(response.read(256_000))
+        if protocol == "anthropic":
+            text = next((part.get("text") for part in data.get("content", []) if part.get("type") == "text"), None)
+        elif protocol == "cohere":
+            text = next((part.get("text") for part in data.get("message", {}).get("content", []) if part.get("type") == "text"), None)
+        else:
+            text = data["choices"][0]["message"]["content"]
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("invalid_response")
+        return {"text": _redact_output(text.strip())[:12_000], "provider": provider, "model": model, "live": True}
+    except urllib.error.HTTPError as error:
+        code = "auth_failed" if error.code in (401, 403) else "rate_limited" if error.code == 429 else "upstream_error"
+        raise ValueError(f"{code}: HTTP {error.code}") from None
+    except (urllib.error.URLError, TimeoutError):
+        raise ValueError("network_error_or_timeout") from None
+    except (ValueError, KeyError, TypeError, IndexError):
+        raise ValueError("invalid_response") from None
+
+
+def _redact_output(value: Any) -> Any:
+    if isinstance(value, str):
+        for name, secret in os.environ.items():
+            if secret and any(marker in name.upper() for marker in ("KEY", "TOKEN", "SECRET", "PASSWORD")):
+                value = value.replace(secret, "[REDACTED]")
+        return value
+    if isinstance(value, dict):
+        return {key: _redact_output(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_output(item) for item in value]
+    return value
+
+
 def main() -> int:
     ctx = WorkerContext()
 
@@ -149,6 +219,8 @@ def main() -> int:
 
         frontmatter = _parse_frontmatter(ctx.soul_md)
         runtime = frontmatter.get("runtime", "noop").lower()
+        if os.environ.get("NIO_KANBAN_LLM_ONLY") == "1" and runtime != "llm":
+            raise ValueError("llm_transport_refuses_non_llm_runtime")
 
         if frontmatter.get("learns"):
             ctx.skills_delta = [s.strip() for s in frontmatter["learns"].split(",") if s.strip()]
@@ -157,6 +229,11 @@ def main() -> int:
             ctx.status = "completed"
             ctx.result_payload = {"echo": task_data.get("title", "")}
             ctx.experience_summary = f"Noop: {task_data.get('title', '')}"
+
+        elif runtime == "llm":
+            ctx.result_payload = _live_completion(ctx.soul_md, task_data)
+            ctx.status = "completed"
+            ctx.experience_summary = "Live provider completion received"
 
         elif runtime == "command":
             if "command" not in frontmatter:
@@ -267,12 +344,12 @@ def main() -> int:
             "reason": ctx.reason if ctx.status != "completed" else "",
         }
 
-        _atomic_write(ctx.out_dir / "experience.json", json.dumps(experience).encode("utf-8"))
+        _atomic_write(ctx.out_dir / "experience.json", json.dumps(_redact_output(experience)).encode("utf-8"))
 
         if ctx.new_soul_md != ctx.soul_md:
             _atomic_write(ctx.out_dir / "SOUL.md", ctx.new_soul_md.encode("utf-8"))
 
-        _atomic_write(ctx.out_dir / "result.json", json.dumps(res).encode("utf-8"))
+        _atomic_write(ctx.out_dir / "result.json", json.dumps(_redact_output(res)).encode("utf-8"))
 
     if ctx.interrupted:
         return 143

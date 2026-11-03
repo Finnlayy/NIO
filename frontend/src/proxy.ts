@@ -14,14 +14,16 @@ function parseHost(value: string): URL | null {
 
 /**
  * Guard for /api/*: the routes hold keys and start processes, so only pages from
- * this machine and this port may call them. A loopback Host stops DNS rebinding,
- * where a foreign page sends a matching Origin and Host.
+ * this machine and this port may call them. A loopback Host (or an explicitly
+ * configured preview host) stops DNS rebinding with matching Origin and Host.
  */
 export function proxy(request: NextRequest) {
   const hostHeader = request.headers.get("host") ?? "";
   const host = parseHost(hostHeader);
-  if (!host || !LOOPBACK.has(host.hostname)) {
-    return new NextResponse("Forbidden: Host must be loopback", { status: 403 });
+  const previewHost = process.env.NIO_PREVIEW_HOST;
+  const allowedPreview = previewHost ? parseHost(previewHost) : null;
+  if (!host || (!LOOPBACK.has(host.hostname) && host.host !== allowedPreview?.host)) {
+    return new NextResponse("Forbidden: Host must be loopback or the configured preview host", { status: 403 });
   }
 
   const origin = request.headers.get("origin");

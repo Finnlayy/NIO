@@ -1,6 +1,6 @@
 import { tickers, fmt, type Ticker } from "../marketData";
 import { useMarketData } from "../hooks/useMarketData";
-import { Pct, Insight, LiveBadge } from "./bits";
+import { MarketUnavailable, Pct, Insight, LiveBadge } from "./bits";
 
 /* Treemap-style breadth grid: tile area ~ market weight proxy, color = change */
 function tileWeight(t: Ticker) {
@@ -39,7 +39,9 @@ export function MarketBreadthRadar({ data }: { data: Record<string, unknown> }) 
     180_000,
   );
 
-  const tape: Ticker[] = simTape.map((t) => {
+  if (source !== "live") return <MarketUnavailable source={source} />;
+
+  const tape: Ticker[] = simTape.filter((t) => live.byBase[t.symbol.replace("USDT", "").replace(/\.P$/, "")]).map((t) => {
     const base = t.symbol.replace("USDT", "").replace(/\.P$/, "");
     const liveQuote = live?.byBase?.[base];
     if (liveQuote) {

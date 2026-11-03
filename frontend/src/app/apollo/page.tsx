@@ -9,6 +9,7 @@ import {
   GitBranch,
   Keyboard,
   Layers,
+  Mic,
   Radio,
   TerminalSquare,
   Zap,
@@ -44,7 +45,7 @@ export default function ApolloStagePage() {
     log({
       origin: "NIO_CORE",
       level: "INFO",
-      message: `Apollo core online · ${POOL_PROVIDERS} FreeLLMAPI providers · ${POOL_ENDPOINTS} endpoints indexed · primary ${config.primaryModel}.`,
+      message: "Apollo online. Echten Providerstatus mit /router status prüfen. Keine Live-Verbindung wird aus Katalogdaten abgeleitet.",
     });
   }, [log, config.primaryModel]);
 
@@ -82,7 +83,7 @@ export default function ApolloStagePage() {
   const failover = router.mode !== "PRIMARY";
 
   return (
-    <div className="apollo-stage relative flex h-[100svh] min-h-[640px] flex-col overflow-hidden bg-[#05070d] text-slate-200">
+    <div className="apollo-stage relative flex h-[100svh] min-h-[100svh] flex-col overflow-hidden bg-[#05070d] text-slate-200">
       {/* ------------------------------------------------------------ header */}
       <header className="relative z-30 flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] bg-[#05070d]/80 px-3 py-2 backdrop-blur-xl sm:px-4">
         <div className="flex items-center gap-3">
@@ -102,7 +103,7 @@ export default function ApolloStagePage() {
           </div>
           <span className="hidden h-6 w-px bg-white/10 sm:block" />
           <div className="hidden items-center gap-1.5 sm:flex">
-            <Badge tone={modeTone} dot>{router.mode}</Badge>
+            <Badge tone="slate">UI-Profil</Badge>
             <Badge tone="cyan">{activeModel.name}</Badge>
             <Badge tone="slate">{nodes.length} nodes</Badge>
           </div>
@@ -131,17 +132,41 @@ export default function ApolloStagePage() {
             aria-pressed={deckOpen}
             className="flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-cyan-200 transition-colors hover:bg-cyan-400/20"
           >
-            <Layers size={11} /> deck
+            <Layers size={11} /> controls
             <kbd className="hidden rounded border border-cyan-400/20 px-1 text-[8px] text-cyan-300/70 sm:inline">⌘K</kbd>
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTerminalOpen(true);
+              setTimeout(() => document.querySelector<HTMLButtonElement>('[data-testid="terminal-mic"]')?.focus(), 60);
+            }}
+            className="flex items-center gap-1.5 rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1.5 font-mono text-[10px] uppercase text-emerald-200"
+          >
+            <Mic size={12} /> Voice
+          </button>
+          <Link href="/kanban" className="rounded-lg border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase text-slate-300 hover:text-cyan-200">
+            Kanban
+          </Link>
           <Link
             href="/ops"
-            className="hidden rounded-lg border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-400 transition-colors hover:border-white/25 hover:text-slate-200 md:flex md:items-center md:gap-1.5"
+            className="flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-300 transition-colors hover:border-white/25 hover:text-slate-200"
           >
             ops grid <ArrowRight size={10} />
           </Link>
         </div>
       </header>
+
+      <div className="relative z-20 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/[0.06] bg-[#0b1020] px-3 py-2 text-[11px] text-slate-400">
+        <span className={config.freeLLMRouting.endpointUrl.trim() ? "text-emerald-300" : "text-amber-200"}>
+          Live-Modus · Providerstatus im Control Deck · kein Simulations-Fallback
+        </span>
+        <span>Controls: configure AI & permissions. Voice: dictate into the terminal. Kanban: manage tasks.</span>
+        <button type="button" className="text-cyan-300 underline underline-offset-2" onClick={() => {
+          setTerminalOpen(true);
+          void runCommand("/help");
+        }}>Command guide</button>
+      </div>
 
       {/* failover ribbon */}
       <div
@@ -155,7 +180,7 @@ export default function ApolloStagePage() {
             <Zap size={11} /> failover active
           </span>
           <span className="text-[11px] text-amber-100/90">
-            {config.primaryModel} quota spent — answering through <strong className="font-semibold">{activeModel.name}</strong> ({activeModel.provider}).
+            {config.primaryModel} · UI-Demo-Failover, kein echter Providerwechsel · Profil <strong className="font-semibold">{activeModel.name}</strong> ({activeModel.provider}).
           </span>
           {router.lastHandoffNote && (
             <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-amber-300/60">
@@ -176,10 +201,10 @@ export default function ApolloStagePage() {
         {/* corner telemetry */}
         <div className="apollo-hud pointer-events-none absolute left-3 top-3 z-20 hidden flex-col gap-1.5 sm:flex">
           <TelemetryChip icon={<Radio size={10} />} label="orb" value={stateStyle.label} accent={stateStyle.color} />
-          <TelemetryChip icon={<Activity size={10} />} label="latency" value={`${42} ms`} />
+          <TelemetryChip icon={<Activity size={10} />} label="latency" value="nicht gemessen" />
           <TelemetryChip
             icon={<Zap size={10} />}
-            label="pool"
+            label="catalog"
             value={config.freeLLMRouting.enabled ? `${POOL_PROVIDERS} · ${POOL_ENDPOINTS}` : "disabled"}
             accent={config.freeLLMRouting.enabled ? PALETTE.emerald : undefined}
           />

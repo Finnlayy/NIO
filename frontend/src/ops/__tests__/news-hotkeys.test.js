@@ -12,7 +12,13 @@ test("NewsSentiment uses Tailwind tokens, not raw hex, and tabular nums", () => 
   const template = widgetTemplates.find((t) => t.id === "TPL_04");
   assert.equal(template.key, "macro-catalyst-timeline");
   const m = mount();
-  const html = renderToStaticMarkup(m.render(() => NewsSentiment({ data: template.dataFactory() })));
+  // Explicit mocked live data for this style contract; not a production fallback.
+  const market = require("../ops/hooks/useMarketData");
+  const original = market.useMarketData;
+  market.useMarketData = (_tool, _query, fixture) => ({ data: fixture, source: "live" });
+  let html;
+  try { html = renderToStaticMarkup(m.render(() => NewsSentiment({ data: template.dataFactory() }))); }
+  finally { market.useMarketData = original; }
   assert.doesNotMatch(html, /#34d399|#f87171|#94a3b8|#fbbf24|#6b7280/);
   assert.match(html, /text-emerald-400|text-rose-400|text-amber-400/);
   assert.match(html, /font-mono tabular-nums/);

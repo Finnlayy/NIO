@@ -45,13 +45,24 @@ test("guard lets this machine through", () => {
   assert.notEqual(guard("[::1]:4001", "http://[::1]:4001"), 403);
 });
 
+test("guard allows only the explicitly configured preview host and same origin", () => {
+  process.env.NIO_PREVIEW_HOST = "4001-preview.e2b.app";
+  assert.notEqual(guard("4001-preview.e2b.app", "https://4001-preview.e2b.app"), 403);
+  assert.equal(guard("4001-other.e2b.app", "https://4001-other.e2b.app"), 403);
+  assert.equal(guard("4001-preview.e2b.app", "https://evil.example"), 403);
+  assert.equal(guard("4001-preview.e2b.app.evil.example"), 403);
+  assert.equal(guard("4001-preview.e2b.app:9999"), 403);
+  process.env.NIO_PREVIEW_HOST = "https://4001-preview.e2b.app/path";
+  assert.equal(guard("4001-preview.e2b.app"), 403);
+});
+
 function askApollo(endpointUrl) {
   const { POST } = require("../app/api/apollo/route");
   return POST(
     new NextRequest("http://localhost:4001/api/apollo", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ endpointUrl, messages: [{ role: "user", content: "hi" }] }),
+      body: JSON.stringify({ endpointUrl, model: "test-model", messages: [{ role: "user", content: "hi" }] }),
     }),
   );
 }
@@ -81,7 +92,7 @@ test("a configured gateway host replaces the default", async () => {
   process.env.FREELLMAPI_HOST = "gateway.local:9000";
   const calls = recordFetch();
   assert.equal((await askApollo("http://127.0.0.1:3001/v1/x")).status, 403);
-  assert.equal((await askApollo("http://gateway.local:9000/v1/x")).status, 200);
+  assert.equal((await askApollo("https://gateway.local:9000/v1/x")).status, 200);
   assert.equal(calls.length, 1);
 });
 
