@@ -38,6 +38,7 @@ class KanbanApiTest(unittest.IsolatedAsyncioTestCase):
             workspace_dir=self.root / "workspace",
             vault_dir=self.root / "vault",
             api_token=self.api_token,
+            stop_file=self.root / "runtime" / "STOP",
         )
         self.runtime = await build_runtime(self.config)
         self.app = build_app(self.runtime)
@@ -49,6 +50,15 @@ class KanbanApiTest(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self) -> None:
         await self.runtime.close()
         self.temp_dir.cleanup()
+
+    def test_stop_routes_use_the_configured_stop_file(self) -> None:
+        headers = {"Authorization": f"Bearer {self.api_token}"}
+        self.assertEqual(self.client.post("/api/v1/kanban/stop").status_code, 401)
+        self.assertEqual(self.client.post("/api/v1/kanban/stop", headers=headers).status_code, 200)
+        self.assertTrue(self.config.stop_file.exists())
+        self.assertEqual(self.client.delete("/api/v1/kanban/stop", headers=headers).status_code, 200)
+        self.assertFalse(self.config.stop_file.exists())
+        self.assertEqual(self.client.delete("/api/v1/kanban/stop", headers=headers).status_code, 200)
 
     def test_model_parity(self) -> None:
         """Pydantic-Out-Modelle muessen 1:1 die Felder der Dataclasses haben."""

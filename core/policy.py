@@ -17,13 +17,26 @@ explizit freigeben.
 from __future__ import annotations
 
 import fnmatch
+import hmac
+import os
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .config import NeuConfig
-from .protocol import ErrorCode, Intent, Operations, ProtocolError
+from .protocol import (
+    TICKET_GATED_RISKS,
+    ErrorCode,
+    Intent,
+    Operations,
+    ProtocolError,
+    hash_intent,
+    parse_timestamp,
+    sign_ticket,
+    ticket_marker,
+    utc_now,
+)
 
 #: Operationen, die schreiben (relevant fuer Backup-Pflicht und Elevation).
 WRITE_OPERATIONS = frozenset(
@@ -153,10 +166,13 @@ class Policy:
                     f"Pfad {rel!r} ist nicht durch allowed_repo_globs freigegeben",
                     where,
                 )
-            if self._matches_any(rel, self.config.human_only_globs) and elevation.approved_by != "human":
+            # Das Ticket selbst prueft der Orchestrator in check(): Limbs haben den Schluessel nicht.
+            if self._matches_any(rel, self.config.human_only_globs) and (
+                elevation.approved_by != "human" or not elevation.ticket
+            ):
                 raise ProtocolError(
                     ErrorCode.POLICY_DENIED,
-                    f"Pfad {rel!r} unterliegt dem Constitution Guard: Freigabe nur durch 'human' "
+                    f"Pfad {rel!r} unterliegt dem Constitution Guard: Freigabe nur durch 'human' mit Ticket "
                     f"(gefunden: approved_by={elevation.approved_by!r})",
                     where,
                 )
@@ -230,7 +246,44 @@ class Policy:
         if denial is not None:
             return denial
 
-        return self._check_common(intent)
+        decision = self._check_common(intent)
+        if not decision.allowed:
+            return decision
+        return self._check_ticket(intent) or decision
+
+    def _check_ticket(self, intent: Intent) -> PolicyDecision | None:
+        """Prueft ein Freigabe-Ticket, verbraucht es aber nicht.
+
+        Das geschieht nur hier und nicht in ``_check_common``: Limbs fuehren
+        ``check_runtime`` aus und duerfen ``NIO_APPROVAL_KEY`` nie sehen. ``check``
+        laeuft je Auftrag mehrfach, verbraucht wird deshalb einmal im Orchestrator.
+        """
+        if not self.operations.known(intent.operation):
+            return None  # meldet _check_common mit dem passenden Code
+        elevation = intent.elevation
+        gated = self.operations.spec(intent.operation).risk in TICKET_GATED_RISKS or elevation.level != "none"
+        if not gated:
+            if elevation.ticket:
+                return self._deny(ErrorCode.TICKET_INVALID, f"Operation '{intent.operation}' braucht kein Ticket.", intent)
+            return None
+
+        key = os.environ.get("NIO_APPROVAL_KEY")
+        if not key:
+            return self._deny(ErrorCode.TICKET_INVALID, "NIO_APPROVAL_KEY fehlt: Freigabe ist nicht moeglich.", intent)
+        if not elevation.ticket or not elevation.expires_at:
+            return self._deny(ErrorCode.TICKET_INVALID, f"Operation '{intent.operation}' unterliegt der Ticket-Pflicht.", intent)
+        try:
+            expires = parse_timestamp(elevation.expires_at, "$.elevation.expires_at")
+        except ProtocolError:
+            return self._deny(ErrorCode.TICKET_INVALID, "Ablauf des Tickets ist ungueltig.", intent)
+        expected = sign_ticket(key, hash_intent(intent.to_dict()), intent.operation, elevation.expires_at)
+        if not hmac.compare_digest(elevation.ticket, expected):
+            return self._deny(ErrorCode.TICKET_INVALID, "Ticket ist gefaelscht oder gehoert zu einem anderen Auftrag.", intent)
+        if expires < utc_now():
+            return self._deny(ErrorCode.TICKET_INVALID, "Ticket ist abgelaufen.", intent)
+        if ticket_marker(self.config.runtime_dir, elevation.ticket).exists():
+            return self._deny(ErrorCode.TICKET_INVALID, "Ticket wurde bereits verwendet.", intent)
+        return None
 
     def _check_schedule(self, intent: Intent) -> PolicyDecision | None:
         """Prueft ``intent.schedule`` -- ``None`` bedeutet: zulaessig.
@@ -297,6 +350,13 @@ class Policy:
                                 f"{entry_where}: Kontroll-Operation braucht constraints.allow_shell=true.",
                                 intent,
                             )
+
+                    if spec.risk in TICKET_GATED_RISKS:
+                        return self._deny_trigger(
+                            ErrorCode.TICKET_INVALID,
+                            f"{entry_where}: '{operation}' braucht ein Einmal-Ticket und passt nicht in einen Ausloeser.",
+                            intent,
+                        )
 
                     if spec.requires_elevation != "none" and intent.elevation.level == "none":
                         return self._deny_trigger(

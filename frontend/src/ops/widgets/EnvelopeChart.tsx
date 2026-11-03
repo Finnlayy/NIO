@@ -1,4 +1,4 @@
-import { Sparkline, Pct, LiveBadge, FeedBadge } from "./bits";
+import { MarketUnavailable, Sparkline, Pct, LiveBadge, FeedBadge } from "./bits";
 import { toTvSymbol, useMarketData, useEngineTelemetry } from "../hooks/useMarketData";
 
 interface TfStat {
@@ -23,6 +23,8 @@ export function EnvelopeChart({ data, symbol }: { data: Record<string, unknown>;
      Price/OHLC still come from the TradingView MCP proxy — two independent feeds, two
      independent badges, so a dead bus is never masked by a healthy price feed. */
   const { telemetry, connection } = useEngineTelemetry();
+  if (source !== "live") return <MarketUnavailable source={source} />;
+
   const feedLive = connection === "CONNECTED_LIVE";
   const gravity = feedLive ? telemetry.gravity : null;
   const regime = feedLive ? telemetry.regime : null;

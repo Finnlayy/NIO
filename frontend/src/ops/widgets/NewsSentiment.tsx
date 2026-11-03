@@ -1,6 +1,6 @@
 import type { NewsItem } from "../marketData";
 import { toTvSymbol, useMarketData } from "../hooks/useMarketData";
-import { LiveBadge } from "./bits";
+import { MarketUnavailable, LiveBadge } from "./bits";
 
 const sentColor: Record<NewsItem["sentiment"], string> = {
   POS: "text-emerald-400",
@@ -17,7 +17,9 @@ export function NewsSentiment({ data, symbol }: { data: Record<string, unknown>;
     300_000,
     data.refreshedAt,
   );
-  const items = liveItems.length ? liveItems : simItems;
+  if (source !== "live") return <MarketUnavailable source={source} />;
+
+  const items = liveItems;
 
   // Derive sentiment split from the rendered items; fall back to sim baseline.
   const total = items.length || 1;
@@ -26,7 +28,7 @@ export function NewsSentiment({ data, symbol }: { data: Record<string, unknown>;
   const positive = source === "live" ? Math.round((posCount / total) * 100) : (data.positive as number);
   const negative = source === "live" ? Math.round((negCount / total) * 100) : (data.negative as number);
   const neutral = source === "live" ? 100 - positive - negative : (data.neutral as number);
-  const verdict = data.verdict as string;
+  const verdict = "No live sentiment signal";
 
   const verdictColor =
     negative > positive + 10

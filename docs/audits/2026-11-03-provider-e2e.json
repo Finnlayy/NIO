@@ -1,0 +1,27 @@
+{
+  "at": "2026-11-03T09:34:00.651Z",
+  "interface": "Apollo browser, real local services, no interception/mocks",
+  "providerCount": 11,
+  "configuredProviders": 0,
+  "successfulExternalCompletions": 0,
+  "prompt": {
+    "status": "failed",
+    "reason": "no_provider_configured",
+    "simulation": false
+  },
+  "worker": {
+    "taskId": "t-d463396a76a0",
+    "status": "blocked",
+    "attempts": 1,
+    "reason": "circuit breaker: missing_secret",
+    "transport": "llm-http"
+  },
+  "checks": [
+    "real provider status and explicit probe button",
+    "real chat request fails visibly",
+    "real Kanban task creation through Apollo",
+    "real dispatcher and worker subprocess",
+    "worker missing-secret failure propagated to /tasks",
+    "no browser runtime errors"
+  ]
+}

@@ -6,6 +6,8 @@ schreibt die Erfahrung in den Kanban-Store und spiegelt alles in den Obsidian Va
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 import logging
 from dataclasses import dataclass
@@ -13,6 +15,12 @@ from pathlib import Path
 from typing import Any
 
 from core.protocol import utc_now_iso
+from core.config import NeuConfig
+from core.protocol import Operations
+from core.policy import Policy
+from orchestrator.runner import Orchestrator
+from .limb_bridge import run_limb_request
+import asyncio
 
 from .audit import AuditDraft
 from .models import Experience, KanbanTask, Worker
@@ -46,6 +54,7 @@ async def sync_back(
     reason = "no result (exit None)" if result.exit_code is None else f"no result (exit {result.exit_code})"
     result_payload = None
 
+
     result_file = result.out_dir / "result.json"
     if result_file.is_file():
         try:
@@ -74,6 +83,25 @@ async def sync_back(
         status = "failed"
         if reason.startswith("no result"):
             reason = f"exit code {result.exit_code}"
+
+    limb_req = result.out_dir / "limb_request.json"
+    if limb_req.is_file():
+        cfg = NeuConfig.load()
+        ops = Operations.load(cfg.protocol_dir / "operations.json")
+        pol = Policy(cfg, ops)
+        orch = Orchestrator(cfg)
+        try:
+            success, l_reason, l_payload = await asyncio.wait_for(
+                asyncio.to_thread(
+                    run_limb_request, limb_req, ops, pol, orch, task.id, worker.soul_md
+                ),
+                timeout=120.0
+            )
+        except asyncio.TimeoutError:
+            success, l_reason, l_payload = False, "limb request timed out", None
+        status = "completed" if success else "failed"
+        reason = l_reason
+        result_payload = l_payload
 
     exp_file = result.out_dir / "experience.json"
     exp = None
@@ -128,34 +156,42 @@ async def sync_back(
         except OSError as e:
             logging.getLogger(__name__).warning("out/SOUL.md nicht lesbar: %s", e)
 
-    worker_changes: dict[str, Any] = {}
+    task_changes: dict[str, Any] = {}
+
+    if result_payload and isinstance(result_payload, dict) and "proposed_soul" in result_payload:
+        result_payload.pop("proposed_soul", None)
+        task_changes["result_payload"] = result_payload
+
     if soul_md is not None:
-        worker_changes["soul_md"] = soul_md
+        task_payload = copy.deepcopy(result_payload) if result_payload else {}
+        task_payload["proposed_soul"] = {
+            "content": soul_md,
+            "sha256": hashlib.sha256(soul_md.encode("utf-8")).hexdigest(),
+            "status": "pending"
+        }
+        result_payload = task_payload
+        task_changes["result_payload"] = task_payload
 
     audit = AuditDraft(
         actor=f"worker:{worker.uid}",
         action="worker.experience",
         category="worker",
         subject=task.id,
-        payload={"outcome": exp.outcome}
+        payload={"outcome": exp.outcome, "proposed_soul": soul_md is not None}
     )
 
     await store.finish_run(
         task_id=task.id,
         expected=None,
-        task_changes={},
+        task_changes=task_changes,
         worker_uid=worker.uid,
-        worker_changes=worker_changes,
+        worker_changes={},
         experience=exp,
         audit=audit
     )
 
     home = WorkerHome(workspace_dir)
     try:
-        if soul_md is not None:
-            vault.mirror_soul(worker.uid, soul_md)
-            home.write_soul(worker.uid, soul_md)
-
         history_line = f"- {exp.created_at} [[task-{task.id}]] {exp.outcome}: {exp.summary}"
         vault.append_history(worker.uid, history_line)
         home.append_history(worker.uid, history_line)

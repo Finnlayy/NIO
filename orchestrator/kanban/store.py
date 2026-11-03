@@ -57,7 +57,7 @@ TASK_MUTABLE = frozenset(
         "started_at",
     }
 )
-WORKER_MUTABLE = frozenset({"name", "skills", "soul_md", "status", "fail_count", "breaker_open_until"})
+WORKER_MUTABLE = frozenset({"name", "skills", "status", "fail_count", "breaker_open_until"})
 
 _TASK_JSON = frozenset({"dependencies", "required_skills", "result_payload"})
 _WORKER_JSON = frozenset({"skills"})

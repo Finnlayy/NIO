@@ -27,6 +27,15 @@ export function cachedSet<T>(key: string, value: T, ttlMs: number) {
   cache.set(key, { at: Date.now(), ttl: ttlMs, value });
 }
 
+/** Fail closed: no OAuth token or a non-HTTPS endpoint never reaches the network. */
+async function credentials() {
+  const token = await getAccessToken();
+  if (!token) throw new McpError(503, "TradingView not connected — open /api/market/oauth/start");
+  const url = new URL(MCP_URL);
+  if (url.protocol !== "https:" || url.username || url.password) throw new McpError(503, "Invalid TradingView MCP endpoint");
+  return { token, endpoint: MCP_URL };
+}
+
 function parseMcpBody(raw: string): any | null {
   const text = raw.trim();
   if (!text) return null;
@@ -54,10 +63,7 @@ function parseMcpBody(raw: string): any | null {
 }
 
 async function rpc(method: string, params: Record<string, unknown>, retried = false): Promise<any> {
-  const token = await getAccessToken();
-  if (!token) {
-    throw new McpError(503, "TradingView not connected — open /api/market/oauth/start");
-  }
+  const { token, endpoint } = await credentials();
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
@@ -66,11 +72,13 @@ async function rpc(method: string, params: Record<string, unknown>, retried = fa
   };
   if (sessionId) headers["Mcp-Session-Id"] = sessionId;
 
-  const res = await fetch(MCP_URL, {
+  const res = await fetch(endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify({ jsonrpc: "2.0", id: Math.floor(Math.random() * 1e9), method, params }),
     cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+    redirect: "error",
   });
 
   // Expired token: refresh once and replay; a refused refresh means re-login.
@@ -88,16 +96,16 @@ async function rpc(method: string, params: Record<string, unknown>, retried = fa
   const newSession = res.headers.get("mcp-session-id");
   if (newSession) sessionId = newSession;
 
-  const raw = await res.text();
+  const raw = (await res.text()).split(token).join("[REDACTED]");
   const payload = parseMcpBody(raw);
 
   if (!res.ok || payload?.error) {
-    const message = payload?.error?.message ?? `MCP ${res.status}`;
+    const message = `MCP HTTP ${res.status}${payload?.error ? " RPC error" : ""}`;
     if (res.status === 429) throw new McpError(429, `Rate limited: ${message}`);
     if (res.status === 401 || res.status === 403) throw new McpError(res.status, `Auth failed: ${message}`);
     throw new McpError(res.status || 502, message);
   }
-  if (!payload) throw new McpError(502, `Unparseable MCP response: ${raw.slice(0, 200)}`);
+  if (!payload) throw new McpError(502, "Unparseable MCP response");
   return payload.result;
 }
 
@@ -156,6 +164,7 @@ export async function callTool(
   ttlMs = 60_000,
   fresh = false,
 ): Promise<unknown> {
+  await credentials();
   const cacheKey = `tool:${name}:${JSON.stringify(args)}`;
   // fresh: a manual widget refresh skips the read but still refills the cache.
   const cached = fresh ? undefined : cachedGet<unknown>(cacheKey);
@@ -202,6 +211,7 @@ function extractParsed(result: any): unknown {
 
 /** List tools (used by the /api/market/tools debug route). */
 export async function listTools(): Promise<any> {
+  await credentials();
   const cacheKey = "tools:list";
   const cached = cachedGet<any>(cacheKey);
   if (cached) return cached;
