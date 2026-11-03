@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import os
 import secrets
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+
+from orchestrator.secret_manager import llm_worker_environment, secret_environment
 
 from .breaker import CircuitBreaker
 from .bus import HeartbeatStore, LockManager, TokenStore
@@ -16,6 +17,7 @@ from .config import KanbanConfig
 from .decomposer import Decomposer
 from .models import KanbanEvent, KanbanTask, TaskStatus, Worker, WorkerStatus, new_id
 from .sandbox import SandboxRunner, SandboxSpec
+from .soul import parse_soul
 from .store import KanbanStore
 from .sync import sync_back
 from .vault import ObsidianVault
@@ -258,9 +260,15 @@ class Dispatcher:
             await self.tokens.put(token, {"task_id": task.id, "worker_uid": worker.uid}, self.config.task_deadline_s + 60)
 
             secrets_env = {"NIO_KANBAN_TASK_TOKEN": token}
-            for n in self.config.secret_allowlist:
-                if n in os.environ:
-                    secrets_env[n] = os.environ[n]
+            source = secret_environment()
+            soul = parse_soul(worker.soul_md)
+            is_llm = soul.frontmatter.get("runtime", "").lower() == "llm"
+            if is_llm:
+                secrets_env.update(llm_worker_environment(self.config.secret_allowlist, provider_id=soul.frontmatter.get("provider", "")))
+            else:
+                for n in self.config.secret_allowlist:
+                    if n in source:
+                        secrets_env[n] = source[n]
 
             # Use specific log function logic here to only log names of secrets
             await self.service.ledger.append(

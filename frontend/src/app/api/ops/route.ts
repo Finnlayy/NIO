@@ -1,3 +1,4 @@
+import { secretEnvironment } from "@/server/secretManager";
 import { readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { NextResponse } from "next/server";
@@ -55,7 +56,7 @@ async function kanbanList(path: string, token: string): Promise<Array<Record<str
 }
 
 async function readKanban(): Promise<{ tasks: OpsTask[]; workers: OpsWorker[] }> {
-  const token = process.env.NIO_KANBAN_API_TOKEN;
+  const token = (await secretEnvironment()).NIO_KANBAN_API_TOKEN;
   if (!token) throw new Error("NIO_KANBAN_API_TOKEN is not set");
   const [tasks, workers] = await Promise.all([kanbanList("/api/v1/kanban/tasks", token), kanbanList("/api/v1/workers", token)]);
   return {

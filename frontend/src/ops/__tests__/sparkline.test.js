@@ -75,7 +75,12 @@ test("integration: two Envelope Charts on the page do not leak gradient ids", ()
     volume: "700M",
     tfStats: [],
   };
-  const html = renderToStaticMarkup(
+  const market = require("../ops/hooks/useMarketData");
+  const original = market.useMarketData;
+  // Explicit live-shaped fixture for gradient isolation, not provider evidence.
+  market.useMarketData = (_tool, _query, fixture) => ({ data: fixture, source: "live" });
+  let html;
+  try { html = renderToStaticMarkup(
     React.createElement(
       "div",
       null,
@@ -83,6 +88,7 @@ test("integration: two Envelope Charts on the page do not leak gradient ids", ()
       React.createElement(EnvelopeChart, { data, symbol: "ZECUSDT" }),
     ),
   );
+  } finally { market.useMarketData = original; }
   const ids = gradientIds(html);
   assert.equal(ids.length, 2, "one gradient per chart");
   assert.notEqual(ids[0], ids[1], "widget instances must not share gradient ids");

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { browserRecognition, startBrowserDictation } from "./browserSpeech";
+import { COMMANDS } from "./commands";
 
 /* ==================================================================== */
 /* Dictation into the terminal input                                     */
@@ -38,15 +40,22 @@ export function appendTranscript(current: string, text: string): string {
   return current && !/\s$/.test(current) ? `${current} ${addition}` : `${current}${addition}`;
 }
 
+/** Normalize only an explicit spoken slash followed by a known CLI command. */
+export function normalizeDictation(text: string): string {
+  const match = /^\s*(?:slash|schrägstrich)\s+([a-z]+)\b([\s\S]*)$/i.exec(text);
+  if (!match || !COMMANDS.some(({ command }) => command === `/${match[1].toLowerCase()}`)) return text;
+  return `/${match[1].toLowerCase()}${match[2]}`;
+}
+
 /** The input after a dictation, or `null` when the result would be an approval. */
 export function joinDictation(current: string, text: string): string | null {
-  const joined = appendTranscript(current, text);
+  const joined = appendTranscript(current, normalizeDictation(text));
   return APPROVAL_COMMAND.test(joined) ? null : joined;
 }
 
 export function microphoneError(error: unknown): string {
   const name = error instanceof Error ? error.name : "";
-  if (name === "NotAllowedError" || name === "SecurityError") return "microphone blocked by the browser";
+  if (name === "NotAllowedError" || name === "SecurityError") return "Microphone blocked by the browser. Open the preview in a new tab and allow microphone access in site settings.";
   if (name === "NotFoundError") return "no microphone found";
   if (name === "NotReadableError") return "microphone is in use by another app";
   return "microphone failed to start";
@@ -77,6 +86,12 @@ export function useDictation(onText: (text: string) => void) {
   const [error, setError] = useState<string | null>(null);
   const [engine, setEngine] = useState<EngineState>("unknown");
 
+  const [mode, setMode] = useState<"local" | "browser">("local");
+  const [language, setLanguage] = useState("en-US");
+  const [browserSupported, setBrowserSupported] = useState(false);
+  useEffect(() => setBrowserSupported(!!browserRecognition()), []);
+  const browserSessionRef = useRef<ReturnType<typeof startBrowserDictation> | null>(null);
+  const sessionRef = useRef(0);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const startingRef = useRef(false);
   const discardRef = useRef(false);
@@ -88,6 +103,36 @@ export function useDictation(onText: (text: string) => void) {
   const start = useCallback(async () => {
     if (startingRef.current) return;
     setError(null);
+    const session = ++sessionRef.current;
+    if (mode === "browser") {
+      const Recognition = browserRecognition();
+      if (!Recognition) {
+        setError("Browser speech is not supported here. Try Chrome or Edge, or configure the local speech engine.");
+        return;
+      }
+      setState("recording");
+      try {
+        browserSessionRef.current = startBrowserDictation(Recognition, language, {
+          onText: (text) => { if (session === sessionRef.current) onTextRef.current(text); },
+          onError: (message) => { if (session === sessionRef.current) setError(message); },
+          onEnd: () => {
+            if (session !== sessionRef.current) return;
+            browserSessionRef.current = null;
+            setState("idle");
+          },
+        }, MAX_RECORDING_MS);
+      } catch (cause) {
+        setState("idle");
+        setError(microphoneError(cause));
+      }
+      return;
+    }
+    if (engine === "offline") {
+      setError(browserSupported
+        ? "Local speech engine is offline. Select Browser speech below to dictate without it."
+        : "Local speech engine is offline. Configure STT_ENDPOINT_URL, or use Chrome/Edge for browser speech.");
+      return;
+    }
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setError("this browser cannot record audio");
       return;
@@ -95,16 +140,20 @@ export function useDictation(onText: (text: string) => void) {
 
     startingRef.current = true;
     discardRef.current = false;
+    setState("recording");
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (cause) {
-      setError(microphoneError(cause));
+      if (session === sessionRef.current) {
+        setError(microphoneError(cause));
+        setState("idle");
+      }
       return;
     } finally {
       startingRef.current = false;
     }
-    if (discardRef.current) {
+    if (discardRef.current || session !== sessionRef.current) {
       stream.getTracks().forEach((track) => track.stop());
       return;
     }
@@ -123,39 +172,44 @@ export function useDictation(onText: (text: string) => void) {
       clearTimeout(limit);
       stream.getTracks().forEach((track) => track.stop());
       recorderRef.current = null;
-      if (discardRef.current) {
-        setState("idle");
+      if (discardRef.current || session !== sessionRef.current) {
+        if (session === sessionRef.current) setState("idle");
         return;
       }
       setState("transcribing");
       try {
         const text = await transcribeAudio(new Blob(chunks, { type: recorder.mimeType }));
+        if (discardRef.current || session !== sessionRef.current) return;
         setEngine("ready");
-        if (discardRef.current) return;
         if (text) onTextRef.current(text);
         else setError("no speech recognized");
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "transcription failed";
         if (message === ENGINE_OFFLINE) setEngine("offline");
-        if (!discardRef.current) setError(message);
+        if (!discardRef.current && session === sessionRef.current) setError(message);
       } finally {
-        setState("idle");
+        if (session === sessionRef.current) setState("idle");
       }
     };
 
     recorderRef.current = recorder;
     recorder.start();
     setState("recording");
-  }, []);
+  }, [mode, language, engine, browserSupported]);
 
   const toggle = useCallback(() => {
-    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+    if (browserSessionRef.current) browserSessionRef.current.stop();
+    else if (recorderRef.current?.state === "recording") recorderRef.current.stop();
     else if (state === "idle") void start();
   }, [start, state]);
 
   /** Drop whatever is in progress: no text reaches the input afterwards. */
   const cancel = useCallback(() => {
     discardRef.current = true;
+    sessionRef.current++;
+    browserSessionRef.current?.cancel();
+    browserSessionRef.current = null;
+    setState("idle");
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
   }, []);
 
@@ -164,5 +218,9 @@ export function useDictation(onText: (text: string) => void) {
 
   useEffect(() => cancel, [cancel]);
 
-  return { state, error, speech: speechStatus(state, engine), toggle, cancel, probe, clearError, reject: setError };
+  return {
+    state, error, engine, mode, setMode, language, setLanguage, browserSupported,
+    speech: speechStatus(state, mode === "browser" ? "ready" : engine),
+    toggle, cancel, probe, clearError, reject: setError,
+  };
 }

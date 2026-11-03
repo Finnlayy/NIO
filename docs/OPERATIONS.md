@@ -48,14 +48,16 @@ python3 limbs/trading_limb.py --intent <intent-start.json>     # 2 s
 
 ## 3. Umgebungsvariablen
 
-Es gibt **kein** `.env`-Template im Repo — Variablen werden aus der Umgebung
-gelesen. Alle Secrets bleiben serverseitig.
+Serverseitige Variablen und ein Template stehen in `frontend/.env.example`.
+Apollo, TVremix und der Kanban-Dispatcher können zusätzlich denselben owner-only
+`NIO_SECRET_FILE`-Mount lesen. Alle Secrets bleiben serverseitig. Siehe
+[`Live-Provider-Audit und Setup`](LIVE-PROVIDER-AUDIT-2026-11-03.md).
 
 ### Marktdaten
 
 | Variable | Wirkung ohne sie |
 |---|---|
-| `TVREMIX_API_KEY` | `/api/market/*` → 503, Widgets zeigen `SIM` |
+| `TVREMIX_API_KEY` | `/api/market/*` → 503, Widgets zeigen einen sichtbaren Live-Fehler |
 | `TVREMIX_MCP_URL` | Default `https://tvremix.xyz/api/mcp/v1` |
 
 ### Sprache

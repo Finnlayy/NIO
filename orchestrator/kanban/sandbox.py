@@ -23,6 +23,7 @@ from orchestrator.kanban.models import KanbanTask, Worker
 
 __all__ = [
     "DockerSandbox",
+    "LLMRequestSandbox",
     "SandboxResult",
     "SandboxRunner",
     "SandboxSpec",
@@ -196,14 +197,16 @@ class _ProcessSandbox:
 class SubprocessSandbox(_ProcessSandbox):
     """Sandbox fuer Entwicklung und Tests (keine Isolation, keine Limits)."""
 
+    _runtime = "noop"
+
     def _prepare(self, spec: SandboxSpec) -> tuple[list[str], dict[str, str], str | None]:
         # Die Subprozess-Sandbox darf ausschliesslich fuer NOOP verwendet werden.
         # Kommando-Ausfuehrung ohne Docker ist nicht gestattet.
         from orchestrator.kanban.soul import parse_soul
         soul = parse_soul(spec.worker.soul_md)
         runtime = soul.frontmatter.get("runtime", "noop").lower()
-        if runtime != "noop":
-            raise ValueError(f"Subprocess-Sandbox unterstuetzt nur runtime='noop', gefordert war '{runtime}'")
+        if runtime != self._runtime:
+            raise ValueError(f"Subprocess-Sandbox unterstuetzt nur runtime='{self._runtime}', gefordert war '{runtime}'")
 
         # Dev/Test-Pfad ohne Docker. Keine CPU/RAM-Limits.
         run_dir = spec.run_dir
@@ -228,6 +231,8 @@ class SubprocessSandbox(_ProcessSandbox):
         }
         env.update(spec.env)
         env.update(spec.secrets)
+        if self._runtime == "llm":
+            env["NIO_KANBAN_LLM_ONLY"] = "1"
 
         return argv, env, str(work_dir)
 
@@ -249,6 +254,17 @@ class SubprocessSandbox(_ProcessSandbox):
             loop.call_later(self.config.stop_grace_s, _kill)
         except ProcessLookupError:
             pass
+
+
+class LLMRequestSandbox(SubprocessSandbox):
+    """Explicit HTTP-only worker transport, NOT an OS sandbox.
+
+    Accepts only the built-in llm runtime. The child also enforces llm-only;
+    model output cannot execute commands, tools, patches or other runtimes.
+    Production code-execution workers must continue to use Docker.
+    """
+
+    _runtime = "llm"
 
 
 class DockerSandbox(_ProcessSandbox):
@@ -393,4 +409,8 @@ class DockerSandbox(_ProcessSandbox):
 def build_sandbox(config: KanbanConfig) -> SandboxRunner:
     if config.sandbox == "docker":
         return DockerSandbox(config)
-    return SubprocessSandbox(config)
+    if config.sandbox == "llm-http":
+        return LLMRequestSandbox(config)
+    if config.sandbox == "subprocess":
+        return SubprocessSandbox(config)
+    raise ValueError("unknown sandbox transport")

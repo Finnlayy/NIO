@@ -16,6 +16,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { LiveProviders } from "./LiveProviders";
 import { MCP_SERVERS, PALETTE, PRIMARY_ENGINES, PROVIDERS } from "./catalog";
 import { normalizeWeights, poolHealth, rankCandidates, type Weights } from "./routing";
 import { selectActiveModel, useApolloStore } from "./store";
@@ -51,7 +52,6 @@ export function ApolloDeck() {
   const restorePrimary = useApolloStore((s) => s.restorePrimary);
   const simulateFailover = useApolloStore((s) => s.simulateFailover);
   const setWeights = useApolloStore((s) => s.setWeights);
-  const toggleProvider = useApolloStore((s) => s.toggleProvider);
   const setQuota = useApolloStore((s) => s.setQuota);
   const router = useApolloStore((s) => s.router);
   const activeModel = useApolloStore(selectActiveModel);
@@ -129,7 +129,6 @@ export function ApolloDeck() {
     () => rankCandidates(draft.freeLLMRouting.fallbackChain, draft.freeLLMRouting.weights),
     [draft.freeLLMRouting],
   );
-  const health = poolHealth(draft.freeLLMRouting.providers);
   const endpoints = PROVIDERS.reduce((sum, provider) => sum + provider.endpoints, 0);
 
   if (!open) return null;
@@ -178,18 +177,18 @@ export function ApolloDeck() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge tone={draft.freeLLMRouting.enabled ? "emerald" : "slate"} dot>
               {draft.freeLLMRouting.enabled ? "routing armed" : "routing off"}
             </Badge>
-            <Badge tone="cyan">{health.active} keys live</Badge>
+            <Badge tone="cyan">Live-Status im Router-Tab</Badge>
             <button
               type="button"
               onClick={() => setDeckOpen(false)}
-              aria-label="Close control deck"
-              className="grid h-7 w-7 place-items-center rounded-md border border-white/10 text-slate-400 transition-colors hover:border-white/25 hover:text-slate-100"
+              aria-label="Zurück zu Apollo (Control Deck schließen)"
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-white/10 px-2.5 text-xs text-slate-300 transition-colors hover:border-white/25 hover:text-slate-100"
             >
-              <X size={14} />
+              <X size={14} aria-hidden="true" /> Zurück zu Apollo
             </button>
           </div>
         </header>
@@ -285,7 +284,7 @@ export function ApolloDeck() {
                   <div className="space-y-3">
                     <div>
                       <div className="flex items-baseline justify-between font-mono text-[10px] text-slate-400">
-                        <span>primary quota · live</span>
+                        <span>quota · UI-Demowert</span>
                         <span
                           className="tabular-nums"
                           style={{
@@ -322,7 +321,7 @@ export function ApolloDeck() {
                           step={1}
                           onChange={setQuota}
                           format={(value) => `${value}%`}
-                          hint="Writes straight to the live router — cross the threshold and the next turn fails over."
+                          hint="UI-Demowert, keine gemessene Providerquota. Live-Anfragen wechseln bei Fehlern nicht automatisch."
                           accent={
                             router.primaryQuotaPercent > 50
                               ? PALETTE.emerald
@@ -448,7 +447,7 @@ export function ApolloDeck() {
                     <Field
                       label="Proxy endpoint"
                       htmlFor="deck-endpoint"
-                      hint="Empty = local simulation. Set an OpenAI-compatible base URL to answer live (server-side proxy)."
+                      hint="Leer = serverseitige Providerauswahl. Fehler bleiben sichtbar, ohne Simulation."
                     >
                       <TextInput
                         id="deck-endpoint"
@@ -504,7 +503,7 @@ export function ApolloDeck() {
 
               <SectionCard
                 title="Fallback chain"
-                hint="Ranked live from the weights. #1 answers; the rest wait in order."
+                hint="Demo-Ranking für die Graphansicht; echte Auswahl ausschließlich über den serverseitigen Providerstatus."
                 right={<Badge tone="amber">{router.failoverCount} swaps this session</Badge>}
               >
                 <div className="grid gap-2 sm:grid-cols-3">
@@ -549,32 +548,7 @@ export function ApolloDeck() {
               </SectionCard>
 
               <div className="grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
-                <SectionCard
-                  title="Encrypted key vault"
-                  hint="Masked identifiers only. Keys never reach the bundle; the proxy holds them server-side."
-                  right={<Badge tone="cyan"><KeyRound size={8} /> {health.active}/{draft.freeLLMRouting.providers.length}</Badge>}
-                >
-                  <ul className="space-y-1">
-                    {draft.freeLLMRouting.providers.map((provider) => (
-                      <li key={provider.providerId}>
-                        <button
-                          type="button"
-                          onClick={() => toggleProvider(provider.providerId)}
-                          className="flex w-full items-center justify-between gap-2 rounded-md border border-transparent px-1.5 py-1 text-left transition-colors hover:border-white/10 hover:bg-white/[0.02]"
-                        >
-                          <span className="min-w-0">
-                            <span className="block truncate text-[11.5px] text-slate-200">{provider.name}</span>
-                            <span className="block font-mono text-[9px] text-slate-400">{provider.keyMasked}</span>
-                          </span>
-                          <Badge tone={PROVIDER_TONE[provider.status]} dot>
-                            {provider.status === "LIMIT_REACHED" ? "limited" : provider.status.toLowerCase()}
-                          </Badge>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-2 font-mono text-[9px] text-slate-400">click a key to toggle active ⇄ standby</p>
-                </SectionCard>
+                <LiveProviders />
 
                 <SectionCard
                   title="Model leaderboard"
@@ -682,7 +656,7 @@ export function ApolloDeck() {
                       ["active", activeModel.name],
                       ["swaps", String(router.failoverCount)],
                       ["quota", `${router.primaryQuotaPercent.toFixed(0)}%`],
-                      ["endpoint", draft.freeLLMRouting.endpointUrl ? "live proxy" : "simulated"],
+                      ["endpoint", draft.freeLLMRouting.endpointUrl ? "legacy proxy" : "server provider"],
                       ["handoff", draft.freeLLMRouting.enableContextHandoffNote ? "on" : "off"],
                     ].map(([key, value]) => (
                       <div key={key} className="rounded-md border border-white/[0.05] bg-white/[0.015] px-2 py-1.5">

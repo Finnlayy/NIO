@@ -47,7 +47,7 @@ export function NeuralGraph({ children }: { children: React.ReactNode }) {
   const filterId = `gooey-lymp-filter-${useId().replace(/:/g, "")}`;
   const nodes = useApolloStore((s) => s.nodes);
 
-  /* Cards are 196 x ~96 and are centred on the ring, so the ring radius has to
+  /* Cards are 196 x ~140 (including the always-visible probe action) and are centred on the ring, so the ring radius has to
      leave half a card plus a margin on every side — and grow when `/spawn`
      pushes past the eight seed nodes. `fitEllipse` walks the radius out until
      every card clears its neighbours; if the scene is simply too small it
@@ -59,7 +59,7 @@ export function NeuralGraph({ children }: { children: React.ReactNode }) {
     // the server and the first client render agree: a 0x0 scene reads as
     // "crowded", which used to flip the markup to the board and fail hydration.
     if (!measured) return { ellipse: ellipseFor(1440, 720), scale: 1, crowded: false };
-    return fitEllipse(positions, size.width, size.height);
+    return fitEllipse(positions, size.width, size.height, { width: 196, height: 140 });
   }, [nodes, size, measured]);
   const { ellipse, scale, crowded } = geometry;
 
@@ -357,7 +357,10 @@ function NodeCards({
                 gooeyFilter={gooeyFilter}
                 hovered={hovered === node.id}
                 onHover={setHovered}
-                onDispatch={() => dispatch(node.id, { probe: "layout", at: new Date().toISOString() })}
+                onDispatch={() => {
+                  useApolloStore.getState().setTerminalOpen(true);
+                  dispatch(node.id, { probe: "layout", at: new Date().toISOString() });
+                }}
                 fluid
               />
             </div>
@@ -386,7 +389,10 @@ function NodeCards({
                 gooeyFilter={gooeyFilter}
                 hovered={hovered === node.id}
                 onHover={setHovered}
-                onDispatch={() => dispatch(node.id, { probe: "layout", at: new Date().toISOString() })}
+                onDispatch={() => {
+                  useApolloStore.getState().setTerminalOpen(true);
+                  dispatch(node.id, { probe: "layout", at: new Date().toISOString() });
+                }}
               />
             </div>
           </div>
@@ -494,10 +500,11 @@ function NodeCard({
           />
         </div>
 
-        {hovered && !spawning && (
+        {!spawning && (
           <button
             type="button"
             onClick={onDispatch}
+            aria-label={`Dispatch probe to ${node.label}`}
             className="mt-2 w-full rounded-md border border-white/10 bg-white/5 py-1 font-mono text-[9px] uppercase tracking-[0.18em] text-slate-300 transition-colors hover:border-cyan-400/40 hover:text-cyan-200"
           >
             dispatch probe

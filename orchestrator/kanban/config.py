@@ -8,7 +8,6 @@ Postgres lauffaehig ist.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -82,7 +81,9 @@ class KanbanConfig:
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None, *, repo_root: Path | None = None) -> KanbanConfig:
-        e = os.environ if env is None else env
+        from orchestrator.secret_manager import secret_environment
+
+        e = secret_environment(env)
         root = Path(e.get("NEU_ROOT") or repo_root or _REPO_ROOT).resolve()
         return cls(
             repo_root=root,

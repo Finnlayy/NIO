@@ -61,6 +61,7 @@ export interface FreeLLMModelCandidate {
 
 export interface FreeLLMRoutingConfig {
   enabled: boolean;
+  providerId?: string; // server-side provider ID, never a credential
   endpointUrl: string; // e.g. local FreeLLMAPI OpenAI-compatible proxy
   weights: { reliability: number; speed: number; intelligence: number };
   enableContextHandoffNote: boolean;
