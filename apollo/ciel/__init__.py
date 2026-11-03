@@ -1,0 +1,282 @@
+"""Ciel JIT-Tool-Orchestrator (NCM + Sandbox-Agent).
+
+Zweistufige Orchestrator-Schicht zwischen Apollo, FastMCP und den
+ausführenden Sandbox-Agenten:
+
+* **Modul A** (``registry``): Cold-Storage Skill Registry — fängt alle
+  FastMCP-Tools beim Start ab (In-Memory + SQLite/JSON-Cache), statt sie in
+  den LLM-Kontext zu injizieren.
+* **Modul B** (``ncm_gate``): System-1 NCM Gatekeeper — Pfad 1 (Direct
+  Bypass, 0 Tokens) ab Confidence ``>= 0.88`` bei vollständigem State,
+  sonst Pfad 2 (JIT Top-3 Injection).
+* **Modul C** (``sandbox_agent``): Isolierter Sandbox-Agent mit hart
+  hinterlegtem System-Prompt und exakt einem Meta-Tool
+  (``request_additional_skill``) zum JIT-Nachladen.
+* **Modul D** (``synthesizer``): Macro-Skill Synthesizer — verschmilzt
+  3x hintereinander erfolgreiche Ketten zu einem Makro-Tool.
+* **Modul E** (``telemetry``): Real-Time Graph-UI Telemetry — typisierte
+  ``CielGraphEvent`` (Cold-Sync, NCM-Routing, JIT-Reload, Makro-Evolution),
+  non-blocking via Queue + Worker-Task auf Event-Bus / UDS-Datagramm.
+
+Schnellstart::
+
+    from apollo.ciel import build_ciel_layer
+
+    ciel = build_ciel_layer(fastmcp_server=mcp)  # wrappt, bricht nichts
+    decision = await ciel.gate.route("Tickets schließen", state={...})
+    result = await ciel.agent.run("Tickets schließen", state={...})
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from .bus import CIEL_EVENT_KINDS
+from .embeddings import AutoEmbeddingProvider, EmbeddingProvider, HashEmbeddingProvider, OnnxEmbeddingProvider, cosine_similarity
+from .errors import (
+    CielConfigError,
+    CielError,
+    MCPToolError,
+    MCPTransportError,
+    ToolNotExecutable,
+    ToolNotFound,
+    ToolTimeout,
+)
+from .mcp_nodes import (
+    MCP_CLIENT_NAME,
+    MCP_PROTOCOL_VERSION,
+    MCPNodeClient,
+    MCPNodeConfig,
+    MCPNodeLoadResult,
+    MCPNodeRegistration,
+    MCPTool,
+    SSEMCPTransport,
+    StdioMCPTransport,
+    expand_env_vars,
+    load_and_register_mcp_nodes,
+    load_mcp_config,
+    register_mcp_node,
+)
+from .models import (
+    HAVE_PYDANTIC,
+    AgentResult,
+    AssistantMessage,
+    BaseModel,
+    GateDecision,
+    MacroSynthesis,
+    ScoredTool,
+    ToolCall,
+    ToolResult,
+    ToolSchema,
+)
+from .ncm_gate import BYPASS_THRESHOLD, JIT_TOP_K, NCMGate, RegistryFunctionExecutor, ToolExecutor, run_handler
+from .registry import CielFastMCPWrapper, ColdStorageRegistry, cluster_for, node_id_for
+from .sandbox_agent import (
+    META_TOOL_NAME,
+    REQUEST_ADDITIONAL_SKILL_SCHEMA,
+    SANDBOX_SYSTEM_PROMPT,
+    LLMClient,
+    NoOpLLMClient,
+    OpenAICompatLLMClient,
+    SandboxAgent,
+    ScriptedLLMClient,
+)
+from .synthesizer import MACRO_PREFIX, SYNTHESIS_THRESHOLD, MacroSkillSynthesizer
+from .telemetry import (
+    GRAPH_EVENT_KIND,
+    NODE_COLD,
+    NODE_HOT,
+    NODE_WARM,
+    CielGraphEvent,
+    CielGraphEventType,
+    CielGraphNode,
+    CielTelemetryPublisher,
+    EventBusGraphSubscriber,
+    RoutingMode,
+    UDSDatagramSubscriber,
+    cold_state_sync_event,
+    estimate_tokens,
+    jit_reload_event,
+    macro_evolution_event,
+    routing_event,
+)
+
+
+@dataclass
+class CielLayer:
+    """Verdrahtete Ciel-Schicht (Registry + Gate + Agent + Synthesizer + Telemetry)."""
+
+    registry: ColdStorageRegistry
+    gate: NCMGate
+    agent: SandboxAgent
+    synthesizer: MacroSkillSynthesizer
+    wrapper: CielFastMCPWrapper | None = None
+    telemetry: CielTelemetryPublisher | None = None
+    mcp_nodes: list[MCPNodeRegistration] = field(default_factory=list)
+
+
+async def build_ciel_layer(
+    fastmcp_server: Any | None = None,
+    limb_registry: Any | None = None,
+    *,
+    llm: LLMClient | None = None,
+    executor: ToolExecutor | None = None,
+    event_bus: Any | None = None,
+    telemetry: CielTelemetryPublisher | None = None,
+    uds_socket: str | Path | None = None,
+    embedder: EmbeddingProvider | None = None,
+    cache_path: str | Path | None = None,
+    synth_path: str | Path | None = None,
+    bypass_threshold: float = BYPASS_THRESHOLD,
+    top_k: int = JIT_TOP_K,
+    max_turns: int = 6,
+    mcp_config: str | Path | None = None,
+) -> CielLayer:
+    """Baut und verdrahtet die komplette Ciel-Schicht (async, ein Aufruf).
+
+    * ``fastmcp_server``: wird per :class:`CielFastMCPWrapper` abgefangen
+      (Bestandsinstanz läuft unverändert weiter) und alle Tools werden ins
+      Cold-Storage übernommen.
+    * ``limb_registry``: NEU-``LimbRegistry`` wird lesend als Tools gespiegelt.
+    * Beide ``None``: leere Registry (Tools via ``registry.register*``).
+    * ``telemetry``: eigener Publisher (Default: neu + Bus-Spiegelung, wenn
+      ``event_bus`` gesetzt). ``uds_socket``: zusaetzlich UDS-Datagramme an
+      ``runtime/telemetry.sock`` (fuer die SSE-Bruecke ins Dashboard).
+    * ``mcp_config``: Pfad zu ``mcp_config.json`` — externe MCP-Nodes werden
+      verbunden und ihre Tools registriert (fail-closed je Node).
+    """
+    active_embedder = embedder or HashEmbeddingProvider()
+    publisher = telemetry
+    if publisher is None and (event_bus is not None or uds_socket is not None):
+        publisher = CielTelemetryPublisher()
+    if publisher is not None and event_bus is not None:
+        publisher.add_sync_subscriber(EventBusGraphSubscriber(event_bus))
+    if publisher is not None and uds_socket is not None:
+        publisher.add_sync_subscriber(UDSDatagramSubscriber(uds_socket))
+    registry = ColdStorageRegistry(embedder=active_embedder, cache_path=cache_path, event_bus=event_bus, telemetry=publisher)
+    wrapper: CielFastMCPWrapper | None = None
+    if fastmcp_server is not None:
+        inner = fastmcp_server.wrapped if isinstance(fastmcp_server, CielFastMCPWrapper) else fastmcp_server
+        wrapper = fastmcp_server if isinstance(fastmcp_server, CielFastMCPWrapper) else CielFastMCPWrapper(inner, registry=registry)
+        if wrapper.registry is not registry:
+            # Bereits existierender Wrapper mit eigener Registry → übernehmen.
+            registry = wrapper.registry
+        else:
+            await wrapper.ainit()
+    if limb_registry is not None:
+        limb_mirror = ColdStorageRegistry.from_limb_registry(limb_registry, embedder=active_embedder, event_bus=event_bus)
+        for name in limb_mirror.names():
+            record = limb_mirror.require(name)
+            if name not in registry:
+                registry.register(record, origin="limb", persist=False)
+        if registry.cache_path is not None:
+            registry.save_cache(registry.cache_path)
+    mcp_registrations: list[MCPNodeRegistration] = []
+    if mcp_config is not None:
+        mcp_loaded = await load_and_register_mcp_nodes(registry, mcp_config, event_bus=event_bus)
+        mcp_registrations = mcp_loaded.registrations
+    active_executor: ToolExecutor = executor or RegistryFunctionExecutor(registry)
+    gate = NCMGate(
+        registry,
+        embedder=active_embedder,
+        executor=active_executor,
+        event_bus=event_bus,
+        telemetry=publisher,
+        bypass_threshold=bypass_threshold,
+        top_k=top_k,
+    )
+    agent = SandboxAgent(
+        registry=registry, gate=gate, llm=llm, executor=active_executor, event_bus=event_bus, telemetry=publisher, max_turns=max_turns
+    )
+    synthesizer = MacroSkillSynthesizer(registry, event_bus=event_bus, telemetry=publisher, persist_path=synth_path)
+    registry.publish_cold_state_sync()
+    return CielLayer(
+        registry=registry,
+        gate=gate,
+        agent=agent,
+        synthesizer=synthesizer,
+        wrapper=wrapper,
+        telemetry=publisher,
+        mcp_nodes=mcp_registrations,
+    )
+
+
+__all__ = [
+    "BYPASS_THRESHOLD",
+    "CIEL_EVENT_KINDS",
+    "GRAPH_EVENT_KIND",
+    "HAVE_PYDANTIC",
+    "JIT_TOP_K",
+    "MACRO_PREFIX",
+    "MCP_CLIENT_NAME",
+    "MCP_PROTOCOL_VERSION",
+    "META_TOOL_NAME",
+    "NODE_COLD",
+    "NODE_HOT",
+    "NODE_WARM",
+    "REQUEST_ADDITIONAL_SKILL_SCHEMA",
+    "SANDBOX_SYSTEM_PROMPT",
+    "SYNTHESIS_THRESHOLD",
+    "AgentResult",
+    "AssistantMessage",
+    "AutoEmbeddingProvider",
+    "BaseModel",
+    "CielConfigError",
+    "CielError",
+    "CielFastMCPWrapper",
+    "CielGraphEvent",
+    "CielGraphEventType",
+    "CielGraphNode",
+    "CielLayer",
+    "CielTelemetryPublisher",
+    "ColdStorageRegistry",
+    "EmbeddingProvider",
+    "EventBusGraphSubscriber",
+    "GateDecision",
+    "HashEmbeddingProvider",
+    "LLMClient",
+    "MCPNodeClient",
+    "MCPNodeConfig",
+    "MCPNodeLoadResult",
+    "MCPNodeRegistration",
+    "MCPTool",
+    "MCPToolError",
+    "MCPTransportError",
+    "MacroSkillSynthesizer",
+    "MacroSynthesis",
+    "NCMGate",
+    "NoOpLLMClient",
+    "OnnxEmbeddingProvider",
+    "OpenAICompatLLMClient",
+    "RegistryFunctionExecutor",
+    "RoutingMode",
+    "SSEMCPTransport",
+    "SandboxAgent",
+    "ScoredTool",
+    "ScriptedLLMClient",
+    "StdioMCPTransport",
+    "ToolCall",
+    "ToolExecutor",
+    "ToolNotExecutable",
+    "ToolNotFound",
+    "ToolResult",
+    "ToolSchema",
+    "ToolTimeout",
+    "UDSDatagramSubscriber",
+    "build_ciel_layer",
+    "cluster_for",
+    "cold_state_sync_event",
+    "cosine_similarity",
+    "estimate_tokens",
+    "expand_env_vars",
+    "jit_reload_event",
+    "load_and_register_mcp_nodes",
+    "load_mcp_config",
+    "macro_evolution_event",
+    "node_id_for",
+    "register_mcp_node",
+    "routing_event",
+    "run_handler",
+]

@@ -1,0 +1,25 @@
+{
+  "$comment": "NIO MCP-Server-Registry (Claude-style). Eingelesen von apollo.ciel.mcp_nodes.load_mcp_config(). Jeder Node wird verbunden und seine Tools landen im Ciel Cold-Storage (<node>.<tool>). Fail-closed je Node: ein toter Node stoppt weder andere Nodes noch die Schicht. Secrets NIEMALS hier ablegen — nur ${VAR}-Referenzen (siehe stalkchain-direct).",
+  "mcpServers": {
+    "stalkchain": {
+      "_comment": "StalkChain Chain-Data-Node via mcp-remote (stdio-Seite; das Remote-SSE spricht mcp-remote). Braucht Node.js (npx) zur Laufzeit. Alternative ohne Node: stalkchain-direct (sse) aktivieren.",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://data.stalkchain.com/mcp"],
+      "env": {},
+      "timeout_sec": 30.0,
+      "cluster": "chain-data"
+    },
+    "stalkchain-direct": {
+      "_comment": "Direktanbindung ohne npx: Ciel spricht das Remote-SSE selbst (SSEMCPTransport). Standardmaessig deaktiviert, damit Tools nicht doppelt (stdio + sse) registriert werden — bei Bedarf disabled=false setzen (und oben disabled=true). API-Key via Umgebung: export STALKCHAIN_API_KEY=...",
+      "transport": "sse",
+      "url": "https://data.stalkchain.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${STALKCHAIN_API_KEY}"
+      },
+      "timeout_sec": 30.0,
+      "cluster": "chain-data",
+      "disabled": true
+    }
+  }
+}
