@@ -1,6 +1,7 @@
 import os
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import sys
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -106,6 +107,28 @@ class TestContainer(unittest.TestCase):
             )
             with self.assertRaisesRegex(ConfigError, "\\$HOME Mount ist verboten."):
                 build_docker_run_args(config)
+
+    def test_repo_under_home_allows_only_run_dir(self):
+        with patch.dict(os.environ, {"HOME": str(_REPO_ROOT.parent)}):
+            config = ContainerConfig(
+                name="t", image="i", agent_name="a", run_dir=self.run_dir,
+                mounts={self.valid_mount: "/app/workspace"}
+            )
+            args, _ = build_docker_run_args(config)
+            self.assertIn(f"{self.valid_mount.resolve()}:/app/workspace", args)
+
+            for bad_mount, message in (
+                (_REPO_ROOT.parent, "\\$HOME Mount ist verboten."),
+                (_REPO_ROOT.parent / "anderes-projekt", "liegt ausserhalb des run_dir"),
+                (_REPO_ROOT, "Repo Root Mount ist verboten."),
+                (_REPO_ROOT / "core", "liegt ausserhalb des run_dir"),
+            ):
+                config = ContainerConfig(
+                    name="t", image="i", agent_name="a", run_dir=self.run_dir,
+                    mounts={bad_mount: "/app/data"}
+                )
+                with self.assertRaisesRegex(ConfigError, message):
+                    build_docker_run_args(config)
 
     def test_run_dir_out_of_bounds(self):
         # run_dir out of runtime/agents

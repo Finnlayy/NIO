@@ -48,7 +48,7 @@ Das System wird ausschließlich über `NIO_KANBAN_*` Umgebungsvariablen konfigur
 | `NIO_KANBAN_PG_DSN` | DSN für Postgres | `""` |
 | `NIO_KANBAN_BUS` | Event-Bus (memory / redis) | `memory` |
 | `NIO_KANBAN_REDIS_URL` | Redis URL | `redis://127.0.0.1:6379/0` |
-| `NIO_KANBAN_SANDBOX` | Sandbox-Typ (subprocess / docker) | `subprocess` |
+| `NIO_KANBAN_SANDBOX` | Sandbox-Typ (subprocess / docker) | `docker` |
 | `NIO_KANBAN_IMAGE` | Docker Image für JIT-Worker | `python:3.12-slim` |
 | `NIO_KANBAN_CPUS` | CPU-Limit für Sandbox | `1.0` |
 | `NIO_KANBAN_MEMORY` | Speicher-Limit für Sandbox | `512m` |
@@ -80,7 +80,8 @@ Das System wird ausschließlich über `NIO_KANBAN_*` Umgebungsvariablen konfigur
 
 - **Datenbank:** `NIO_KANBAN_STORE=sqlite` oder `postgres`. Bei `postgres` wird `NIO_KANBAN_PG_DSN` benötigt. (Erfordert das Extra `kanban` mit `asyncpg`).
 - **Bus:** `NIO_KANBAN_BUS=memory` für lokale Single-Process Tests, `redis` für verteiltes Setup.
-- **Sandbox:** `NIO_KANBAN_SANDBOX=subprocess` für lokale Ausführung oder `docker` für vollständige Isolation.
+- **Sandbox:** `NIO_KANBAN_SANDBOX=docker` (Default) für vollständige Isolation oder `subprocess` für lokale Ausführung. `subprocess` führt nur `runtime: noop` aus, jede andere Runtime wird abgelehnt.
+  Die Docker-Sandbox setzt `no-new-privileges`. Das Docker-Snap unter Ubuntu verweigert damit jeden Containerstart (`exec ...: operation not permitted`, Exit 255), weil AppArmor den Profilwechsel blockiert. Dafür ein Docker ohne Snap verwenden, zum Beispiel das apt-Paket `docker.io`.
 
 ## Sicherheitsmodell
 
