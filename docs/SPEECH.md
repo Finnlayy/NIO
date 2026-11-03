@@ -67,3 +67,33 @@ Gemessen am 31.10.2026 auf i5-9600KF, nur CPU, `int8`, mit 10 Sekunden synthetis
 
 - Das Mikrofon verlangt `localhost` oder HTTPS. Über die Netzwerkadresse des Rechners blockiert der Browser die Aufnahme.
 - Der Text erscheint erst nach dem Stoppen, nicht während des Sprechens.
+
+## Browser speech in the remote preview
+
+The terminal now offers **Speech → Browser speech** as an explicit alternative
+when the local engine is not installed. Open **Voice** in the Apollo header,
+select **Use browser speech instead**, choose English or Deutsch, and click
+**Dictate**. Chrome/Edge generally expose the required Web Speech API; support
+and service availability depend on the browser. Unsupported browsers retain
+the local-engine option and typed input.
+
+Unlike the local Whisper path described above, browser speech **may send audio
+to the browser vendor's recognition service**. The UI discloses this before
+recording; it never silently switches a local recording to that service.
+No speech model or API key is required on the NIO server for this mode.
+
+For microphone permissions, open the HTTPS preview in a **new browser tab**
+instead of the embedded preview, then allow microphone access in site settings.
+An embedding page may prohibit microphone access even when the app uses HTTPS;
+the app cannot override its parent's permissions policy.
+
+Both modes put final text into the draft only. Review it and press **Send**.
+Saying “slash help” produces `/help`; “slash router status” produces
+`/router status`. Only explicit spoken slash prefixes followed by a known
+command are normalized. Approvals and denials remain typed-only, including
+spoken German “Schrägstrich approve/deny”. Closing the terminal cancels the
+session and discards late results. Sessions stop after at most 60 seconds.
+
+The preview's **AI demo mode** notice is separate from dictation: browser speech
+does not connect a live LLM, market provider, or agent worker. Those integrations
+still require their own configuration.

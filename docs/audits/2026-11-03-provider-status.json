@@ -1,0 +1,142 @@
+{
+  "at": "2026-11-03T09:32:41.687184+00:00",
+  "liveProbeRequested": true,
+  "configuredProviders": 0,
+  "readyProviders": 0,
+  "providers": [
+    {
+      "id": "freellm",
+      "name": "FreeLLMAPI gateway",
+      "configured": false,
+      "model": "",
+      "status": "missing_secret"
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "configured": false,
+      "model": "openai/gpt-4o-mini",
+      "status": "missing_secret"
+    },
+    {
+      "id": "groq",
+      "name": "Groq",
+      "configured": false,
+      "model": "llama-3.1-8b-instant",
+      "status": "missing_secret"
+    },
+    {
+      "id": "google",
+      "name": "Google Gemini",
+      "configured": false,
+      "model": "gemini-2.5-flash",
+      "status": "missing_secret"
+    },
+    {
+      "id": "mistral",
+      "name": "Mistral",
+      "configured": false,
+      "model": "ministral-8b-latest",
+      "status": "missing_secret"
+    },
+    {
+      "id": "cerebras",
+      "name": "Cerebras",
+      "configured": false,
+      "model": "llama3.1-8b",
+      "status": "missing_secret"
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "configured": false,
+      "model": "gpt-4o-mini",
+      "status": "missing_secret"
+    },
+    {
+      "id": "nvidia",
+      "name": "NVIDIA",
+      "configured": false,
+      "model": "meta/llama-3.1-8b-instruct",
+      "status": "missing_secret"
+    },
+    {
+      "id": "cohere",
+      "name": "Cohere",
+      "configured": false,
+      "model": "command-r7b-12-2024",
+      "status": "missing_secret"
+    },
+    {
+      "id": "huggingface",
+      "name": "Hugging Face",
+      "configured": false,
+      "model": "",
+      "status": "missing_secret"
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "configured": false,
+      "model": "",
+      "status": "missing_secret"
+    }
+  ],
+  "unauthenticatedTransportToRegistryDefaults": {
+    "freellm": {
+      "reachable": false,
+      "error": "network_or_tls_unreachable",
+      "authenticated": false
+    },
+    "openrouter": {
+      "reachable": false,
+      "error": "network_or_tls_unreachable",
+      "authenticated": false
+    },
+    "groq": {
+      "reachable": false,
+      "error": "network_or_tls_unreachable",
+      "authenticated": false
+    },
+    "google": {
+      "reachable": false,
+      "error": "network_or_tls_unreachable",
+      "authenticated": false
+    },
+    "mistral": {
+      "reachable": false,
+      "error": "network_or_tls_unreachable",
+      "authenticated": false
+    },
+    "cerebras": {
+      "reachable": false,
+      "error": "network_or_tls_unreachable",
+      "authenticated": false
+    },
+    "openai": {
+      "reachable": false,
+      "error": "network_or_tls_unreachable",
+      "authenticated": false
+    },
+    "nvidia": {
+      "reachable": false,
+      "error": "network_or_tls_unreachable",
+      "authenticated": false
+    },
+    "cohere": {
+      "reachable": false,
+      "error": "network_or_tls_unreachable",
+      "authenticated": false
+    },
+    "huggingface": {
+      "reachable": false,
+      "error": "network_or_tls_unreachable",
+      "authenticated": false
+    },
+    "anthropic": {
+      "reachable": false,
+      "error": "network_or_tls_unreachable",
+      "authenticated": false
+    }
+  }
+}

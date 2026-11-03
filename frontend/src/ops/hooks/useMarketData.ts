@@ -5,7 +5,7 @@ import { MAX_BACKOFF_MS, backoffDelayMs } from "../backoff";
 
 export { backoffDelayMs, MAX_BACKOFF_MS };
 
-export type DataSource = "live" | "sim" | "loading";
+export type DataSource = "live" | "sim" | "loading" | "error";
 
 interface MarketState<T> {
   data: T;
@@ -21,8 +21,8 @@ export function toTvSymbol(symbol?: string): string {
 
 /**
  * Fetch a normalized market dataset from the server-side tvremix proxy.
- * Falls back to the provided simulated dataset whenever the live feed is
- * unavailable, so the grid always renders. Polls on `refreshMs`.
+ * A failed live request remains an error. Widgets must not render their design
+ * fixtures while loading or after a failure. Polls on `refreshMs`.
  */
 export function useMarketData<T>(
   tool: "quote" | "quotes" | "ohlcv" | "technicals" | "news" | "screener",
@@ -48,13 +48,13 @@ export function useMarketData<T>(
         const res = await fetch(url, { cache: "no-store" });
         const json = await res.json();
         if (cancelled) return;
-        if (json?.ok && json?.data) {
-          setState({ data: mergeDeep(fallbackRef.current, json.data) as T, source: "live" });
+        if (res.ok && json?.ok && json?.data) {
+          setState({ data: json.data as T, source: "live" });
         } else {
-          setState({ data: fallbackRef.current, source: "sim" });
+          setState({ data: fallbackRef.current, source: "error" });
         }
       } catch {
-        if (!cancelled) setState({ data: fallbackRef.current, source: "sim" });
+        if (!cancelled) setState({ data: fallbackRef.current, source: "error" });
       } finally {
         if (!cancelled && refreshMs > 0) {
           timer = setTimeout(load, refreshMs);
@@ -70,15 +70,6 @@ export function useMarketData<T>(
   }, [url, refreshMs]);
 
   return state;
-}
-
-/** Shallow-merge live fields over the simulated baseline (keeps sim-only fields). */
-function mergeDeep<T>(base: T, live: unknown): T {
-  if (Array.isArray(live)) return live as T;
-  if (live && typeof live === "object" && base && typeof base === "object" && !Array.isArray(base)) {
-    return { ...(base as Record<string, unknown>), ...(live as Record<string, unknown>) } as T;
-  }
-  return live as T;
 }
 
 /* ================================================================== */
@@ -363,9 +354,9 @@ export function useDataSourceStatus(): DataSource {
       try {
         const res = await fetch("/api/market/quote?symbol=BINANCE:BTCUSDT", { cache: "no-store" });
         const json = await res.json();
-        if (!cancelled) setStatus(json?.ok ? "live" : "sim");
+        if (!cancelled) setStatus(res.ok && json?.ok ? "live" : "error");
       } catch {
-        if (!cancelled) setStatus("sim");
+        if (!cancelled) setStatus("error");
       }
     }
     check();

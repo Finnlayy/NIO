@@ -51,6 +51,7 @@ Homepage = "https://github.com/Finnlayy/NIO"
 packages = ["core", "orchestrator", "orchestrator.kanban", "orchestrator.telegram", "limbs", "apollo", "apollo.ciel"]
 
 [tool.setuptools.package-data]
+"orchestrator" = ["provider_catalog.json"]
 "orchestrator.kanban" = ["sql/*.sql"]
 "orchestrator.telegram" = ["sql/*.sql"]
 

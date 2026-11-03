@@ -9,6 +9,7 @@ const {
   appendTranscript,
   joinDictation,
   microphoneError,
+  normalizeDictation,
   pickRecorderMime,
   probeEngine,
   speechStatus,
@@ -152,4 +153,14 @@ test("orb listens only while idle and hands back afterwards", () => {
   assert.equal(store.getState().orbState, "THINKING");
   assert.equal(store.getState().speech, "offline");
   store.setState({ orbState: "IDLE", speech: "idle" });
+});
+
+
+test("spoken slash commands become reviewable CLI drafts", () => {
+  assert.equal(normalizeDictation("Slash router status"), "/router status");
+  assert.equal(joinDictation("", "slash spawn inference Vision"), "/spawn inference Vision");
+  assert.equal(normalizeDictation("Schrägstrich help"), "/help");
+  assert.equal(normalizeDictation("slash unrecognized word"), "slash unrecognized word");
+  assert.equal(normalizeDictation("a slash in prose"), "a slash in prose");
+  assert.equal(joinDictation("", "Schrägstrich approve"), null);
 });

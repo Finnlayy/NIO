@@ -90,6 +90,17 @@ class TestLimbBridge(unittest.TestCase):
         self.assertEqual(reason, "rejected")
         self.assertTrue(payload["untrusted"])
 
+    def test_symlink_request_denied(self):
+        host_file = self.tmp_dir / "host.json"
+        host_file.write_text(json.dumps({"operation": "sys.echo", "params": {}}), encoding="utf-8")
+        self.req_file.symlink_to(host_file)
+        success, reason, payload = run_limb_request(
+            self.req_file, self.ops, self.pol, self.orch, "t1", self._soul("limb", "sys.echo")
+        )
+        self.assertFalse(success)
+        self.assertIn("forged", reason)
+        self.assertIsNone(payload)
+
     def test_forged_request_file_denied(self):
         self.req_file.write_bytes(b"a" * (65 * 1024))
         success, reason, payload = run_limb_request(
