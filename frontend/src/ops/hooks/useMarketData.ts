@@ -12,7 +12,7 @@ interface MarketState<T> {
   source: DataSource;
 }
 
-/** Normalize a bare ticker ("BTCUSDT") to tvremix's EXCHANGE:TICKER form. */
+/** Normalize a bare ticker ("BTCUSDT") to TradingView's EXCHANGE:TICKER form. */
 export function toTvSymbol(symbol?: string): string {
   if (!symbol) return "BINANCE:BTCUSDT";
   if (symbol.includes(":")) return symbol;
@@ -20,15 +20,18 @@ export function toTvSymbol(symbol?: string): string {
 }
 
 /**
- * Fetch a normalized market dataset from the server-side tvremix proxy.
+ * Fetch a normalized market dataset from the server-side TradingView MCP proxy.
  * A failed live request remains an error. Widgets must not render their design
  * fixtures while loading or after a failure. Polls on `refreshMs`.
+ * A changed `refreshKey` (the widget's refresh button) refetches at once
+ * and asks the server to bypass its TTL cache for that one request.
  */
 export function useMarketData<T>(
   tool: "quote" | "quotes" | "ohlcv" | "technicals" | "news" | "screener",
   query: Record<string, string>,
   fallback: T,
   refreshMs = 120_000,
+  refreshKey?: unknown,
 ): MarketState<T> {
   const [state, setState] = useState<MarketState<T>>({ data: fallback, source: "loading" });
   const fallbackRef = useRef(fallback);
@@ -43,9 +46,12 @@ export function useMarketData<T>(
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
 
+    let bypassCache = refreshKey !== undefined && refreshKey !== null;
+
     async function load() {
       try {
-        const res = await fetch(url, { cache: "no-store" });
+        const res = await fetch(bypassCache ? `${url}&fresh=1` : url, { cache: "no-store" });
+        bypassCache = false;
         const json = await res.json();
         if (cancelled) return;
         if (res.ok && json?.ok && json?.data) {
@@ -67,7 +73,7 @@ export function useMarketData<T>(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [url, refreshMs]);
+  }, [url, refreshMs, refreshKey]);
 
   return state;
 }
@@ -344,7 +350,7 @@ function safeParse(raw: string): unknown {
   }
 }
 
-/** Global connection status — is the tvremix proxy reaching live data? */
+/** Global connection status — is the TradingView MCP proxy reaching live data? */
 export function useDataSourceStatus(): DataSource {
   const [status, setStatus] = useState<DataSource>("loading");
 

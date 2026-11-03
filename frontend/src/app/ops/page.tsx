@@ -121,7 +121,8 @@ export default function OpsGridPage() {
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <span
+          <a
+            href={dataSource === "error" ? "/api/market/oauth/start" : undefined}
             className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wide border ${
               dataSource === "live"
                 ? "text-emerald-300 border-emerald-400/25 bg-emerald-400/10"
@@ -131,10 +132,10 @@ export default function OpsGridPage() {
             }`}
             title={
               dataSource === "live"
-                ? "Live TradingView data via tvremix MCP"
+                ? "Live data via the official TradingView MCP"
                 : dataSource === "error"
-                  ? "tvremix unreachable — no simulated fallback"
-                  : "Checking tvremix connection…"
+                  ? "TradingView not connected or unreachable — click to sign in; no simulated fallback"
+                  : "Checking TradingView connection…"
             }
           >
             <span
@@ -142,8 +143,8 @@ export default function OpsGridPage() {
                 dataSource === "live" ? "bg-emerald-400 pulse-dot" : dataSource === "error" ? "bg-amber-400" : "bg-slate-500 animate-pulse"
               }`}
             />
-            {dataSource === "live" ? "tvremix · Live" : dataSource === "error" ? "Live-Fehler" : "Connecting"}
-          </span>
+            {dataSource === "live" ? "TradingView · Live" : dataSource === "error" ? "Live-Fehler" : "Connecting"}
+          </a>
           <MainWindowLink />
           <button
             onClick={() => setConsoleOpen(!consoleOpen)}

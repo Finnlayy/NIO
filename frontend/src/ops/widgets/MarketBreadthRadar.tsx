@@ -37,6 +37,7 @@ export function MarketBreadthRadar({ data }: { data: Record<string, unknown> }) 
     {},
     { byBase: {} },
     180_000,
+    data.refreshedAt,
   );
 
   if (source !== "live") return <MarketUnavailable source={source} />;
@@ -119,7 +120,7 @@ export function MarketBreadthRadar({ data }: { data: Record<string, unknown> }) 
             ))}
           </div>
           <p className="text-[10px] text-slate-400 mt-3 leading-relaxed">
-            Not investment advice. {source === "live" ? "Live TradingView feed via tvremix." : "Simulated telemetry (live feed unavailable)."}
+            Not investment advice. {source === "live" ? "Live feed via the official TradingView MCP." : "Simulated telemetry (live feed unavailable)."}
           </p>
         </div>
       </div>
