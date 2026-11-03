@@ -17,6 +17,10 @@ def run_limb_request(
     task_id: str,
     active_soul_md: str
 ) -> tuple[bool, str, dict[str, Any] | None]:
+    # Die Datei schreibt der Worker: Ein Symlink wuerde Host-Dateien lesen.
+    if request_file.is_symlink():
+        return False, "limb request forged or unreadable", None
+
     try:
         if request_file.stat().st_size > 64 * 1024:
             return False, "limb request too large (max 64 KiB)", None

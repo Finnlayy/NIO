@@ -43,21 +43,15 @@ def build_docker_run_args(config: ContainerConfig) -> tuple[list[str], dict[str,
         raise ConfigError(f"Netzwerk {config.network} ist verboten. Nur nio-agents oder none.")
 
     # 2. User validieren
-    try:
-        uid = int(config.user.split(":")[0])
-        if uid == 0:
-            raise ConfigError("User id 0 (root) ist verboten.")
-    except ValueError:
-        if config.user == "root":
-            raise ConfigError("User root ist verboten.")
-    except IndexError:
-        pass
+    for part in config.user.split(":"):
+        if part.strip().lower() == "root" or (part.strip().isdigit() and int(part) == 0):
+            raise ConfigError("User oder Gruppe root (id 0) ist verboten.")
 
     # 3. Validiere run_dir streng (Fail Closed)
     try:
         run_dir_resolved = config.run_dir.resolve(strict=False)
-    except OSError:
-        raise ConfigError("run_dir nicht aufloesbar.")
+    except OSError as exc:
+        raise ConfigError("run_dir nicht aufloesbar.") from exc
 
     workspace = (_REPO_ROOT / "workspace").resolve(strict=False)
     agents_dir = (_REPO_ROOT / "runtime" / "agents").resolve(strict=False)
@@ -89,18 +83,16 @@ def build_docker_run_args(config: ContainerConfig) -> tuple[list[str], dict[str,
 
         try:
             resolved_host = host_path.resolve(strict=False)
-        except OSError:
-            raise ConfigError(f"Mount-Pfad nicht aufloesbar: {host_path}")
+        except OSError as exc:
+            raise ConfigError(f"Mount-Pfad nicht aufloesbar: {host_path}") from exc
 
         # Verbotene Pfade pruefen (auf resolved_host)
         if "docker.sock" in str(resolved_host):
             raise ConfigError("docker.sock Mount ist verboten.")
 
-        # Liegt das Repo unter $HOME, greifen fuer Pfade im Repo die strengeren
-        # Pruefungen unten: Zugelassen bleibt dort nur das run_dir.
-        if home and not resolved_host.is_relative_to(_REPO_ROOT):
-            if resolved_host == home_resolved or resolved_host.is_relative_to(home_resolved):
-                raise ConfigError("$HOME Mount ist verboten.")
+        # Nur $HOME selbst: Das Repo darf unter $HOME liegen, alles andere faengt die run_dir-Pruefung.
+        if home and resolved_host == home_resolved:
+            raise ConfigError("$HOME Mount ist verboten.")
 
         if resolved_host == workspace or resolved_host.is_relative_to(workspace):
             raise ConfigError("workspace/ Mount ist verboten.")

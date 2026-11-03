@@ -132,6 +132,22 @@ class AgentRunTest(unittest.TestCase):
         stored = json.loads(Path(output["result_path"]).read_text(encoding="utf-8"))
         self.assertTrue(stored["untrusted"])
 
+    def test_system_log_kennt_start_und_ende_ohne_collect(self):
+        run_id = self.start()["run_id"]
+        self.status(run_id, Poll("succeeded"))
+        lines = (Path(self.tmp.name) / "system.log").read_text(encoding="utf-8").splitlines()
+        records = [json.loads(line) for line in lines]
+        self.assertEqual([r["kind"] for r in records], ["agent.run.start", "agent.run.end"])
+        self.assertNotIn("end", records[0]["payload"])
+        self.assertEqual(records[1]["payload"]["final_state"], "succeeded")
+        self.assertEqual(records[1]["job_id"], run_id)
+
+    def test_not_aus_geht_vor_budget(self):
+        (Path(self.tmp.name) / "STOP").touch()
+        with self.assertRaises(LimbError) as caught:
+            self.start()
+        self.assertEqual(caught.exception.code, ErrorCode.STOPPED)
+
     def test_mindestabstand_spart_die_abfrage(self):
         run_id = self.start()["run_id"]
         self.status(run_id, Poll("running"))

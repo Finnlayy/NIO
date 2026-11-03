@@ -1,3 +1,4 @@
+import { secretEnvironment } from "@/server/secretManager";
 import { NextResponse, type NextRequest } from "next/server";
 import { handleGenericProxy } from "../../../../apollo/proxy";
 
@@ -12,7 +13,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "invalid JSON" }, { status: 400 });
   }
 
-  const result = await handleGenericProxy(body.path, body.method, body.payload, process.env);
+  let env;
+  try { env = await secretEnvironment(); }
+  catch { return NextResponse.json({ ok: false, error: "secret_store_unavailable_or_invalid" }, { status: 503 }); }
+
+  const result = await handleGenericProxy(body.path, body.method, body.payload, env);
 
   if (result.body) {
     return NextResponse.json(result.body, { status: result.status });

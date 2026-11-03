@@ -19,7 +19,8 @@ export type ParsedCommand =
   | { kind: "clear" }
     | { kind: "agent"; command: string }
   | { kind: "runs" }
-  | { kind: "approve"; pin: string }
+  | { kind: "tasks" }
+  | { kind: "approve" }
   | { kind: "deny" }
   | { kind: "stop" }
   | { kind: "stopall" }
@@ -38,9 +39,10 @@ export const COMMANDS = [
   { command: "/note", usage: "/note <text>", detail: "save a note to the vault inbox (works with dictation)" },
   { command: "/vault", usage: "/vault <search>", detail: "search the Obsidian vault" },
   { command: "/clear", usage: "/clear", detail: "flush terminal history" },
-    { command: "/agent", usage: "/agent <command>", detail: "agent orchestration" },
-  { command: "/runs", usage: "/runs", detail: "show run view with cost and artifacts" },
-  { command: "/approve", usage: "/approve <pin>", detail: "approve pending action" },
+    { command: "/agent", usage: "/agent", detail: "list Kanban workers" },
+  { command: "/tasks", usage: "/tasks", detail: "Agentenaufgaben mit echtem Ergebnis oder Fehlerstatus" },
+  { command: "/runs", usage: "/runs", detail: "list recent agent runs" },
+  { command: "/approve", usage: "/approve", detail: "approve pending action" },
   { command: "/deny", usage: "/deny", detail: "deny pending action" },
   { command: "/stop", usage: "/stop", detail: "emergency stop" },
   { command: "/stopall", usage: "/stopall", detail: "emergency stop all runs" },
@@ -240,10 +242,12 @@ export function parseCommand(input: string): ParsedCommand {
       return { kind: "clear" };
     case "/agent":
       return { kind: "agent", command: rest };
+    case "/tasks":
+      return { kind: "tasks" };
     case "/runs":
       return { kind: "runs" };
     case "/approve":
-      return { kind: "approve", pin: rest };
+      return { kind: "approve" };
     case "/deny":
       return { kind: "deny" };
     case "/stop":

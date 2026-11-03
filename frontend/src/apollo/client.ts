@@ -1,15 +1,8 @@
-/* ==================================================================== */
-/* Optional live bridge                                                  */
-/*                                                                       */
-/* The UI is fully functional without a backend: synthesis is simulated  */
-/* and every simulated line is labelled SIM. When an operator configures  */
-/* a FreeLLMAPI endpoint, prompts go through `/api/apollo`, which proxies */
-/* to that OpenAI-compatible endpoint. Failures degrade to simulation     */
-/* with a visible warning — never to a silent fake answer.               */
-/* ==================================================================== */
+/** Live server bridge: errors stay errors; there is no simulated fallback. */
 
 export interface SynthesisRequest {
   endpointUrl: string;
+  providerId?: string;
   model: string;
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
   temperature: number;
@@ -161,6 +154,50 @@ export async function kanbanRequest<T = unknown>(
     }
 
     return { ok: true, data: data as T };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "network error" };
+  }
+}
+
+const APOLLO_BOARD_NAME = "Apollo";
+
+/* Boards get generated ids, so the Apollo board is found by name. */
+export async function apolloBoardId(): Promise<KanbanResult<string>> {
+  const boards = await kanbanRequest<{ id: string; name: string }[]>("/api/v1/kanban/boards", "GET");
+  if (!boards.ok) return { ok: false, error: boards.error };
+  const existing = boards.data?.find((board) => board.name === APOLLO_BOARD_NAME);
+  if (existing) return { ok: true, data: existing.id };
+  const created = await kanbanRequest<{ id: string }>("/api/v1/kanban/boards", "POST", { name: APOLLO_BOARD_NAME });
+  if (!created.ok || !created.data) return { ok: false, error: created.error ?? "board not created" };
+  return { ok: true, data: created.data.id };
+}
+
+export async function createApolloTask(title: string, description: string): Promise<KanbanResult<{ id: string }>> {
+  const board = await apolloBoardId();
+  if (!board.ok) return { ok: false, error: board.error };
+  return kanbanRequest<{ id: string }>("/api/v1/kanban/tasks", "POST", {
+    board_id: board.data,
+    title,
+    description,
+    dependencies: [],
+    required_skills: [],
+  });
+}
+
+export interface OpsRun {
+  run_id: string;
+  agent: string;
+  state: string;
+  created_at: string;
+}
+
+export async function fetchRuns(): Promise<KanbanResult<OpsRun[]>> {
+  try {
+    const response = await fetch("/api/ops", { cache: "no-store", signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
+    const data = (await response.json()) as { runs?: OpsRun[]; errors?: { runs?: boolean } };
+    if (data.errors?.runs) return { ok: false, error: "run store unreadable" };
+    return { ok: true, data: data.runs ?? [] };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "network error" };
   }

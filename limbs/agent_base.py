@@ -26,6 +26,7 @@ gibt es nicht, ``status`` muss also regelmaessig laufen (zum Beispiel per Trigge
 from __future__ import annotations
 
 import json
+import math
 import os
 import random
 import re
@@ -35,6 +36,8 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from core.budget import BudgetError, BudgetTracker, Usage
 
 if __package__ in (None, ""):  # direkter Skriptaufruf durch den Orchestrator
     from base import LimbBase, LimbContext, LimbError  # type: ignore[import-not-found]
@@ -91,8 +94,6 @@ class Poll:
     detail: Mapping[str, Any] | None = None
 
 
-import math
-from core.budget import BudgetError, BudgetTracker, Usage
 
 class RunStore:
     """Ablage der Laeufe unter ``runtime/agents/``."""
@@ -214,17 +215,18 @@ class AgentLimb(LimbBase):
         return (Path(self.config.runtime_dir) / "STOP").exists()
 
     def _start(self, params: Mapping[str, Any], ctx: LimbContext) -> dict[str, Any]:
+        if self._stop_requested():
+            raise LimbError(ErrorCode.STOPPED, "Not-Aus aktiv (runtime/STOP).")
         tracker = BudgetTracker(Path(self.config.runtime_dir) / "budget")
         try:
             tracker.check_start()
         except BudgetError as e:
-            raise LimbError(ErrorCode.POLICY_DENIED, str(e))
-        if self._stop_requested():
-            raise LimbError(ErrorCode.STOPPED, "Not-Aus aktiv (runtime/STOP).")
+            raise LimbError(ErrorCode.POLICY_DENIED, str(e)) from e
 
         fields = self.prepare(params, ctx)
         run = self.runs.create(self.name, **fields)
         self.runs.event(run["run_id"], "run.created")
+        self._log_system_run(run, {}, kind="agent.run.start")
         try:
             self.launch(params, ctx, run)
         except ServiceDown as exc:
@@ -355,8 +357,9 @@ class AgentLimb(LimbBase):
 
         return {**redact(payload, self.secrets()), **self.view(run), "result_path": ctx.rel(path)}
 
-    def _log_system_run(self, run: dict[str, Any], payload: dict[str, Any]) -> None:
+    def _log_system_run(self, run: dict[str, Any], payload: dict[str, Any], *, kind: str = "agent.run.summary") -> None:
         import re
+
         from core.protocol import utc_now_iso
 
         def _strip_control(v: Any) -> Any:
@@ -390,13 +393,17 @@ class AgentLimb(LimbBase):
         if isinstance(artifacts, list) and len(artifacts) > 0:
             log_payload["artifacts"] = len(artifacts)
 
+        if kind == "agent.run.start":
+            log_payload.pop("end")
+            log_payload.pop("runtime_s")
+
         clean_payload = _strip_control(log_payload)
         safe_payload = redact(clean_payload, self.secrets())
 
         record = {
             "seq": 0,
             "timestamp": utc_now_iso(),
-            "kind": "agent.run.summary",
+            "kind": kind,
             "job_id": str(run.get("run_id", "")),
             "trace_id": "",
             "intent_id": "",
@@ -419,10 +426,13 @@ class AgentLimb(LimbBase):
         if error:
             run["error"] = error
         run.pop("confirmation", None)
-        if "ended_s" not in run:
+        first_finish = "ended_s" not in run
+        if first_finish:
             run["ended_s"] = time.time()
         self.runs.save(run)
         self.runs.event(run["run_id"], "run.finished", state=state, error=error)
+        if first_finish:  # Auch Laeufe ohne collect landen im System-Log.
+            self._log_system_run(run, {}, kind="agent.run.end")
 
     def _halt_and_finish(self, run: dict[str, Any], ctx: LimbContext, state: str, reason: str) -> None:
         try:

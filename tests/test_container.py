@@ -119,7 +119,7 @@ class TestContainer(unittest.TestCase):
 
             for bad_mount, message in (
                 (_REPO_ROOT.parent, "\\$HOME Mount ist verboten."),
-                (_REPO_ROOT.parent / "anderes-projekt", "\\$HOME Mount ist verboten."),
+                (_REPO_ROOT.parent / "anderes-projekt", "liegt ausserhalb des run_dir"),
                 (_REPO_ROOT, "Repo Root Mount ist verboten."),
                 (_REPO_ROOT / "core", "liegt ausserhalb des run_dir"),
             ):
@@ -165,11 +165,15 @@ class TestContainer(unittest.TestCase):
 
     def test_uid_validation(self):
         config = ContainerConfig(name="t", image="i", agent_name="a", run_dir=self.run_dir, user="0:0")
-        with self.assertRaisesRegex(ConfigError, "User id 0 \\(root\\) ist verboten"):
+        with self.assertRaisesRegex(ConfigError, "User oder Gruppe root"):
             build_docker_run_args(config)
 
+        for user in ("root:root", "ROOT", "1000:0", "1000:root"):
+            config = ContainerConfig(name="t", image="i", agent_name="a", run_dir=self.run_dir, user=user)
+            with self.assertRaises(ConfigError):
+                build_docker_run_args(config)
         config = ContainerConfig(name="t", image="i", agent_name="a", run_dir=self.run_dir, user="root")
-        with self.assertRaisesRegex(ConfigError, "User root ist verboten"):
+        with self.assertRaisesRegex(ConfigError, "User oder Gruppe root"):
             build_docker_run_args(config)
 
 if __name__ == '__main__':

@@ -78,19 +78,29 @@ as a zustand selector, and returning a fresh object each call trips React's
 
 `FREELLMAPI_HOST` names the gateway host with port. Unset, `127.0.0.1:3001` and `localhost:3001` count as the gateway. `FREELLMAPI_KEY` goes only there, provider keys only to their exact HTTPS host, and any other target gets a 403 without a request leaving the server.
 
-`POST /api/apollo` — `{endpointUrl, model, messages, temperature?, maxTokens?}`.
-Keys come from the server environment only (`FREELLMAPI_KEY`,
-`OPENROUTER_API_KEY`, `GROQ_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`,
-`CEREBRAS_API_KEY`); the browser never sees one. Fail-closed:
+`POST /api/apollo` — `{providerId?, endpointUrl?, messages, temperature?, maxTokens?}`.
+The preferred selector is a provider ID; legacy endpoint URLs are exact-host
+allowlisted. Credentials and models are resolved by the server secret adapter.
+A missing endpoint chooses the server default, **not a simulation**.
 
-| case | status | body |
+`GET /api/apollo` and `GET /api/apollo/providers` return secret-free presence and
+measured health. Presence is never readiness. `POST /api/apollo/providers`
+explicitly makes one small real completion per configured/modelled provider;
+only success earns `ready`, valid for at most five minutes.
+
+| case | status | error |
 | --- | --- | --- |
-| no/blank endpoint | 400 | `{error:"no_endpoint"}` — client falls back to labelled simulation |
-| non-http(s) | 400 | `{error:"endpoint must be http(s)"}` |
-| upstream non-2xx | 502 | `{error:"upstream HTTP 500", detail}` |
-| upstream 200 but not JSON / no `choices` | 502 | `upstream_not_json` / `upstream_not_openai_compatible` |
-| empty completion | 502 | `empty_upstream_response` |
-| > 20 s | 504 | `upstream timeout` |
+| no credential/provider/model | 503 | `no_provider_configured`, `missing_secret`, `model_missing` |
+| malformed JSON / no messages | 400 | `invalid_json`, `no_messages` |
+| disallowed target | 403 | `forbidden target host` |
+| body > 512,000 characters | 413 | `payload_too_large` |
+| upstream authentication / quota failure | 502 | `auth_failed`, `rate_limited` |
+| bad status / invalid or empty completion | 502 | `upstream_error`, `invalid_response` |
+| network failure / timeout | 502 / 504 | `network_error`, `timeout` |
+
+No upstream error is replaced by a simulated assistant response. The graph's
+quota/failover controls are UI demonstrations, not live provider evidence.
+See the [actual integration audit and secret setup](LIVE-PROVIDER-AUDIT-2026-11-03.md).
 
 `POST /api/sandbox` — `{command}` in `pwd ls cat echo date whoami head wc uname`.
 No shell: the command is tokenised in-process and run with `execFile`, so

@@ -8,7 +8,6 @@ Postgres lauffaehig ist.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -68,7 +67,6 @@ class KanbanConfig:
     breaker_threshold: int = 3
     breaker_cooldown_s: float = 600.0
     # Dateisystem
-    runtime_dir: Path = _REPO_ROOT / "runtime" / "kanban"
     workspace_dir: Path = _REPO_ROOT / "workspace" / "kanban"
     vault_dir: Path = _REPO_ROOT / "workspace" / "obsidian"
     # Geheimnisse / API
@@ -83,7 +81,9 @@ class KanbanConfig:
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None, *, repo_root: Path | None = None) -> KanbanConfig:
-        e = os.environ if env is None else env
+        from orchestrator.secret_manager import secret_environment
+
+        e = secret_environment(env)
         root = Path(e.get("NEU_ROOT") or repo_root or _REPO_ROOT).resolve()
         return cls(
             repo_root=root,
@@ -109,7 +109,6 @@ class KanbanConfig:
             max_concurrent=max(1, _int(e, "NIO_KANBAN_MAX_CONCURRENT", 1)),
             breaker_threshold=max(1, _int(e, "NIO_KANBAN_BREAKER_THRESHOLD", 3)),
             breaker_cooldown_s=_float(e, "NIO_KANBAN_BREAKER_COOLDOWN_S", 600.0),
-            runtime_dir=_path(e, "NIO_KANBAN_RUNTIME", root, "runtime/kanban"),
             workspace_dir=_path(e, "NIO_KANBAN_WORKSPACE", root, "workspace/kanban"),
             vault_dir=_path(e, "NIO_OBSIDIAN_VAULT", root, "workspace/obsidian"),
             secret_allowlist=_csv(e, "NIO_KANBAN_SECRET_ALLOWLIST"),
