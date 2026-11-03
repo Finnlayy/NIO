@@ -71,6 +71,9 @@ const entries = [
   "kanban/TaskDialog.tsx",
   "kanban/UndoToast.tsx",
   "kanban/KanbanBoard.tsx",
+  "telegram/state.ts",
+  "telegram/proxy.ts",
+  "telegram/Panels.tsx",
 ].filter((rel) => existsSync(path.join(srcDir, rel)));
 
 function walk(dir, out = []) {
@@ -154,7 +157,7 @@ const testFiles = [];
 /* All test dirs share one flat .test-build/__tests__/ (relative requires
    like "../kanban/store" depend on it), so file names must be unique. */
 const copied = new Map();
-for (const dirName of ["ops", "kanban"]) {
+for (const dirName of ["ops", "kanban", "telegram"]) {
   const testSrc = path.join(srcDir, dirName, "__tests__");
   if (!existsSync(testSrc)) continue;
   for (const f of readdirSync(testSrc).sort()) {
@@ -166,7 +169,7 @@ for (const dirName of ["ops", "kanban"]) {
   }
 }
 
-if (testFiles.length === 0) throw new Error("no *.test.js files found in src/ops/__tests__/ or src/kanban/__tests__/");
+if (testFiles.length === 0) throw new Error("no *.test.js files found in src/ops/__tests__/, src/kanban/__tests__/ or src/telegram/__tests__/");
 execFileSync(process.execPath, ["--test", "--test-reporter=spec", ...testFiles], {
   cwd: frontendRoot,
   stdio: "inherit",

@@ -1813,6 +1813,9 @@ def build_parser() -> argparse.ArgumentParser:
     from orchestrator.kanban.cli import add_kanban_parser
     add_kanban_parser(sub, _NeuArgumentParser)
 
+    from orchestrator.telegram.cli import add_telegram_parser
+    add_telegram_parser(sub, _NeuArgumentParser)
+
     return parser
 
 

@@ -9,6 +9,15 @@ Datumsangaben in UTC.
 
 ### Hinzugefügt
 
+- `orchestrator/telegram/` — Telegram-Feeds mit Benutzerkonto lesen, Signale erkennen, Antworten nach Klick senden.
+  - Gather-Loop und Live-Listener mit At-least-once-Zustellung, SQLite-Cache und Dedupe.
+  - Intel-Router: Vorschläge an den gepaarten Bot, starke Signale als Hermes-Tasks in TRIAGE.
+  - Versand nur nach Freigabe, nur an Allowlist-Ziele, mit Rate-Limit und Audit.
+  - API unter `/api/v1/telegram/*` mit SSE, CLI `neu telegram`, Nur-Lese-Tools für Ciel und Worker.
+  - Start über `neu kanban serve`, neues Extra `telegram`, Abnahme via `scripts/ci_e2e_telegram.py` (`make e2e-telegram`).
+  - Oberfläche `/telegram` mit Server-Proxy: das Operator-Token erreicht nie den Browser.
+  - `docs/TELEGRAM.md` mit Einrichtung, Konfiguration, API und Sicherheitsmodell.
+
 - Spracheingabe: Diktat im Apollo-Terminal über lokales speaches, `limbs/speech_limb.py`
   (`speech.ping`, `speech.transcribe`) und Sprachstatus im Orb. speaches steht fest auf
   `0.8.3-cpu`. Text wird nie automatisch gesendet, Freigaben gehen nicht per Sprache.

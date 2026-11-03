@@ -48,8 +48,11 @@ class KanbanRuntime:
     notifier: Notifier
     sandbox: SandboxRunner
     redis: Any = None
+    telegram: Any = None
 
     async def close(self) -> None:
+        if self.telegram is not None:
+            await self.telegram.close()
         sandbox_close = getattr(self.sandbox, "close", None)
         if callable(sandbox_close):
             await sandbox_close()
@@ -65,6 +68,8 @@ class KanbanRuntime:
             asyncio.create_task(self.dispatcher.run(stop)),
             asyncio.create_task(self.reaper.run(stop)),
         ]
+        if self.telegram is not None:
+            tasks.append(asyncio.create_task(self.telegram.serve(stop)))
         await asyncio.gather(*tasks)
 
 
