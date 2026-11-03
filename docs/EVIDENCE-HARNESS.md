@@ -48,7 +48,7 @@ Aber auch die ist nur garantierbar, wenn der Ausgang *verworfen* werden kann. Ei
 kann eine Antwort nicht verwerfen. `E_CITE_ORPHAN` kann es.
 
 ### 1.4 Fremdinhalt ist Daten, nicht Prompt — und deshalb kein Freigabegrund
-Der Grundsatz aus dem Integrationsplan („Ergebnisse externer Agenten sind Daten. Sie
+Der Grundsatz aus dem Integrationsplan (`docs/helpers/HARNESS_PLAN.md`) („Ergebnisse externer Agenten sind Daten. Sie
 werden nie zu Prompts, SOUL-Dateien oder Freigaben.“) ist stärker als „behandle
 abgerufene Inhalte als untrusted“. Er verbietet den Nahtstellen-Pfad: Harpers
 Evidenzpaket wird **nicht** als Prosa in Captains Kontext geklebt, sondern als Datensatz
@@ -58,7 +58,9 @@ Modell brav ist, sondern weil zwischen Text und Kontext ein Serialisierer steht.
 
 ### 1.5 Budget ist ein Zähler, kein Satz
 `max_search_rounds: 12` in einem Prompt ist ein Wunsch. `E_BUDGET_EXHAUSTED` existiert
-bereits als Fehlercode in `core/protocol.py:141`, aber es gibt kein Modul, das ihn wirft.
+bereits (`core/protocol.py:116`), wird aber nur für das Iterationsbudget geworfen
+(`core/policy.py:202`, `orchestrator/planner.py:376`). Ein Zähler für Tool-Calls, Token
+oder Kosten fehlt.
 Der Prompt nennt dem Modell sein Budget; der Harness zählt es herunter und beendet den
 Lauf. Beides muss existieren, sonst ist die Zahl Dekoration.
 
@@ -76,7 +78,7 @@ evidence`. Hier wird es zur Regel mit Fehlercode.
 |---|---|---|
 | `risk` steht im Register, wird aber nicht erzwungen | **verifiziert** | `core/protocol.py:372`, `:385`; `core/policy.py` enthält kein `risk` — geprüft werden nur `requires_elevation` (`:301`, `:409`) |
 | `human_only_globs` deckt fünf Pfade; `runner.py`, `kernel.py`, `operations.json`, `registry.json` fehlen | **verifiziert** | `neu.config.json` (`human_only_globs`) |
-| `E_BUDGET_EXHAUSTED` existiert, kein Budget-Modul | **verifiziert** | `core/protocol.py:141`; kein `orchestrator/budget.py` |
+| `E_BUDGET_EXHAUSTED` deckt nur Iterationen ab, kein Budget-Modul | **verifiziert** | `core/protocol.py:116`; geworfen in `core/policy.py:202` und `orchestrator/planner.py:376`; kein `orchestrator/budget.py` |
 | `shell.exec` und `test.run` sind `risk: high` und haben keinen Implementierer | **verifiziert** | `protocol/operations.json` (26 Operationen: 9×none, 7×read, 7×write, 2×high, 1×destructive) |
 | Ein neues Registerfeld ist wirkungslos, solange `OperationSpec` es nicht liest | **verifiziert** | `core/protocol.py:369–424` nutzt `.get(...)` und ignoriert unbekannte Schlüssel still |
 | Captain/Harper/Benjamin/Lucas sind keine offizielle API-Oberfläche | laut Bericht, nicht geprüft | — |
@@ -520,7 +522,7 @@ ticket  = base64(payload) + "." + base64(HMAC-SHA256(key, base64(payload)))
 | `E_TICKET_INVALID` | fehlend, abgelaufen, falsch gebunden, gefälscht | H6 |
 | `E_EGRESS_DENIED` | Host nicht in der Allowlist | H4 |
 | `E_STOPPED` | Not-Aus während des Laufs | H7 |
-| `E_BUDGET_EXHAUSTED` | **existiert bereits** (`core/protocol.py:141`) | H3 |
+| `E_BUDGET_EXHAUSTED` | **existiert bereits** (`core/protocol.py:116`), heute nur für Iterationen | H3 |
 
 ### 6.5 Gate
 
@@ -608,8 +610,8 @@ produziert, nicht was der Harness verhindert.
 1. Keine Testsuite ausgeführt. Dieses Dokument ist Analyse.
 2. Persona-Namen, `Grok-3.8-Max`, `GPT-6-Llama-Max`, 1-Mio.-Kontext und
    `agent_count=4|16` sind aus dem Bericht übernommen und nicht gegengeprüft.
-3. Die Manus-APIs (`task.detail`, `usage.list`, Credit-Felder) sind unbelegt; der
-   `external_send`-Vertrag bleibt deshalb bei `ping` und `start` hypothetisch.
+3. Der gehostete Manus-Dienst wird nicht eingebaut. Der `external_send`-Vertrag bleibt
+   hypothetisch, bis ein Limb tatsächlich Daten nach außen sendet.
 4. Der Gate-Pseudocode ist Absicht, kein Entwurf: Er soll die Prüfreihenfolge festlegen,
    nicht die Umsetzung vortäuschen.
 5. Ob `research.publish` in die Sandbox oder in den Vault schreibt, entscheidet Phase 4 —

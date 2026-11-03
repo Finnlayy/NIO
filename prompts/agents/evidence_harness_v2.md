@@ -1,7 +1,8 @@
 # evidence_harness_v2 — Rollenvertrag für recherchende Agenten
 
-Kanonische Fassung des Masterprompts. Geladen von `limbs/research_limb.py` als
-Template, Platzhalter `{{...}}` werden vom Harness gesetzt (nie vom Modell).
+Kanonische Fassung des Masterprompts. Noch nicht in Betrieb: `limbs/research_limb.py`
+und die `research.*`-Operationen sind nicht gebaut. Dieser Limb soll die Datei als
+Template laden, Platzhalter `{{...}}` werden vom Harness gesetzt (nie vom Modell).
 Begründung, Harness-Vertrag und Abnahme: `docs/EVIDENCE-HARNESS.md`.
 
 Änderungen an dieser Datei sind Vertragsänderungen: `human_only_globs` erweitern
