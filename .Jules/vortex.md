@@ -6,3 +6,7 @@
 ## 2026-11-02 - [Graphics / Rendering Insight]
 **Learning:** Animating `width` via CSS transitions (`transition-[width]`) in the Apollo orchestrator UI triggers synchronous layout recalculations and CPU layout thrashing.
 **Action:** Replaced `width` animations with `transform: scaleX(...)` and `transformOrigin: left` combined with `transition-transform` to offload animations to the GPU composite layer and maintain 120 FPS frame budgets.
+
+## 2026-11-20 - [Graphics / Rendering Insight]
+**Learning:** `transition-all` in Tailwind applies transitions to all animatable properties, including layout-invalidating ones like `max-height`. In the Apollo orchestrator UI (failover ribbon, NeuralGraph cards, ApolloOrb tooltip), using `transition-all` coupled with dynamic class toggles triggered synchronous layout recalculations and CPU layout thrashing during animations.
+**Action:** Replaced `transition-all` with layout-safe, granular transitions (`transition-colors`, `transition-opacity`, `transition-transform`) throughout the Apollo UI. In `page.tsx`, used a combination of `max-h-0`/`max-h-12` (which snaps immediately without animation) and `scale-y-0`/`scale-y-100` (which animates smoothly on the GPU) to achieve a visually smooth slide-down effect without frame drops.
