@@ -1,0 +1,15 @@
+--- frontend/src/app/apollo/page.tsx
++++ frontend/src/app/apollo/page.tsx
+@@ -171,9 +171,9 @@
+
+       {/* failover ribbon */}
+       <div
+-        className={`relative z-20 overflow-hidden border-b transition duration-500 origin-top ${
+-          failover ? "grid-rows-[1fr] opacity-100 border-amber-400/25 bg-amber-400/[0.07]" : "grid-rows-[0fr] opacity-0 border-transparent"
+-        }`}
++        className={`relative z-20 overflow-hidden border-b transition duration-500 origin-top grid ${
++          failover ? "grid-rows-[1fr] opacity-100 border-amber-400/25 bg-amber-400/[0.07]" : "grid-rows-[0fr] opacity-0 border-transparent"
++        }`}
+         aria-live="polite"
+       >
+         <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 sm:px-4">

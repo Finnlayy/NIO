@@ -170,12 +170,13 @@ export default function ApolloStagePage() {
 
       {/* failover ribbon */}
       <div
-        className={`relative z-20 overflow-hidden border-b transition-all duration-500 ${
-          failover ? "max-h-12 border-amber-400/25 bg-amber-400/[0.07]" : "max-h-0 border-transparent"
+        className={`relative z-20 overflow-hidden border-b transition duration-500 origin-top grid ${
+          failover ? "grid-rows-[1fr] opacity-100 border-amber-400/25 bg-amber-400/[0.07]" : "grid-rows-[0fr] opacity-0 border-transparent"
         }`}
         aria-live="polite"
       >
-        <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 sm:px-4">
+        <div className="min-h-0">
+          <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 sm:px-4">
           <span className="flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-amber-300">
             <Zap size={11} /> failover active
           </span>
@@ -187,6 +188,7 @@ export default function ApolloStagePage() {
               · context handoff attached ({router.lastHandoffNote.length} chars)
             </span>
           )}
+          </div>
         </div>
       </div>
 
