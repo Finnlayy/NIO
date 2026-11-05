@@ -27,33 +27,6 @@ export function TaskConsole({
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const stateRef = useRef({ taskText, isRunning, onRun });
-  useEffect(() => {
-    stateRef.current = { taskText, isRunning, onRun };
-  });
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-        if (
-          isTypingTarget(document.activeElement) &&
-          document.activeElement !== textareaRef.current
-        ) {
-          return;
-        }
-
-        e.preventDefault();
-        const { taskText: currentTaskText, isRunning: currentIsRunning, onRun: currentOnRun } = stateRef.current;
-        if (!currentIsRunning && currentTaskText.trim()) {
-          currentOnRun();
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
   return (
     <Tile className="p-4 h-full flex flex-col">
       <ModuleHeader
