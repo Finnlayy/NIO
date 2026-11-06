@@ -11,10 +11,12 @@ import copy
 import hashlib
 import json
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from core.atomic import atomic_write_bytes
 from core.config import NeuConfig
 from core.policy import Policy
 from core.protocol import Operations, utc_now_iso
@@ -23,6 +25,7 @@ from orchestrator.runner import Orchestrator
 from .audit import AuditDraft
 from .limb_bridge import run_limb_request
 from .models import Experience, KanbanTask, Worker
+from .redact import redact, redact_text
 from .sandbox import SandboxResult
 from .store import KanbanStore
 from .vault import ObsidianVault, WorkerHome
@@ -39,6 +42,32 @@ class RunOutcome:
     soul_md: str | None
 
 
+def _scrub_out_dir(out_dir: Path, secrets: tuple[str, ...]) -> None:
+    """Schwaerzt injizierte Werte in den Dateien, die der Worker hinterlassen hat.
+
+    ``out/`` bleibt im Workspace liegen; ein Geheimnis darf dort nicht stehen bleiben.
+    """
+    if not secrets or not out_dir.is_dir():
+        return
+    for path in out_dir.iterdir():
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            raw = path.read_bytes()
+        except OSError:
+            continue
+        cleaned = raw
+        for value in sorted({s for s in secrets if s}, key=len, reverse=True):
+            cleaned = cleaned.replace(value.encode("utf-8"), b"[REDACTED]")
+        if cleaned != raw:
+            try:
+                atomic_write_bytes(path, cleaned)
+            except OSError as e:
+                # Fail-closed: lieber die Datei verlieren als das Geheimnis liegen lassen.
+                logging.getLogger(__name__).warning("out/%s nicht geschwaerzt, wird entfernt: %s", path.name, e)
+                path.unlink(missing_ok=True)
+
+
 async def sync_back(
     *,
     store: KanbanStore,
@@ -47,8 +76,16 @@ async def sync_back(
     task: KanbanTask,
     worker: Worker,
     result: SandboxResult,
+    secrets: Iterable[str] = (),
 ) -> RunOutcome:
-    """Wertet Sandbox-Resultat aus und synchronisiert es zurück."""
+    """Wertet Sandbox-Resultat aus und synchronisiert es zurück.
+
+    ``secrets`` sind die Werte, die dem Worker injiziert wurden. Sie werden aus
+    ``out/`` auf der Platte und aus allem geschwaerzt, was Store, Vault oder API
+    erreicht.
+    """
+    secrets = tuple(secrets)
+    _scrub_out_dir(result.out_dir, secrets)
     status = "failed"
     reason = "no result (exit None)" if result.exit_code is None else f"no result (exit {result.exit_code})"
     result_payload = None
@@ -102,6 +139,9 @@ async def sync_back(
         reason = l_reason
         result_payload = l_payload
 
+    reason = redact_text(reason, secrets)
+    result_payload = redact(result_payload, secrets)
+
     exp_file = result.out_dir / "experience.json"
     exp = None
     if exp_file.is_file():
@@ -139,10 +179,10 @@ async def sync_back(
         id=new_id("exp"),
         worker_uid=worker.uid,
         task_id=task.id,
-        summary=exp.summary,
+        summary=redact(exp.summary, secrets),
         outcome=exp.outcome,
-        lessons=exp.lessons,
-        skills_delta=exp.skills_delta,
+        lessons=redact(exp.lessons, secrets),
+        skills_delta=redact(exp.skills_delta, secrets),
         created_at=exp.created_at
     )
 
@@ -151,7 +191,7 @@ async def sync_back(
     if soul_file.is_file():
         try:
             if soul_file.stat().st_size <= 256 * 1024:
-                soul_md = soul_file.read_text("utf-8")
+                soul_md = redact_text(soul_file.read_text("utf-8"), secrets)
         except OSError as e:
             logging.getLogger(__name__).warning("out/SOUL.md nicht lesbar: %s", e)
 
