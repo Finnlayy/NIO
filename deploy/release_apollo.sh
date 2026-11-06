@@ -61,6 +61,20 @@ staging="$RELEASES/$id"
 cleanup() { [ -n "${staging:-}" ] && rm -rf "$staging"; }
 trap cleanup ERR INT TERM
 
+# next build traegt den Release-Pfad in tsconfig.json und next-env.d.ts ein.
+# Der Checkout soll davon nichts behalten: Originale sichern und immer zuruecklegen.
+saved="$(mktemp -d)"
+for f in tsconfig.json next-env.d.ts; do
+  [ -f "$FRONTEND/$f" ] && cp -p "$FRONTEND/$f" "$saved/$f"
+done
+restore() {
+  for f in tsconfig.json next-env.d.ts; do
+    [ -f "$saved/$f" ] && cp -p "$saved/$f" "$FRONTEND/$f"
+  done
+  rm -rf "$saved"
+}
+trap restore EXIT
+
 # Abhaengigkeiten nur neu installieren, wenn sich das Lockfile geaendert hat.
 lock_hash="$(sha256sum "$FRONTEND/package-lock.json" | cut -d' ' -f1)"
 if [ ! -d "$FRONTEND/node_modules" ] || [ "$(cat "$RELEASES/.lock.sha256" 2>/dev/null)" != "$lock_hash" ]; then

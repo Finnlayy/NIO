@@ -28,6 +28,7 @@ case "$cmd" in
   run)
     [ "${FAKE_FAIL:-0}" = 1 ] && { mkdir -p "$prefix/$NIO_NEXT_DIST_DIR"; echo half > "$prefix/$NIO_NEXT_DIST_DIR/x"; exit 1; }
     mkdir -p "$prefix/$NIO_NEXT_DIST_DIR"
+    echo "// $NIO_NEXT_DIST_DIR" >> "$prefix/tsconfig.json"
     [ "${FAKE_NO_BUILD_ID:-0}" = 1 ] || echo "build-$RANDOM" > "$prefix/$NIO_NEXT_DIST_DIR/BUILD_ID"
     ;;
 esac
@@ -47,6 +48,7 @@ class ReleaseApolloTests(unittest.TestCase):
         self.root = base / "repo"
         (self.root / "frontend").mkdir(parents=True)
         (self.root / "frontend" / "package-lock.json").write_text("{}")
+        (self.root / "frontend" / "tsconfig.json").write_text('{"include": []}\n')
         self.config = base / "config"
         self.releases = self.root / "frontend" / ".releases"
         self.npm = base / "npm"
@@ -112,6 +114,11 @@ class ReleaseApolloTests(unittest.TestCase):
         self.assertEqual(len(dirs), 3, dirs)
         self.assertIn(self.active(), dirs)
         self.assertIn(pointer(self.config / "apollo.release.previous"), dirs)
+
+    def test_build_leaves_tsconfig_untouched(self) -> None:
+        self.release()
+        self.release(FAKE_NO_BUILD_ID="1")
+        self.assertEqual((self.root / "frontend" / "tsconfig.json").read_text(), '{"include": []}\n')
 
     def test_npm_ci_only_when_lockfile_changes(self) -> None:
         self.release()
