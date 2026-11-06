@@ -7,6 +7,8 @@ StartLimitBurst=5
 [Service]
 WorkingDirectory=@ROOT@/frontend
 EnvironmentFile=%h/.config/nio/apollo.env
+# Aktives Release (deploy/release_apollo.sh). Fehlt die Datei, startet Apollo nicht.
+EnvironmentFile=%h/.config/nio/apollo.release
 Environment=NODE_ENV=production
 ExecStart=@NPX@ next start -H 127.0.0.1 -p 4001
 Restart=on-failure

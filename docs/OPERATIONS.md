@@ -172,6 +172,31 @@ nie als Sigma: `ping` meldet `running: false` mit `unverified_reason`, `start`,
 Abweichung mit `E_POLICY_DENIED` und sendet kein Signal; eine alte
 `logs/worker.pid` ohne Startnachweis wird nur gemeldet.
 
+### Apollo-Release und Rollback
+
+`deploy/install.sh` baut Apollo nicht mehr in den laufenden `.next`-Ordner,
+sondern über `deploy/release_apollo.sh` nach `frontend/.releases/<zeit>-<sha>/`.
+Erst wenn der Build vollständig ist (`BUILD_ID` vorhanden), wird
+`~/.config/nio/apollo.release` atomar ersetzt; `nio-apollo.service` liest daraus
+`NIO_NEXT_DIST_DIR` beim nächsten Start. Ein fehlgeschlagener Build wird
+gelöscht und nie aktiv. `npm ci` läuft nur, wenn sich `package-lock.json`
+geändert hat.
+
+Nach dem Neustart wartet `install.sh` bis zu 30 s auf HTTP 2xx von
+`/apollo`. Kommt keine Antwort, schaltet es automatisch auf das vorige Release
+zurück, startet Apollo neu und endet mit Exit 1.
+
+Rollback von Hand:
+
+```bash
+bash deploy/release_apollo.sh "$PWD" ~/.config/nio --rollback && systemctl --user restart nio-apollo
+```
+
+Aufbewahrt werden das aktive, das vorige und insgesamt höchstens drei Releases
+(`NIO_RELEASES_KEEP`). Grenze: `node_modules` und die Python-`.venv` sind
+nicht versioniert; ein geändertes Lockfile wird weiterhin im Checkout
+installiert.
+
 ### Not-Aus
 
 `neu stop` legt `runtime/STOP` an. Neue Läufe werden mit `E_STOPPED` abgelehnt, laufende Limbs enden samt Kindprozessen in unter 5 Sekunden, Agent-Läufe beim nächsten `status`, und der Kanban-Dispatcher nimmt nichts an und bricht aktive Aufgaben ab. Inbox-Aufträge bleiben liegen. Nur `neu resume` hebt das auf, nie der Automatismus.

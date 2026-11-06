@@ -20,9 +20,9 @@ echo "[1/6] Python-Umgebung"
 python3 -m venv "$ROOT/.venv"
 "$ROOT/.venv/bin/python" -m pip install -q "fastapi>=0.110" "uvicorn>=0.29" "pydantic>=2"
 
-echo "[2/6] Apollo bauen"
-npm --prefix "$ROOT/frontend" ci --silent
-npm --prefix "$ROOT/frontend" run build --silent
+echo "[2/6] Apollo bauen (eigener Release-Ordner, der laufende Build bleibt unberuehrt)"
+RELEASE="$(bash "$ROOT/deploy/release_apollo.sh" "$ROOT" "$CONFIG" | tail -n 1)"
+echo "      Release $RELEASE"
 
 echo "[3/6] Worker-Image und Agentennetz"
 docker build -q -t nio-worker:1 "$ROOT/docker/kanban-worker"
@@ -41,6 +41,22 @@ if [ "$SERVICES" = 1 ]; then
   systemctl --user enable -q nio-kanban nio-apollo
   systemctl --user restart nio-kanban
   systemctl --user restart nio-apollo
+
+  # Rauchtest: antwortet Apollo nicht, geht es automatisch auf das vorige Release zurueck.
+  apollo_up() {
+    for _ in $(seq 1 30); do
+      [[ "$(curl -s -m 2 -o /dev/null -w '%{http_code}' http://127.0.0.1:4001/apollo)" =~ ^2[0-9][0-9]$ ]] && return 0
+      sleep 1
+    done
+    return 1
+  }
+  if ! apollo_up; then
+    echo "Apollo antwortet nicht mit Release $RELEASE -- Rollback" >&2
+    if bash "$ROOT/deploy/release_apollo.sh" "$ROOT" "$CONFIG" --rollback; then
+      systemctl --user restart nio-apollo
+    fi
+    exit 1
+  fi
 else
   echo "[5/6] Dienste uebersprungen"
 fi
