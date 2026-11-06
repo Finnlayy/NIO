@@ -16,7 +16,7 @@ antwortet.
 | Sigma-Scraper (Sidecar) | 8001 | `127.0.0.1` | im Worker erwartet, nicht gestartet |
 | speaches (Spracherkennung) | 8011 | `127.0.0.1` | Docker, siehe [`SPEECH.md`](SPEECH.md) |
 
-**Dauerbetrieb:** `bash deploy/install.sh` im Live-Checkout richtet Python-Umgebung, Apollo-Build, Worker-Image, `~/.config/nio/nio.env` (Rechte 600) und die systemd-User-Units ein. Mit `--ohne-dienste` bleibt systemd unberührt. `make health` meldet jeden Dienst einzeln. Geheimnisse liegen nur in dieser Datei.
+**Dauerbetrieb:** `bash deploy/install.sh` im Live-Checkout richtet Python-Umgebung, Apollo-Build, Worker-Image, je eine Umgebungsdatei pro Dienst unter `~/.config/nio/` (Rechte 600, siehe Abschnitt 3) und die systemd-User-Units ein. Mit `--ohne-dienste` bleibt systemd unberührt. `make health` meldet jeden Dienst einzeln. Geheimnisse liegen nur in diesen Dateien.
 
 **Warum 8731 und nicht 8000:** 8000 ist der FastAPI-Default, 8001 erwartet
 Sigma für den Contagion-Endpunkt. Ein eigener Port vermeidet die Kollision.
@@ -47,8 +47,30 @@ python3 limbs/trading_limb.py --intent <intent-start.json>     # 2 s
 
 ## 3. Umgebungsvariablen
 
-Es gibt **kein** `.env`-Template im Repo — Variablen werden aus der Umgebung
-gelesen. Alle Secrets bleiben serverseitig.
+Variablen werden aus der Umgebung gelesen. Alle Secrets bleiben serverseitig.
+
+### Dauerbetrieb: eine Datei pro Dienst
+
+`deploy/write_env.sh` (von `deploy/install.sh` aufgerufen) schreibt zwei
+Dateien nach `~/.config/nio/` (Verzeichnis 700, Dateien 600). Vorlagen im Repo:
+
+| Datei | Vorlage | Gelesen von | Inhalt |
+|---|---|---|---|
+| `kanban.env` | `deploy/kanban.env.example` | `nio-kanban.service` | `NIO_KANBAN_API_TOKEN` (Operator), `NIO_APPROVAL_KEY`, `NIO_KANBAN_APOLLO_TOKEN`, Sandbox, Pfade, `FREELLMAPI_KEY` für OpenManus |
+| `apollo.env` | `deploy/apollo.env.example` | `nio-apollo.service` | `NIO_KANBAN_APOLLO_TOKEN`, `NIO_APOLLO_APPROVAL_PIN`, Pfade, `FREELLMAPI_KEY` für den Chat |
+
+Apollo bekommt weder das Operator-Token noch den Freigabeschlüssel. Das
+Apollo-Token gilt in der Kanban-API nur für die Routen, die die UI braucht
+(Boards, Tasks, Worker anlegen/listen, Stop, Freigabe mit PIN); Audit,
+Task-Übergänge, Worker-Spawn und Rust-Limbs antworten darauf mit `401`.
+`write_env.sh` entfernt `NIO_KANBAN_API_TOKEN` und `NIO_APPROVAL_KEY` hart aus
+`apollo.env`, auch wenn sie von Hand eingetragen wurden.
+
+Eine alte gemeinsame `nio.env` wird beim nächsten Lauf einmal aufgeteilt (die
+PIN wandert nach `apollo.env`) und als `nio.env.migriert` beiseitegelegt. Nach
+Prüfung löschen.
+
+Für `make health`, CLI und Skripte im Terminal: `set -a; . ~/.config/nio/kanban.env; set +a`.
 
 ### Marktdaten
 

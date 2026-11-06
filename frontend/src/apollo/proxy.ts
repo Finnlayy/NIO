@@ -9,6 +9,14 @@ const ALLOWED_ROUTES = [
   { method: "POST", pattern: /^\/api\/v1\/kanban\/stop$/ }
 ];
 
+/**
+ * Apollo nutzt sein eigenes, eingeschraenktes Kanban-Token. Das Operator-Token
+ * bleibt im Backend; nur in einer Entwicklungsumgebung ohne Apollo-Token gilt es als Rueckfall.
+ */
+export function kanbanToken(env: Record<string, string | undefined>): string | undefined {
+  return env.NIO_KANBAN_APOLLO_TOKEN || env.NIO_KANBAN_API_TOKEN;
+}
+
 export function isGenericValid(method: string, path: string): boolean {
   if (path.includes("..") || path.includes("%") || path.includes("\\") || path.includes("\0")) {
     return false;
@@ -27,9 +35,9 @@ export async function handleGenericProxy(
   payload: unknown,
   env: Record<string, string | undefined>
 ) {
-  const token = env.NIO_KANBAN_API_TOKEN;
+  const token = kanbanToken(env);
   if (!token) {
-    return { status: 503, body: { ok: false, error: "NIO_KANBAN_API_TOKEN ist nicht gesetzt" } };
+    return { status: 503, body: { ok: false, error: "NIO_KANBAN_APOLLO_TOKEN ist nicht gesetzt" } };
   }
   if (typeof path !== "string" || !path.startsWith("/")) {
     return { status: 400, body: { ok: false, error: "invalid path" } };
@@ -75,11 +83,11 @@ export async function handleSecureProxy(
   payload: unknown,
   env: Record<string, string | undefined>
 ) {
-  const token = env.NIO_KANBAN_API_TOKEN;
+  const token = kanbanToken(env);
   const targetPin = env.NIO_APOLLO_APPROVAL_PIN;
 
   if (!token) {
-    return { status: 503, body: { ok: false, error: "NIO_KANBAN_API_TOKEN ist nicht gesetzt" } };
+    return { status: 503, body: { ok: false, error: "NIO_KANBAN_APOLLO_TOKEN ist nicht gesetzt" } };
   }
   if (!targetPin) {
     return { status: 503, body: { ok: false, error: "NIO_APOLLO_APPROVAL_PIN ist nicht gesetzt" } };

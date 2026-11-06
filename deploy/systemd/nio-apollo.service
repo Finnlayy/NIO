@@ -6,7 +6,7 @@ StartLimitBurst=5
 
 [Service]
 WorkingDirectory=@ROOT@/frontend
-EnvironmentFile=%h/.config/nio/nio.env
+EnvironmentFile=%h/.config/nio/apollo.env
 Environment=NODE_ENV=production
 ExecStart=@NPX@ next start -H 127.0.0.1 -p 4001
 Restart=on-failure

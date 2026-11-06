@@ -38,6 +38,7 @@ class KanbanApiTest(unittest.IsolatedAsyncioTestCase):
             workspace_dir=self.root / "workspace",
             vault_dir=self.root / "vault",
             api_token=self.api_token,
+            apollo_token="apollo456",
             stop_file=self.root / "runtime" / "STOP",
         )
         self.runtime = await build_runtime(self.config)
@@ -74,6 +75,32 @@ class KanbanApiTest(unittest.IsolatedAsyncioTestCase):
             py_fields = set(pydantic_model.model_fields.keys())
             dc_fields = set(dataclass_model.__dataclass_fields__.keys())
             self.assertEqual(py_fields, dc_fields, f"Mismatch in {pydantic_model.__name__} vs {dataclass_model.__name__}")
+
+    def test_apollo_token_only_reaches_ui_routes(self) -> None:
+        """Apollos Token deckt nur die UI-Routen ab, nie Code-Ausfuehrung oder Audit."""
+        apollo = {"Authorization": "Bearer apollo456"}
+        operator = {"Authorization": f"Bearer {self.api_token}"}
+        allowed = [
+            ("get", "/api/v1/kanban/boards"),
+            ("get", "/api/v1/kanban/tasks"),
+            ("get", "/api/v1/workers"),
+            ("post", "/api/v1/kanban/stop"),
+            ("delete", "/api/v1/kanban/stop"),
+        ]
+        for method, path in allowed:
+            self.assertEqual(getattr(self.client, method)(path, headers=apollo).status_code, 200, path)
+        denied = [
+            ("get", "/api/v1/audit"),
+            ("get", "/api/v1/audit/verify"),
+            ("get", "/api/v1/rust-limbs"),
+            ("post", "/api/v1/rust-limbs/x/invoke"),
+            ("post", "/api/v1/workers/x/spawn"),
+            ("post", "/api/v1/kanban/tasks/x/transition"),
+            ("get", "/api/v1/kanban/tasks/x"),
+        ]
+        for method, path in denied:
+            self.assertEqual(self.client.request(method.upper(), path, headers=apollo).status_code, 401, path)
+        self.assertEqual(self.client.get("/api/v1/audit", headers=operator).status_code, 200)
 
     def test_auth_missing(self) -> None:
         resp = self.client.get("/api/v1/kanban/boards")

@@ -9,12 +9,9 @@ SERVICES=1
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG="$HOME/.config/nio"
-ENV_FILE="$CONFIG/nio.env"
+ENV_FILE="$CONFIG/kanban.env"
 UNITS="$HOME/.config/systemd/user"
 VAULT="${NIO_OBSIDIAN_VAULT:-$ROOT/workspace/obsidian}"
-
-secret() { python3 -c "import secrets; print(secrets.token_urlsafe(32))"; }
-pin() { python3 -c "import secrets; print(''.join(secrets.choice('0123456789') for _ in range(8)))"; }
 
 mkdir -p "$CONFIG" "$UNITS"
 chmod 700 "$CONFIG"
@@ -32,24 +29,7 @@ docker build -q -t nio-worker:1 "$ROOT/docker/kanban-worker"
 bash "$ROOT/scripts/agents_network.sh"
 
 echo "[4/6] Konfiguration"
-if [ ! -e "$ENV_FILE" ]; then
-  (
-    umask 077
-    sed -e "s|^NIO_KANBAN_API_TOKEN=.*|NIO_KANBAN_API_TOKEN=$(secret)|" \
-        -e "s|^NIO_APPROVAL_KEY=.*|NIO_APPROVAL_KEY=$(secret)|" \
-        -e "s|^NIO_APOLLO_APPROVAL_PIN=.*|NIO_APOLLO_APPROVAL_PIN=$(pin)|" \
-        -e "s|^NEU_ROOT=.*|NEU_ROOT=$ROOT|" \
-        -e "s|^NIO_REPO_ROOT=.*|NIO_REPO_ROOT=$ROOT|" \
-        -e "s|^NIO_PYTHON=.*|NIO_PYTHON=$ROOT/.venv/bin/python|" \
-        -e "s|^NIO_OBSIDIAN_VAULT=.*|NIO_OBSIDIAN_VAULT=$VAULT|" \
-        "$ROOT/deploy/env.example" > "$ENV_FILE"
-  )
-else
-  sed -i -e "s|^NEU_ROOT=.*|NEU_ROOT=$ROOT|" \
-         -e "s|^NIO_REPO_ROOT=.*|NIO_REPO_ROOT=$ROOT|" \
-         -e "s|^NIO_PYTHON=.*|NIO_PYTHON=$ROOT/.venv/bin/python|" "$ENV_FILE"
-fi
-chmod 600 "$ENV_FILE"
+bash "$ROOT/deploy/write_env.sh" "$ROOT" "$CONFIG" "$VAULT"
 
 if [ "$SERVICES" = 1 ]; then
   echo "[5/6] Dienste"

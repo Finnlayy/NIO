@@ -3,9 +3,12 @@
 Dieses Modul importiert ``fastapi``/``pydantic`` auf Modulebene und wird deshalb
 nur lazy geladen (``neu kanban serve``) -- der stdlib-Kern importiert es nie.
 
-Zwei Authentifizierungen: Operator-Routen verlangen ``NIO_KANBAN_API_TOKEN`` als
-Bearer (ohne gesetztes Token antwortet die API mit 503 statt offen zu sein), die
-Tool-Routen verlangen ein kurzlebiges Task-Token aus dem ``TokenStore``.
+Drei Authentifizierungen: Operator-Routen verlangen ``NIO_KANBAN_API_TOKEN`` als
+Bearer (ohne gesetztes Token antwortet die API mit 503 statt offen zu sein). Die
+Routen, die Apollo nutzt, nehmen zusaetzlich ``NIO_KANBAN_APOLLO_TOKEN`` an; mit
+ihm lassen sich keine Rust-Limbs registrieren oder aufrufen, keine Tasks
+uebergehen, keine Worker spawnen und kein Audit lesen. Die Tool-Routen verlangen
+ein kurzlebiges Task-Token aus dem ``TokenStore``.
 
 Die ``*Out``-Modelle spiegeln die Dataclasses aus ``models.py`` Feld fuer Feld;
 ``tests/test_kanban_api.py`` prueft diese Paritaet.
@@ -214,6 +217,13 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
             raise HTTPException(status_code=401, detail="ungueltiges Operator-Token")
         return "operator"
 
+    def ui(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> str:  # noqa: B008
+        """Operator-Token oder Apollo-Token. Nur fuer die Routen, die Apollo braucht."""
+        apollo = runtime.config.apollo_token
+        if apollo and credentials is not None and hmac.compare_digest(credentials.credentials.encode(), apollo.encode()):
+            return "apollo"
+        return operator(credentials)
+
     def task_token(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> str:  # noqa: B008
         if credentials is None or not credentials.credentials:
             raise HTTPException(status_code=401, detail="Task-Token fehlt")
@@ -221,11 +231,11 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
 
     # -- Boards --
     @router.get("/kanban/boards", response_model=list[BoardOut])
-    async def list_boards(actor: str = Depends(operator)) -> list[dict[str, Any]]:
+    async def list_boards(actor: str = Depends(ui)) -> list[dict[str, Any]]:
         return [b.to_dict() for b in await runtime.store.list_boards()]
 
     @router.post("/kanban/boards", response_model=BoardOut)
-    async def create_board(body: BoardCreate, actor: str = Depends(operator)) -> dict[str, Any]:
+    async def create_board(body: BoardCreate, actor: str = Depends(ui)) -> dict[str, Any]:
         return (await runtime.service.create_board(body.name, actor=actor)).to_dict()
 
     # -- Tasks --
@@ -234,13 +244,13 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
         board_id: str | None = None,
         status: TaskStatus | None = None,
         parent_id: str | None = None,
-        actor: str = Depends(operator),
+        actor: str = Depends(ui),
     ) -> list[dict[str, Any]]:
         tasks = await runtime.store.list_tasks(board_id=board_id, status=status, parent_id=parent_id)
         return [t.to_dict() for t in tasks]
 
     @router.post("/kanban/tasks", response_model=TaskOut)
-    async def create_task(body: TaskCreate, actor: str = Depends(operator)) -> dict[str, Any]:
+    async def create_task(body: TaskCreate, actor: str = Depends(ui)) -> dict[str, Any]:
         try:
             task = await runtime.service.create_task(
                 board_id=body.board_id,
@@ -301,11 +311,11 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
 
     # -- Workers --
     @router.get("/workers", response_model=list[WorkerOut])
-    async def list_workers(actor: str = Depends(operator)) -> list[dict[str, Any]]:
+    async def list_workers(actor: str = Depends(ui)) -> list[dict[str, Any]]:
         return [w.to_dict() for w in await runtime.store.list_workers()]
 
     @router.post("/workers", response_model=WorkerOut)
-    async def create_worker(body: WorkerCreate, actor: str = Depends(operator)) -> dict[str, Any]:
+    async def create_worker(body: WorkerCreate, actor: str = Depends(ui)) -> dict[str, Any]:
         try:
             worker = await runtime.service.create_worker(
                 uid=body.uid, name=body.name or body.uid, skills=list(body.skills), soul_md=body.soul_md, actor=actor
@@ -359,7 +369,7 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
         return limb.to_dict()
 
     @router.post("/approvals/issue", response_model=TicketIssueOut)
-    async def issue_approval(body: TicketIssueIn, actor: str = Depends(operator)) -> dict[str, str]:
+    async def issue_approval(body: TicketIssueIn, actor: str = Depends(ui)) -> dict[str, str]:
         key = os.environ.get("NIO_APPROVAL_KEY")
         if not key:
             raise HTTPException(status_code=503, detail="NIO_APPROVAL_KEY ist nicht gesetzt")
@@ -399,7 +409,7 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
 
     # -- STOP --
     @router.post("/kanban/stop")
-    async def stop_orchestrator(actor: str = Depends(operator)) -> dict[str, Any]:
+    async def stop_orchestrator(actor: str = Depends(ui)) -> dict[str, Any]:
         stop_file = runtime.config.stop_file
         stop_file.parent.mkdir(parents=True, exist_ok=True)
         stop_file.touch(exist_ok=True)
@@ -407,7 +417,7 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
         return {"ok": True, "status": "stopped"}
 
     @router.delete("/kanban/stop")
-    async def clear_stop_orchestrator(actor: str = Depends(operator)) -> dict[str, Any]:
+    async def clear_stop_orchestrator(actor: str = Depends(ui)) -> dict[str, Any]:
         runtime.config.stop_file.unlink(missing_ok=True)
         await runtime.ledger.append(actor=actor, action="kanban.resume", category="system", subject="all", payload={"state": "running"})
         return {"ok": True, "status": "running"}
