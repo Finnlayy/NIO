@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { McpError, callTool } from "@/server/tvremix/client";
+import { McpError } from "@/server/tvremix/client";
 import { smartCall } from "@/server/tvremix/args";
 import {
   adaptNews,
@@ -123,13 +123,9 @@ async function handle(tool: string, req: NextRequest) {
     }
 
     default:
-      // Generic passthrough — call any tool by name with symbol/interval/limit.
-      const raw = await callTool(
-        tool,
-        { symbol, interval, limit, market: "crypto" },
-        120_000,
-      );
-      return NextResponse.json({ ok: true, source: "tvremix", data: raw });
+      // No passthrough: the route holds the server key, so only the read-only
+      // tools named above may be called. Unknown names fail closed.
+      throw new McpError(404, `Unknown market tool: ${tool}`);
   }
 }
 

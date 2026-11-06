@@ -86,6 +86,15 @@ class SelfModificationSafety:
             return (False, result[1])
         manifest = Manifest(manifest_path)
         changes = manifest.extract_changes()
+        if base_dir:
+            # Second line of defence behind the validator, checked before any change:
+            # nothing may resolve outside base_dir (symlinks included).
+            root = Path(base_dir).resolve()
+            for change in changes:
+                file_path_str = change.get("file_path", "")
+                if not (Path(base_dir) / file_path_str).resolve().is_relative_to(root):
+                    logger.error("Manifest path escapes base_dir: %s", file_path_str)
+                    return (False, f"Path escapes base_dir: {file_path_str}")
         applied = []
         backups = {}
         for change in changes:

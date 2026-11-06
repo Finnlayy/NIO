@@ -171,7 +171,7 @@ class TestFullPhaseLoop(unittest.TestCase):
             "safety_flags": {"core_change": False, "dependency_change": False, "model_update": False},
             "checksum": "na",
             "changes": [{
-                "file_path": str(target),
+                "file_path": target.name,
                 "change_type": "modify",
                 "checksum_before": hashlib.sha256(b"# original\n").hexdigest(),
                 "checksum_after": hashlib.sha256(new_content.encode("utf-8")).hexdigest(),
@@ -181,14 +181,17 @@ class TestFullPhaseLoop(unittest.TestCase):
         manifest_path = self.tmpdir / "manifest.json"
         with open(manifest_path, "w", encoding="utf-8") as f:
             json.dump(manifest, f)
-        # The Phase 3 validator enforces repo globs; scope them to the sandbox
-        # for this offline loop test (no repo files are touched).
+        # The Phase 3 validator enforces relative repo globs; scope them to the
+        # sandbox and resolve paths from there (no repo files are touched).
         import core.manifest_validation as manifest_validation
         original_globs = list(manifest_validation.ALLOWED_REPO_GLOBS)
-        manifest_validation.ALLOWED_REPO_GLOBS = [*original_globs, str(self.tmpdir) + "/*"]
+        original_cwd = os.getcwd()
+        manifest_validation.ALLOWED_REPO_GLOBS = [*original_globs, target.name]
+        os.chdir(self.tmpdir)
         try:
             passed, message = validate_manifest_update(str(manifest_path))
         finally:
+            os.chdir(original_cwd)
             manifest_validation.ALLOWED_REPO_GLOBS = original_globs
         self.assertTrue(passed, message)
         target.write_text(new_content, encoding="utf-8")

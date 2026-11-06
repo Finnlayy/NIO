@@ -86,5 +86,34 @@ class TestManifestValidation(unittest.TestCase):
         else:
             self.skipTest("Real file not available for checksum test.")
 
+    def test_traversal_rejected(self):
+        # fnmatch lets "Architect/core/*" match this path; the validator must not.
+        self.create_manifest({
+            "changes": [{"file_path": "Architect/core/../../../victim.txt", "change_type": "delete", "checksum_before": "", "checksum_after": ""}],
+            "approval_level": "system",
+        })
+        valid, msg = validate_manifest_update(str(self.manifest_path))
+        self.assertFalse(valid)
+        self.assertIn("..", msg)
+
+    def test_non_canonical_path_rejected(self):
+        for path in ("Architect/core/./config.py", "Architect/core//config.py"):
+            self.create_manifest({
+                "changes": [{"file_path": path, "change_type": "delete", "checksum_before": "", "checksum_after": ""}],
+                "approval_level": "system",
+            })
+            valid, _msg = validate_manifest_update(str(self.manifest_path))
+            self.assertFalse(valid, path)
+
+    def test_human_only_file_ignores_flags(self):
+        # core_change=False must not unlock a human-only file.
+        self.create_manifest({
+            "changes": [{"file_path": "Architect/core/config.py", "change_type": "delete", "checksum_before": "", "checksum_after": ""}],
+            "approval_level": "system",
+        })
+        valid, msg = validate_manifest_update(str(self.manifest_path))
+        self.assertFalse(valid)
+        self.assertIn("human", msg.lower())
+
 if __name__ == "__main__":
     unittest.main()

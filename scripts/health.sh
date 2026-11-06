@@ -10,10 +10,10 @@ report() {  # name ok|fehlt detail
   [ "$2" = "ok" ] || failed=1
 }
 
-http() {  # name url  -- jede HTTP-Antwort zaehlt als erreichbar
+http() {  # name url [erwartet]  -- nur die erwarteten Codes zaehlen, Standard 2xx
   local code
   code="$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$2")"
-  if [ "$code" != "000" ]; then report "$1" ok "HTTP $code"; else report "$1" fehlt "$2"; fi
+  if [[ "$code" =~ ^(${3:-2[0-9][0-9]})$ ]]; then report "$1" ok "HTTP $code"; else report "$1" fehlt "HTTP $code $2"; fi
 }
 
 unit() {
@@ -28,7 +28,7 @@ container() {
 
 unit nio-kanban
 unit nio-apollo
-http kanban-api http://127.0.0.1:8740/api/v1/kanban/boards
+http kanban-api http://127.0.0.1:8740/api/v1/kanban/boards 401  # ohne Token: Dienst laeuft und verlangt Auth
 http apollo http://127.0.0.1:4001/apollo
 http speaches http://127.0.0.1:8011/health
 http freellmapi http://127.0.0.1:3001/
