@@ -257,6 +257,8 @@ class TradingBacktestParamsTests(unittest.TestCase):
         self._original = limb._request
         limb._request = fake_request  # type: ignore[method-assign]
         self.addCleanup(lambda: setattr(limb, "_request", self._original))
+        # Die Identitaetspruefung hat eigene Tests (test_trading_identity.py).
+        limb._require_sigma = lambda ctx: {}  # type: ignore[method-assign]
 
     def _ctx(self):
         import tempfile

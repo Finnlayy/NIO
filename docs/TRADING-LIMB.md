@@ -180,6 +180,23 @@ Beispielantwort:
 dem Intent-Budget), und bricht ab, wenn der Prozess vorher stirbt — mit dem
 Tail aus `logs/worker.log`.
 
+### Identität
+
+Sigma wird nicht gepatcht, deshalb prüft NIO die Identität von außen. `start`
+gibt dem Worker eine zufällige Nonce in `NIO_SIGMA_LAUNCH_NONCE` mit und
+schreibt `logs/worker.json` (PID, Startzeit aus `/proc/<pid>/stat`, argv, Port,
+Nonce, Version). Health gilt nur, wenn
+
+1. PID, Startzeit, argv und Nonce (aus `/proc/<pid>/environ`) zum Nachweis passen,
+2. die Prozessgruppe den Lausch-Socket auf dem Port hält,
+3. `/api/v1/health` Sigmas Felder liefert und `/openapi.json` Titel
+   `Projekt:Sigma…` mit Version `sigma-hybrid-1.0` meldet.
+
+Ein fremder Dienst auf dem Port ist damit nie Sigma, auch wenn er dieselben
+Antworten liefert. `stop` signalisiert nur nach Punkt 1, sonst `E_POLICY_DENIED`.
+Grenze: Die Nonce wird nicht bei jeder HTTP-Anfrage geprüft, weil Sigma sie
+nicht kennt; die Bindung läuft über Prozess und Socket.
+
 ### Zugriff auf den Worker-API
 
 | Route | Methode | Zweck |

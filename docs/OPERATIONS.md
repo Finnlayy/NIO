@@ -127,7 +127,7 @@ Der Orchestrator schreibt alle zentralen Ereignisse (inklusive Agenten-Starts un
 Langlaufende Dienste gehören **nicht** in einen Bash-Aufruf mit Timeout,
 sondern in einen eigenen Prozess. Ein Dev-Server, den man mit `ctrl-c` beendet,
 hinterlässt keine Zustandsdatei — der Trading-Worker dagegen schon
-(`logs/worker.pid`).
+(`logs/worker.json`, der Startnachweis mit PID, Startzeit, argv, Port und Nonce).
 
 ### Worker-Lebenszyklus
 
@@ -138,12 +138,17 @@ install → start → (status) → stop
 | Operation | Dauer | Wirkung |
 |---|---:|---|
 | `install` | ~32 s | Clone auf Pin, venv, pip, Marker |
-| `start` | ~2 s | uvicorn als Prozessgruppe, wartet auf `/api/v1/health` |
-| `status` | <1 s | Health + Lake-Inventar |
-| `stop` | <1 s | SIGTERM an die Gruppe, dann SIGKILL |
+| `start` | ~2 s | uvicorn als Prozessgruppe mit Start-Nonce, wartet auf verifizierte Health |
+| `status` | <1 s | Health + Lake-Inventar, nur vom verifizierten Worker |
+| `stop` | <1 s | SIGTERM an die Gruppe, dann SIGKILL, nur wenn PID, Startzeit, argv und Nonce passen |
 
 `start` ist idempotent: läuft der Worker schon, kommt
 `{"started": false, "already_running": true}` statt eines zweiten Prozesses.
+Antwortet auf dem Port ein Dienst, den NIO nicht selbst gestartet hat, gilt er
+nie als Sigma: `ping` meldet `running: false` mit `unverified_reason`, `start`,
+`status` und Backtests brechen mit `E_IO` ab. `stop` verweigert bei jeder
+Abweichung mit `E_POLICY_DENIED` und sendet kein Signal; eine alte
+`logs/worker.pid` ohne Startnachweis wird nur gemeldet.
 
 ### Not-Aus
 

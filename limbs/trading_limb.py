@@ -20,7 +20,7 @@ Aufgabenprofil:
 * ``trading.ping``            -- Ist Sigma installiert? Laeuft der Worker?
 * ``trading.install``         -- Sigma auf gepinntem Commit klonen + venv + deps.
 * ``trading.start``           -- Worker als eigene Prozessgruppe starten.
-* ``trading.stop``            -- Prozessgruppe beenden (TERM, dann KILL).
+* ``trading.stop``            -- Prozessgruppe beenden (TERM, dann KILL), nur nach Identitaetspruefung.
 * ``trading.status``          -- Health + Lake-Kurzfassung als Nachweis.
 * ``trading.lake_summary``    -- Parquet-Inventar (Zeilen, Dateien, MB, Symbole).
 * ``trading.lake_compact``    -- Partitionen nach Parquet verdichten.
@@ -36,6 +36,11 @@ Grenzen (warum das sicher ist):
    Sigma-Daten zeigen in die Sandbox -- ein Lauf schreibt nicht ins Host-Home.
 5. **Netz nur wo noetig.** ``trading.install`` verlangt Netz; der Betrieb
    spricht ausschliesslich ``127.0.0.1:<port>``.
+6. **Nur das eigene Sigma.** ``trading.start`` schreibt einen Startnachweis
+   (PID, Startzeit, argv, Port, Nonce). Health gilt nur, wenn dieser Prozess
+   die Nonce traegt, den Port haelt und Sigmas Titel/Version meldet. Ein
+   fremder Dienst auf dem Port wird nie als Sigma behandelt, und ``stop``
+   signalisiert bei jeder Abweichung nichts.
 
 Aufruf: ``python3 limbs/trading_limb.py --intent runtime/inbox/trading/<id>.json``
 """
@@ -44,6 +49,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import shutil
 import signal
 import subprocess
@@ -71,7 +77,17 @@ SIGMA_VERSION = "sigma-hybrid-1.0"
 DEFAULT_PORT = 8731
 
 INSTALL_MARKER = ".nio-trading-install.json"
+#: Altes Format (nur PID). Wird nie mehr signalisiert, nur erkannt.
 PID_FILE = "worker.pid"
+#: Startnachweis: PID, Startzeit, argv, Port und Nonce des gestarteten Workers.
+WORKER_RECORD = "worker.json"
+#: Umgebungsvariable mit der Start-Nonce. Sigma ignoriert sie; NIO liest sie
+#: ueber /proc/<pid>/environ zurueck und bindet so Port und Prozess an den Start.
+NONCE_ENV = "NIO_SIGMA_LAUNCH_NONCE"
+#: Felder, die Sigmas /api/v1/health (Blueprint §7) immer liefert.
+HEALTH_KEYS = frozenset({"status", "kill_switch", "tv_worker_ok", "blueprint"})
+#: Titelpraefix aus Sigmas FastAPI-App (app/server/main.py).
+SIGMA_TITLE_PREFIX = "Projekt:Sigma"
 
 
 @dataclass
@@ -95,6 +111,10 @@ class Layout:
         return self.logs / PID_FILE
 
     @property
+    def record(self) -> Path:
+        return self.logs / WORKER_RECORD
+
+    @property
     def python(self) -> Path:
         return self.venv / "bin" / "python"
 
@@ -104,6 +124,91 @@ class Layout:
 
     def dirs(self) -> tuple[Path, ...]:
         return (self.install, self.data, self.logs, self.tmp, self.home, self.cache)
+
+
+# --------------------------------------------------------------- /proc
+def _proc_start_ticks(pid: int) -> int | None:
+    """Startzeit in Clock-Ticks seit Boot (Feld 22 in /proc/<pid>/stat).
+
+    ``None`` heisst: der Prozess laeuft nicht (fehlt oder ist ein Zombie).
+    """
+    try:
+        raw = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    # comm steht in Klammern und darf Leerzeichen enthalten.
+    rest = raw.rsplit(")", 1)[-1].split()
+    if rest[:1] == ["Z"]:
+        return None
+    try:
+        return int(rest[19])
+    except (IndexError, ValueError):
+        return None
+
+
+def _proc_pgrp(pid: int) -> int | None:
+    try:
+        raw = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
+        return int(raw.rsplit(")", 1)[-1].split()[2])
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def _proc_cmdline(pid: int) -> list[str] | None:
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return None
+    return [part.decode("utf-8", "replace") for part in raw.split(b"\0") if part]
+
+
+def _proc_has_env(pid: int, key: str, value: str) -> bool:
+    try:
+        raw = Path(f"/proc/{pid}/environ").read_bytes()
+    except OSError:
+        return False
+    return f"{key}={value}".encode() in raw.split(b"\0")
+
+
+def _listening_inodes(port: int) -> set[str]:
+    """Socket-Inodes, die auf ``port`` lauschen (TCP-Zustand 0A = LISTEN)."""
+    inodes: set[str] = set()
+    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            lines = Path(table).read_text(encoding="utf-8").splitlines()[1:]
+        except OSError:
+            continue
+        for line in lines:
+            cols = line.split()
+            if len(cols) < 10 or cols[3] != "0A":
+                continue
+            try:
+                if int(cols[1].rsplit(":", 1)[1], 16) == port:
+                    inodes.add(cols[9])
+            except (IndexError, ValueError):
+                continue
+    return inodes
+
+
+def _group_owns_listener(pgid: int, port: int) -> bool:
+    """True, wenn ein Prozess der Gruppe ``pgid`` den Lausch-Socket auf ``port`` haelt."""
+    wanted = {f"socket:[{inode}]" for inode in _listening_inodes(port)}
+    if not wanted:
+        return False
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit() or _proc_pgrp(int(entry.name)) != pgid:
+            continue
+        try:
+            fds = list((entry / "fd").iterdir())
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                if os.readlink(fd) in wanted:
+                    return True
+            except OSError:
+                continue
+    return False
 
 
 class TradingLimb(LimbBase):
@@ -267,21 +372,105 @@ class TradingLimb(LimbBase):
             ) from exc
         return parsed if isinstance(parsed, dict) else {"data": parsed}
 
-    def _healthy(self, ctx: LimbContext, *, timeout_s: float = 2.0) -> dict[str, Any] | None:
+    def _probe(self, ctx: LimbContext, *, timeout_s: float = 2.0) -> dict[str, Any] | None:
+        """Antwortet *irgendetwas* mit JSON auf dem Port? Sagt nichts ueber Sigma."""
         try:
             return self._request(ctx, "GET", "/api/v1/health", timeout_s=timeout_s)
         except LimbError:
             return None
+
+    def _read_record(self, layout: Layout) -> dict[str, Any] | None:
+        try:
+            data = json.loads(layout.record.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        return data if isinstance(data, dict) else None
+
+    def _verify_process(self, record: dict[str, Any] | None) -> str | None:
+        """Prueft PID, Startzeit, argv und Nonce gegen den Startnachweis.
+
+        Gibt ``None`` zurueck, wenn alles passt, sonst den Grund. Der Port wird
+        hier bewusst nicht geprueft: ``stop`` muss auch einen haengenden Worker
+        beenden koennen, der nicht mehr lauscht.
+        """
+        if record is None:
+            return "kein Startnachweis (logs/worker.json)"
+        try:
+            pid = int(record["pid"])
+            start_ticks = int(record["start_ticks"])
+            argv = [str(a) for a in record["argv"]]
+            nonce = str(record["nonce"])
+        except (KeyError, TypeError, ValueError):
+            return "Startnachweis unvollstaendig"
+        if pid <= 1 or not nonce:
+            return "Startnachweis ungueltig"
+        current = _proc_start_ticks(pid)
+        if current is None:
+            return f"Prozess {pid} laeuft nicht"
+        if current != start_ticks:
+            return f"PID {pid} gehoert einem anderen Prozess (Startzeit weicht ab)"
+        if _proc_cmdline(pid) != argv:
+            return f"PID {pid} hat eine fremde Kommandozeile"
+        if not _proc_has_env(pid, NONCE_ENV, nonce):
+            return f"PID {pid} traegt nicht die Start-Nonce"
+        if _proc_pgrp(pid) != pid:
+            return f"PID {pid} ist nicht mehr Fuehrer seiner Prozessgruppe"
+        return None
+
+    def _sigma_health(self, ctx: LimbContext, layout: Layout) -> tuple[dict[str, Any] | None, str]:
+        """Health nur von dem Sigma, das NIO selbst gestartet hat.
+
+        Verlangt: gueltigen Startnachweis fuer diesen Port, dass die Prozessgruppe
+        den Lausch-Socket haelt, Sigmas Health-Felder und Titel/Version aus
+        ``/openapi.json``. Ein fremder Dienst auf dem Port gilt nie als Sigma.
+        """
+        port = self._port(ctx)
+        record = self._read_record(layout)
+        reason = self._verify_process(record)
+        if reason is not None:
+            return None, reason
+        assert record is not None
+        if int(record.get("port", -1)) != port:
+            return None, f"Startnachweis gilt fuer Port {record.get('port')}, nicht {port}"
+        if record.get("version") != SIGMA_VERSION:
+            return None, f"Startnachweis fuer Version {record.get('version')!r}, erwartet {SIGMA_VERSION}"
+        pid = int(record["pid"])
+        if not _group_owns_listener(pid, port):
+            return None, f"Port {port} gehoert nicht zur Prozessgruppe {pid}"
+        try:
+            health = self._request(ctx, "GET", "/api/v1/health", timeout_s=2.0)
+            info = self._request(ctx, "GET", "/openapi.json", timeout_s=2.0).get("info") or {}
+        except LimbError as exc:
+            return None, exc.message
+        missing = sorted(HEALTH_KEYS - set(health))
+        if missing:
+            return None, f"Health ohne Sigma-Felder: {', '.join(missing)}"
+        title, version = str(info.get("title", "")), str(info.get("version", ""))
+        if not title.startswith(SIGMA_TITLE_PREFIX) or version != SIGMA_VERSION:
+            return None, f"Dienst meldet {title!r} {version!r}, erwartet {SIGMA_TITLE_PREFIX} {SIGMA_VERSION}"
+        return {**health, "identity": {"pid": pid, "version": version, "verified": True}}, ""
+
+    def _require_sigma(self, ctx: LimbContext) -> dict[str, Any]:
+        """Fail-closed: Ohne verifizierten Worker wird nichts angefragt oder geglaubt."""
+        health, reason = self._sigma_health(ctx, self._layout(ctx, create=False))
+        if health is None:
+            raise LimbError(
+                ErrorCode.IO,
+                f"Kein verifizierter Sigma-Worker auf Port {self._port(ctx)}: {reason}",
+                hint="trading.start ausfuehren; ein fremder Dienst auf dem Port wird nicht genutzt.",
+            )
+        return health
 
     # -------------------------------------------------------------- Handler
     def _ping(self, params, ctx: LimbContext):
         layout = self._layout(ctx, create=False)
         marker = self._read_marker(layout)
         port = self._port(ctx)
-        health = self._healthy(ctx) if layout.python.is_file() else None
+        health, reason = self._sigma_health(ctx, layout) if layout.python.is_file() else (None, "nicht installiert")
         return {
             "installed": marker is not None,
             "running": health is not None,
+            "unverified_reason": reason or None,
             "sigma_ref": (marker or {}).get("ref"),
             "sigma_version": (marker or {}).get("version"),
             "port": port,
@@ -413,8 +602,16 @@ class TradingLimb(LimbBase):
             raise LimbError(ErrorCode.PATH_NOT_FOUND, "Sigma ist nicht installiert", hint="Zuerst trading.install.")
 
         port = self._port(ctx)
-        if self._healthy(ctx) is not None:
-            return {"started": False, "already_running": True, "port": port}
+        health, _ = self._sigma_health(ctx, layout)
+        if health is not None:
+            return {"started": False, "already_running": True, "port": port, "pid": health["identity"]["pid"]}
+        if self._probe(ctx) is not None or _listening_inodes(port):
+            raise LimbError(
+                ErrorCode.IO,
+                f"Port {port} ist von einem nicht verifizierten Dienst belegt",
+                hint="Fremden Dienst beenden oder anderen Port waehlen; er wird nicht als Sigma behandelt.",
+            )
+        nonce = secrets.token_hex(16)
 
         argv = [
             str(layout.python), "-m", "uvicorn",
@@ -428,16 +625,32 @@ class TradingLimb(LimbBase):
             proc = subprocess.Popen(
                 argv,
                 cwd=str(layout.install),
-                env=self._env(layout, port),
+                env={**self._env(layout, port), NONCE_ENV: nonce},
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
         except OSError as exc:
-            log_handle.close()
             raise LimbError(ErrorCode.IO, f"Worker nicht startbar: {exc}") from exc
+        finally:
+            # Der Worker haelt seine eigene Kopie des Deskriptors.
+            log_handle.close()
 
-        layout.pid_file.write_text(str(proc.pid), encoding="utf-8")
+        start_ticks = _proc_start_ticks(proc.pid)
+        if start_ticks is None:
+            self._kill_group(proc.pid)
+            raise LimbError(ErrorCode.IO, "Startzeit des Workers nicht lesbar (/proc fehlt?)")
+        record = {
+            "pid": proc.pid,
+            "start_ticks": start_ticks,
+            "argv": argv,
+            "port": port,
+            "nonce": nonce,
+            "version": SIGMA_VERSION,
+            "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        ctx.write_atomic(layout.record, json.dumps(record, indent=2, sort_keys=True) + "\n")
+        layout.pid_file.unlink(missing_ok=True)
 
         # Auf Health warten, statt blind zu schlafen.
         deadline = time.time() + self._budget(ctx, 120.0)
@@ -447,27 +660,46 @@ class TradingLimb(LimbBase):
                 raise LimbError(ErrorCode.LIMB_CRASH,
                                 f"Worker beendete sich mit Code {proc.returncode}. {tail}",
                                 hint="logs/worker.log pruefen.")
-            if self._healthy(ctx) is not None:
+            health, _ = self._sigma_health(ctx, layout)
+            if health is not None:
                 return {"started": True, "pid": proc.pid, "port": port, "log": ctx.rel(layout.log)}
             time.sleep(0.5)
 
         self._kill_group(proc.pid)
+        layout.record.unlink(missing_ok=True)
         raise LimbError(ErrorCode.TIMEOUT, "Worker wurde nicht rechtzeitig gesund",
                         hint=f"logs/worker.log pruefen: {self._tail(layout.log)}")
 
     def _stop(self, params, ctx: LimbContext):
+        """Signalisiert nur, wenn PID, Startzeit, argv und Nonce zum Start passen."""
         layout = self._layout(ctx, create=False)
-        pid = None
-        if layout.pid_file.is_file():
-            try:
-                pid = int(layout.pid_file.read_text(encoding="utf-8").strip())
-            except (OSError, ValueError):
-                pid = None
-        if pid is None:
-            return {"stopped": False, "reason": "keine PID-Datei", "port": self._port(ctx)}
-        killed = self._kill_group(pid)
-        layout.pid_file.unlink(missing_ok=True)
-        return {"stopped": killed, "pid": pid, "port": self._port(ctx)}
+        port = self._port(ctx)
+        record = self._read_record(layout)
+        if record is None:
+            if layout.pid_file.is_file():
+                raise LimbError(
+                    ErrorCode.POLICY_DENIED,
+                    "Nur eine alte PID-Datei ohne Startnachweis vorhanden; es wird nichts signalisiert",
+                    hint="Prozess pruefen und von Hand beenden, danach logs/worker.pid entfernen.",
+                )
+            return {"stopped": False, "reason": "kein Startnachweis", "port": port}
+
+        pid = record.get("pid")
+        reason = self._verify_process(record)
+        if reason is not None:
+            if isinstance(pid, int) and _proc_start_ticks(pid) is None:
+                # Prozess ist weg: der Nachweis ist nur noch Altlast.
+                layout.record.unlink(missing_ok=True)
+                return {"stopped": False, "reason": reason, "pid": pid, "port": port}
+            raise LimbError(
+                ErrorCode.POLICY_DENIED,
+                f"trading.stop verweigert: {reason}",
+                hint="Kein Signal gesendet. Prozess von Hand pruefen; logs/worker.json entfernen, wenn er fremd ist.",
+            )
+        killed = self._kill_group(int(pid))
+        if killed:
+            layout.record.unlink(missing_ok=True)
+        return {"stopped": killed, "pid": pid, "port": port}
 
     def _kill_group(self, pid: int) -> bool:
         """Beendet die *Gruppe* -- uvicorn startet Kinder."""
@@ -480,18 +712,14 @@ class TradingLimb(LimbBase):
                 return False
             end = time.time() + wait_s
             while time.time() < end:
-                try:
-                    os.kill(pid, 0)
-                except ProcessLookupError:
+                if _proc_start_ticks(pid) is None:
                     return True
                 time.sleep(0.1)
         return False
 
     def _status(self, params, ctx: LimbContext):
         layout = self._layout(ctx, create=False)
-        health = self._healthy(ctx)
-        if health is None:
-            raise LimbError(ErrorCode.IO, "Worker laeuft nicht", hint="trading.start ausfuehren.")
+        health = self._require_sigma(ctx)
         out: dict[str, Any] = {"running": True, "port": self._port(ctx), "health": health,
                                "marker": self._read_marker(layout)}
         try:
@@ -501,14 +729,17 @@ class TradingLimb(LimbBase):
         return out
 
     def _lake_summary(self, params, ctx: LimbContext):
+        self._require_sigma(ctx)
         return self._request(ctx, "GET", "/api/lake/summary", timeout_s=self._budget(ctx, 30.0))
 
     def _lake_compact(self, params, ctx: LimbContext):
+        self._require_sigma(ctx)
         body = {k: v for k, v in params.items() if k in {"symbol", "interval", "day"}}
         return self._request(ctx, "POST", "/api/lake/compact", body=body, timeout_s=self._budget(ctx, 120.0))
 
     def _backtest_run(self, params, ctx: LimbContext):
         """Nur die dokumentierten Felder -- keine beliebigen Durchreichungen."""
+        self._require_sigma(ctx)
         body = {
             "strategyType": params.get("strategy") or params.get("strategyType") or "sma_cross",
             "assetPair": params.get("pair") or params.get("assetPair") or "BTC/USD",
