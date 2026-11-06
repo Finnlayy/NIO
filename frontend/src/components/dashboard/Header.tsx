@@ -1,4 +1,4 @@
-import { BrainCircuit, Search, Sparkles } from "lucide-react";
+import { BrainCircuit, Search, Sparkles, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { isTypingTarget } from "@/ops/hotkeys";
 
@@ -58,10 +58,24 @@ export function Header({
           className="console-input pl-9 pr-12 py-2 text-[13px]"
           aria-label="Search network nodes"
         />
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none flex items-center gap-1">
-          <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-mono text-slate-400 bg-slate-800/50 border border-slate-700 rounded shadow-sm">
-            /
-          </kbd>
+        <div className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 ${search.length > 0 ? "" : "pointer-events-none"}`}>
+          {search.length > 0 ? (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => {
+                onSearch("");
+                searchInputRef.current?.focus();
+              }}
+              className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-slate-200 transition-colors flex items-center justify-center"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          ) : (
+            <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[9px] font-mono text-slate-400 bg-slate-800/50 border border-slate-700 rounded shadow-sm">
+              /
+            </kbd>
+          )}
         </div>
       </div>
 
