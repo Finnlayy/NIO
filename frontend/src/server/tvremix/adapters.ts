@@ -161,7 +161,9 @@ export function adaptTechnicals(raw: Raw): LiveTechnical | null {
     (() => {
       const s = num(findField(t, ["score", "confluence", "confluence_score", "rating_score"]));
       if (s !== null && s >= 0 && s <= 100) return Math.round(s);
-      const idx = VERDICT_ORDER.findIndex((v) => rating.includes(v));
+      // "strong buy" contains "buy": try the longer phrases first.
+      const match = [...VERDICT_ORDER].sort((a, b) => b.length - a.length).find((v) => rating.includes(v));
+      const idx = match ? VERDICT_ORDER.indexOf(match) : -1;
       return idx >= 0 ? Math.round(((idx + 0.5) / VERDICT_ORDER.length) * 100) : 50;
     })();
 

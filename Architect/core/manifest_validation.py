@@ -1,5 +1,5 @@
 import logging
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from core.manifest import Manifest
 
@@ -36,6 +36,14 @@ def _matches_glob(file_path_str: str, globs: list) -> bool:
     import fnmatch
     return any(fnmatch.fnmatch(file_path_str, pattern) or fnmatch.fnmatch(Path(file_path_str).name, pattern) for pattern in globs)
 
+def _is_plain_relative(file_path_str: str) -> bool:
+    """True for a non-empty relative POSIX path without "..", backslashes or NUL."""
+    if not file_path_str or "\\" in file_path_str or "\0" in file_path_str:
+        return False
+    path = PurePosixPath(file_path_str)
+    # Canonical only: "a/./b", "a//b" and "a/" would dodge the human-only globs.
+    return not path.is_absolute() and ".." not in path.parts and str(path) == file_path_str
+
 def validate_manifest_update(manifest_path: str, current_state_path: str | None = None) -> tuple:
     """Validate a manifest update before applying. Returns (bool, str)."""
     try:
@@ -63,9 +71,16 @@ def validate_manifest_update(manifest_path: str, current_state_path: str | None 
         # Denied globs check (before allowed)
         if _matches_glob(file_path_str, DENIED_GLOBS):
             return (False, f"File path denied by policy: {file_path_str}")
+        # fnmatch's "*" also matches "/" and "..", so the globs alone let
+        # "Architect/core/../../x" through. Only plain relative paths are allowed.
+        if not _is_plain_relative(file_path_str):
+            return (False, f"File path must be relative without '..': {file_path_str}")
         # Allowed repo globs check
         if not _matches_glob(file_path_str, ALLOWED_REPO_GLOBS):
             return (False, f"File path not allowed by repo globs: {file_path_str}")
+        # Human-only files follow from the path, not from the caller's safety_flags.
+        if _matches_glob(file_path_str, HUMAN_ONLY_GLOBS) and approval_level != "human":
+            return (False, f"File requires approval_level='human': {file_path_str}")
 
     # Checksum verification: verify files exist for create/modify (before applying)
     for change in changes:

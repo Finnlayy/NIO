@@ -33,6 +33,18 @@ test("guard refuses DNS rebinding with matching Origin and Host", () => {
   assert.equal(guard(""), 403);
 });
 
+test("guard requires Origin for writes, not for reads", () => {
+  const write = (method, origin) => {
+    const headers = { host: "localhost:4001" };
+    if (origin !== undefined) headers.origin = origin;
+    return proxy(new NextRequest("http://localhost:4001/api/apollo/kanban", { method, headers })).status;
+  };
+  assert.equal(write("POST"), 403);
+  assert.equal(write("DELETE"), 403);
+  assert.equal(write("POST", "http://localhost:4001"), 200);
+  assert.equal(write("GET"), 200);
+});
+
 test("guard refuses other origins, including another local port", () => {
   assert.equal(guard("localhost:4001", "http://localhost:5000"), 403);
   assert.equal(guard("localhost:4001", "https://evil.example"), 403);

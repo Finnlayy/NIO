@@ -25,6 +25,11 @@ export function proxy(request: NextRequest) {
   }
 
   const origin = request.headers.get("origin");
+  // Browsers always send Origin on a same-origin POST or DELETE. A write without
+  // it comes from a script or another local process, not from this page.
+  if (origin === null && request.method !== "GET" && request.method !== "HEAD") {
+    return new NextResponse("Forbidden: Origin required for writes", { status: 403 });
+  }
   if (origin !== null) {
     let originHost = "";
     try {
