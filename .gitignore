@@ -15,6 +15,9 @@ runtime/
 workspace/*
 !workspace/.gitkeep
 
+# Rust: Build-Artefakte (cdylib-Ziele für die Limb-.so) gehören nicht ins Git
+rust/*/target/
+
 # Python
 __pycache__/
 *.py[cod]

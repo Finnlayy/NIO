@@ -30,7 +30,7 @@ import contextlib
 import json
 import struct
 import threading
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from multiprocessing import shared_memory
 from typing import Any
 
@@ -124,6 +124,22 @@ class SharedMemoryRingSink:
 
     def capacity_free(self) -> int:
         return self.capacity - self.available()
+
+    @contextlib.contextmanager
+    def write_lock(self) -> Iterator[None]:
+        """Kurzzeitige, ausschliessliche Schreibsperre auf den Ring.
+
+        Waehrend der Sperre blockiert ``_put`` (und damit jeder
+        Event-Schreiber). Verwendet vom FFI-Hot-Reload
+        (``orchestrator/kanban/limb_ffi.py``), um den Funktionszeiger einer
+        .so-Limb auszutauschen, ohne dass während des Zeiger-Wechsels ein
+        Event in den Ring geschrieben wird.
+        """
+        self._lock.acquire()
+        try:
+            yield
+        finally:
+            self._lock.release()
 
     @property
     def closed(self) -> bool:
