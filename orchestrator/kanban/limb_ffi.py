@@ -58,13 +58,14 @@ class LimbFFISpec:
 
 
 #: ctypes-Signatur für libc.dlclose(void *handle) -> int.
-_DlClose = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p)
+_DlCloseType = Any
+_DlClose: _DlCloseType = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p)
 
 
 class _LoadedLimb:
     """Eine im RAM geladene .so mit aufgelösten Funktionszeigern."""
 
-    def __init__(self, so_path: Path, dlclose: _DlClose) -> None:
+    def __init__(self, so_path: Path, dlclose: Any) -> None:
         self.path = so_path
         self.lib = ctypes.CDLL(str(so_path))  # RTLD_LOCAL, RTLD_LAZY
         self._dlclose = dlclose
@@ -113,7 +114,7 @@ class _LoadedLimb:
         raw = self.lib.limb_contract_version()
         if raw is None:
             raise LimbFFIError(f"limb_contract_version gab NULL zurück ({self.path})")
-        return raw.decode("utf-8")
+        return str(raw.decode("utf-8"))
 
     # -- Aufrufe ----------------------------------------------------------
 
@@ -247,7 +248,8 @@ def process_intent_file(
     payload = json.dumps(params, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     out = reloader.process_payload(payload)
     try:
-        return json.loads(out.decode("utf-8"))
+        res: dict[str, Any] = json.loads(out.decode("utf-8"))
+        return res
     except json.JSONDecodeError:
         return {"raw": out.decode("utf-8", errors="replace")}
 
