@@ -31,6 +31,7 @@ import contextlib
 import ctypes
 import json
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -59,12 +60,13 @@ class LimbFFISpec:
 
 #: ctypes-Signatur für libc.dlclose(void *handle) -> int.
 _DlClose = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p)
+_DlCloseCallable = Callable[[int], int]
 
 
 class _LoadedLimb:
     """Eine im RAM geladene .so mit aufgelösten Funktionszeigern."""
 
-    def __init__(self, so_path: Path, dlclose: _DlClose) -> None:
+    def __init__(self, so_path: Path, dlclose: Any) -> None:
         self.path = so_path
         self.lib = ctypes.CDLL(str(so_path))  # RTLD_LOCAL, RTLD_LAZY
         self._dlclose = dlclose
@@ -158,7 +160,7 @@ class LimbHotReloader:
         libc = ctypes.CDLL(None, use_errno=True)
         libc.dlclose.argtypes = [ctypes.c_void_p]
         libc.dlclose.restype = ctypes.c_int
-        self._dlclose: _DlClose = libc.dlclose
+        self._dlclose: Any = libc.dlclose
         self.load(Path(so_path))
 
     # -- Eigenschaften ----------------------------------------------------
