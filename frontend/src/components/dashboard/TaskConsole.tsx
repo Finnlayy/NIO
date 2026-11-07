@@ -83,7 +83,7 @@ export function TaskConsole({
         aria-label="Task description"
       />
 
-      <label className="flex items-center gap-2 text-xs text-slate-400 mt-2.5 cursor-pointer">
+      <label className="flex items-center gap-2 text-xs text-slate-400 mt-2.5 cursor-pointer focus-within:outline-none focus-within:ring-2 focus-within:ring-cyan-400/60 focus-within:rounded-sm">
         <input
           type="checkbox"
           checked={isComplex}
@@ -96,7 +96,7 @@ export function TaskConsole({
       <button
         onClick={onRun}
         disabled={isRunning || !taskText.trim()}
-        className="primary-button w-full mt-3 flex items-center justify-center gap-2"
+        className="primary-button w-full mt-3 flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
       >
         {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
         {isRunning ? "Routing through core …" : (
