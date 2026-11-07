@@ -31,7 +31,6 @@ import contextlib
 import ctypes
 import json
 import threading
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -60,13 +59,12 @@ class LimbFFISpec:
 
 #: ctypes-Signatur für libc.dlclose(void *handle) -> int.
 _DlClose = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p)
-_DlCloseCallable = Callable[[int], int]
 
 
 class _LoadedLimb:
     """Eine im RAM geladene .so mit aufgelösten Funktionszeigern."""
 
-    def __init__(self, so_path: Path, dlclose: Any) -> None:
+    def __init__(self, so_path: Path, dlclose: _DlClose) -> None:
         self.path = so_path
         self.lib = ctypes.CDLL(str(so_path))  # RTLD_LOCAL, RTLD_LAZY
         self._dlclose = dlclose
@@ -143,9 +141,10 @@ class _LoadedLimb:
 
     def _dispose(self) -> None:
         self.shutdown()
-        with contextlib.suppress(Exception):
-            if callable(self._dlclose):
-                self._dlclose(self.handle())
+        try:
+            self._dlclose(self.handle())
+        except Exception:
+            pass
         self._configured = False
 
 
@@ -160,7 +159,7 @@ class LimbHotReloader:
         libc = ctypes.CDLL(None, use_errno=True)
         libc.dlclose.argtypes = [ctypes.c_void_p]
         libc.dlclose.restype = ctypes.c_int
-        self._dlclose: Any = libc.dlclose
+        self._dlclose: _DlClose = libc.dlclose
         self.load(Path(so_path))
 
     # -- Eigenschaften ----------------------------------------------------
@@ -206,8 +205,7 @@ class LimbHotReloader:
             self._loaded = replacement
             if old is not None:
                 old.shutdown()
-                if callable(old._dlclose):
-                    old._dlclose(old.handle())
+                old._dlclose(old.handle())
             return LimbFFISpec(
                 name=self.name,
                 so_path=new_so_path.resolve(),
@@ -227,8 +225,7 @@ class LimbHotReloader:
             if self._loaded is None:
                 return
             self._loaded.shutdown()
-            if callable(self._loaded._dlclose):
-                self._loaded._dlclose(self._loaded.handle())
+            self._loaded._dlclose(self._loaded.handle())
             self._loaded = None
 
     def __enter__(self) -> LimbHotReloader:
@@ -258,7 +255,7 @@ def process_intent_file(
 
 
 def write_lock_around(
-    sink: SharedMemoryRingSink,
+    sink: "SharedMemoryRingSink",
     reloader: LimbHotReloader,
     new_so_path: str | Path,
 ) -> LimbFFISpec:
