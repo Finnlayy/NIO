@@ -141,10 +141,9 @@ class _LoadedLimb:
 
     def _dispose(self) -> None:
         self.shutdown()
-        try:
-            self._dlclose(self.handle())
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            if callable(self._dlclose):
+                self._dlclose(self.handle())
         self._configured = False
 
 
@@ -205,7 +204,8 @@ class LimbHotReloader:
             self._loaded = replacement
             if old is not None:
                 old.shutdown()
-                old._dlclose(old.handle())
+                if callable(old._dlclose):
+                    old._dlclose(old.handle())
             return LimbFFISpec(
                 name=self.name,
                 so_path=new_so_path.resolve(),
@@ -225,7 +225,8 @@ class LimbHotReloader:
             if self._loaded is None:
                 return
             self._loaded.shutdown()
-            self._loaded._dlclose(self._loaded.handle())
+            if callable(self._loaded._dlclose):
+                self._loaded._dlclose(self._loaded.handle())
             self._loaded = None
 
     def __enter__(self) -> LimbHotReloader:
@@ -255,7 +256,7 @@ def process_intent_file(
 
 
 def write_lock_around(
-    sink: "SharedMemoryRingSink",
+    sink: SharedMemoryRingSink,
     reloader: LimbHotReloader,
     new_so_path: str | Path,
 ) -> LimbFFISpec:
