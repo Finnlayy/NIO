@@ -12,7 +12,7 @@ PYTHON ?= python3
 RUNTIME ?= $(CURDIR)/runtime
 
 .DEFAULT_GOAL := help
-.PHONY: help test test-core test-architect test-frontend ui-test test-verbose lint lint-fix types compile e2e check demo clean rea-demo rea-recover rea-status rea-probe rust-test rust-limb e2e-kanban
+.PHONY: help test test-core test-architect test-frontend ui-test test-verbose lint lint-fix types compile e2e check demo clean rea-demo rea-recover rea-status rea-probe rust-test rust-limb e2e-kanban prompt-optimizer
 
 help:  ## Diese Uebersicht
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -67,6 +67,9 @@ ui-test:  ## Frontend-UI-Tests (Zero-Dep-Harness: tsc + node --test, kein DOM)
 	else \
 		node frontend/scripts/ui-test.mjs; \
 	fi
+
+prompt-optimizer:  ## Prompt-Optimierer: Demo-Lauf beider Modi in workspace/ (Invarianten werden mitgeprüft)
+	$(PYTHON) scripts/prompt_optimizer_demo.py
 
 e2e-kanban:  ## End-to-End-Beweis fuer Kanban (WP-09)
 	$(PYTHON) scripts/ci_e2e_kanban.py

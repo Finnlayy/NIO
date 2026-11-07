@@ -1,0 +1,67 @@
+{
+  "_hinweis": "Quellen für die Research-Blätter des Demo-Entwurfs (scripts/fixtures/prompt_optimizer/demo_draft_protocol.md). Jede Quelle mit `repo:`-Locator wird vom LocalSourceChecker gegen die Datei geprüft: existiert sie, und steht das Zitat wörtlich darin? Nur dann trägt das Blatt den Status VERIFIZIERT.",
+  "R-01": [
+    {
+      "tier": 3,
+      "locator": "repo:protocol/PROTOCOL.md",
+      "quote": "| JSON Schema (Intent) | `protocol/intent.schema.json` | Editoren, CI, fremdsprachige Limbs |",
+      "retrieved_at": "2026-11-07"
+    }
+  ],
+  "R-02": [
+    {
+      "tier": 3,
+      "locator": "repo:protocol/PROTOCOL.md",
+      "quote": "Protokoll-ID: `neu/intent` und `neu/result`, Version `1.2`.",
+      "retrieved_at": "2026-11-07"
+    }
+  ],
+  "R-03": [
+    {
+      "tier": 3,
+      "locator": "repo:core/schemacheck.py",
+      "quote": "Tests nutzen dasselbe Modul (``tests/test_schema_parity.py``), damit",
+      "retrieved_at": "2026-11-07"
+    }
+  ],
+  "R-04": [
+    {
+      "tier": 3,
+      "locator": "repo:protocol/PROTOCOL.md",
+      "quote": "| `E_SCHEMA_INVALID` | Envelope verletzt das Protokoll | Parameter/Struktur korrigieren |",
+      "retrieved_at": "2026-11-07"
+    }
+  ],
+  "R-06": [
+    {
+      "tier": 3,
+      "locator": "repo:tests/test_cli_contract.py",
+      "quote": "self.assertIn(\"E_SCHEMA_INVALID\", codes)",
+      "retrieved_at": "2026-11-07"
+    }
+  ],
+  "R-07": [
+    {
+      "tier": 3,
+      "locator": "repo:Makefile",
+      "quote": "check: compile lint types test ui-test e2e",
+      "retrieved_at": "2026-11-07"
+    }
+  ],
+  "R-08": [
+    {
+      "tier": 3,
+      "locator": "repo:docs/TESTING.md",
+      "quote": "## 4. Gates vor einem Merge",
+      "retrieved_at": "2026-11-07"
+    }
+  ],
+  "R-09": [
+    {
+      "tier": 2,
+      "locator": "https://example.invalid/spec",
+      "quote": "nicht lokal prüfbar",
+      "retrieved_at": "2026-11-07"
+    }
+  ]
+}
