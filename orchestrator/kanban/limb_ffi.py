@@ -141,10 +141,8 @@ class _LoadedLimb:
 
     def _dispose(self) -> None:
         self.shutdown()
-        try:
+        with contextlib.suppress(Exception):
             self._dlclose(self.handle())
-        except Exception:
-            pass
         self._configured = False
 
 
@@ -255,7 +253,7 @@ def process_intent_file(
 
 
 def write_lock_around(
-    sink: "SharedMemoryRingSink",
+    sink: SharedMemoryRingSink,
     reloader: LimbHotReloader,
     new_so_path: str | Path,
 ) -> LimbFFISpec:
