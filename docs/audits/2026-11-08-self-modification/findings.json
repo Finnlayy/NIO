@@ -183,13 +183,13 @@
       "id": "BL-01", "area": "baseline", "severity": "medium", "status": "verified",
       "title": "make test-core: 662 Tests, 1 Importfehler, 20 Skips",
       "detail": "Importfehler tests.test_ciel_mcp_nodes wegen fehlendem Python-Paket 'mcp'. Das ist ein Umgebungsproblem, kein Codefehler. Das Gate ist in dieser Sandbox trotzdem nicht reproduzierbar gruen.",
-      "evidence": ["evidence/14_make_test_core.log", "evidence/15_core_unittest_full.log"]
+      "evidence": ["evidence/14_make_test_core.txt", "evidence/15_core_unittest_full.txt"]
     },
     {
       "id": "BL-02", "area": "baseline", "severity": "medium", "status": "verified",
       "title": "Architect-Suite: 218 Tests, 2 Fehler (fehlende Pakete google-genai, numpy)",
       "detail": "test_genai_client: ModuleNotFoundError 'google'. test_telemetry_feed: Importfehler wegen numpy. Umgebungsproblem.",
-      "evidence": ["evidence/16_architect_unittest.log"]
+      "evidence": ["evidence/16_architect_unittest.txt"]
     },
     {
       "id": "BL-03", "area": "baseline", "severity": "info", "status": "verified",
@@ -201,7 +201,7 @@
       "id": "BL-04", "area": "baseline", "severity": "info", "status": "verified",
       "title": "Korrektur zur Erstanalyse",
       "detail": "In der ersten Antwort wurde die Testbasis als 'rot' bezeichnet. Belegt ist: Die Fehler stammen aus fehlenden Paketen in der Sandbox, nicht aus dem Code. Die Aussage 'Gate nicht gruen' gilt nur fuer diese Umgebung.",
-      "evidence": ["evidence/14_make_test_core.log", "evidence/16_architect_unittest.log"]
+      "evidence": ["evidence/14_make_test_core.txt", "evidence/16_architect_unittest.txt"]
     }
   ],
   "open_questions": [

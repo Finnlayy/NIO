@@ -199,11 +199,11 @@ In `protocol/operations.json` definiert (Phase 4, risk=write). Kein Limb in `reg
 
 #### BL-01 · medium · verifiziert · `make test-core`: 662 Tests, 1 Importfehler, 20 Skips
 Der Importfehler `tests.test_ciel_mcp_nodes` kommt vom fehlenden Paket `mcp`. Das ist ein Umgebungsproblem, kein Codefehler. In dieser Sandbox ist das Gate trotzdem nicht reproduzierbar grün.
-*Beleg:* `evidence/14_make_test_core.log`, `evidence/15_core_unittest_full.log`
+*Beleg:* `evidence/14_make_test_core.txt`, `evidence/15_core_unittest_full.txt`
 
 #### BL-02 · medium · verifiziert · Architect-Suite: 218 Tests, 2 Fehler
 `test_genai_client`: fehlendes Paket `google`. `test_telemetry_feed`: fehlendes Paket `numpy`. Umgebungsproblem.
-*Beleg:* `evidence/16_architect_unittest.log`
+*Beleg:* `evidence/16_architect_unittest.txt`
 
 #### BL-03 · info · verifiziert · Alle Kernmodule kompilieren
 `py_compile` für `orchestrator/`, `core/`, `limbs/` ohne Fehler.
@@ -274,9 +274,9 @@ Alle Experimente liefen in Kopien ohne `.git`, `node_modules`, `frontend` und `r
 | `evidence/11_voice_frontend.txt` | Voice-Befehle und Vault-Route |
 | `evidence/12_memory.txt` | Vault-Limb und Memory-Stellen |
 | `evidence/13_selfmod_vectors.txt` | Schreibbare Vektoren (tests, prompts, workspace) |
-| `evidence/14_make_test_core.log` | Testlauf `make test-core` |
-| `evidence/15_core_unittest_full.log` | Vollständiger Core-Unittest-Lauf |
-| `evidence/16_architect_unittest.log` | Architect-Unittest-Lauf |
+| `evidence/14_make_test_core.txt` | Testlauf `make test-core` |
+| `evidence/15_core_unittest_full.txt` | Vollständiger Core-Unittest-Lauf |
+| `evidence/16_architect_unittest.txt` | Architect-Unittest-Lauf |
 | `evidence/17_py_compile.txt` | Kompilierprüfung |
 | `evidence/18_claim_checks.txt` | Gegenprüfung der Behauptungen |
 | `evidence/19_hot_reload_experiment.txt` | Experimente A und C (B ungültig) |
