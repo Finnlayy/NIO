@@ -58,7 +58,7 @@ class LimbFFISpec:
 
 
 #: ctypes-Signatur für libc.dlclose(void *handle) -> int.
-_DlClose = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p)
+_DlClose = Any
 
 
 class _LoadedLimb:
