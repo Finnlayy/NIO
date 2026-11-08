@@ -58,7 +58,10 @@ class LimbFFISpec:
 
 
 #: ctypes-Signatur für libc.dlclose(void *handle) -> int.
-_DlClose = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p)
+if TYPE_CHECKING:
+    _DlClose = Any
+else:
+    _DlClose = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p)
 
 
 class _LoadedLimb:
@@ -113,7 +116,7 @@ class _LoadedLimb:
         raw = self.lib.limb_contract_version()
         if raw is None:
             raise LimbFFIError(f"limb_contract_version gab NULL zurück ({self.path})")
-        return raw.decode("utf-8")
+        return str(raw.decode("utf-8"))
 
     # -- Aufrufe ----------------------------------------------------------
 
@@ -247,7 +250,7 @@ def process_intent_file(
     payload = json.dumps(params, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     out = reloader.process_payload(payload)
     try:
-        return json.loads(out.decode("utf-8"))
+        return dict(json.loads(out.decode("utf-8")))
     except json.JSONDecodeError:
         return {"raw": out.decode("utf-8", errors="replace")}
 
