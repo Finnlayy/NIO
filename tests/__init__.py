@@ -11,8 +11,9 @@ Es wird nichts gemockt: Was hier gruener Haken ist, war wirklich erfolgreich.
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
+
 os.environ.setdefault('NIO_SYSTEM_LOG', '')
 from pathlib import Path
 

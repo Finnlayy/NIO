@@ -1,10 +1,11 @@
 import sys
-from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QLabel, QTabWidget
-from PyQt6.QtCore import Qt
+
+from PyQt6.QtWidgets import QApplication, QMainWindow, QTabWidget, QVBoxLayout, QWidget
+
 from gui.theme import apply_theme
+from gui.views.unified_chart_tab import UnifiedChartTab
 from gui.widgets.command_bar import CommandBar
 from gui.widgets.ticker_tape import TickerTape
-from gui.views.unified_chart_tab import UnifiedChartTab
 
 # Phase 4/5 tabs (RLHF feedback + self-model dashboards). Import-guarded so
 # the terminal still boots if a Phase 5 visualization dependency is missing.
@@ -16,8 +17,8 @@ except ImportError:
     PHASE4_FEEDBACK_AVAILABLE = False
 
 try:
-    from gui.views.trajectory_visualizer import TrajectoryVisualizer
     from gui.views.alignment_dashboard import AlignmentDashboardTab
+    from gui.views.trajectory_visualizer import TrajectoryVisualizer
     PHASE5_TABS_AVAILABLE = True
 except ImportError:
     TrajectoryVisualizer = None

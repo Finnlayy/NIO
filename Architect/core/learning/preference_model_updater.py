@@ -16,10 +16,10 @@ Backups:  `Architect/runtime/models/backups/`
 Events:   `model_updated`, `model_validation_failed`
 """
 
-import json
-import hashlib
-import logging
 import datetime
+import hashlib
+import json
+import logging
 import math
 import random
 import re
@@ -111,7 +111,7 @@ class PreferenceModelUpdater:
         if path is None:
             logger.info("No persisted preference model found; starting from zero model.")
             return self._empty_model()
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             model = json.load(f)
         logger.info("Preference model loaded from %s (trained_samples=%s)",
                     path, model.get("trained_samples"))
@@ -142,7 +142,7 @@ class PreferenceModelUpdater:
         current = self.models_dir / "current_model.json"
         if current.exists():
             timestamp = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%S")
-            with open(current, "r", encoding="utf-8") as fsrc:
+            with open(current, encoding="utf-8") as fsrc:
                 payload = fsrc.read()
             with open(self.backups_dir / f"current_model_{timestamp}.json", "w", encoding="utf-8") as fdst:
                 fdst.write(payload)
@@ -201,7 +201,7 @@ class PreferenceModelUpdater:
 
         Emits `model_updated` (score >= threshold) or `model_validation_failed`.
         """
-        with open(updated_model_path, "r", encoding="utf-8") as f:
+        with open(updated_model_path, encoding="utf-8") as f:
             model = json.load(f)
         dataset = self._load_dataset(test_dataset_path)
         if not dataset:
@@ -244,7 +244,7 @@ class PreferenceModelUpdater:
             logger.warning("Preference model rollback: no backups available.")
             return {"rolled_back": False, "reason": "no_backups"}
         latest = backups[-1]
-        with open(latest, "r", encoding="utf-8") as fsrc:
+        with open(latest, encoding="utf-8") as fsrc:
             payload = fsrc.read()
         with open(self.models_dir / "current_model.json", "w", encoding="utf-8") as fdst:
             fdst.write(payload)
@@ -264,7 +264,7 @@ class PreferenceModelUpdater:
                 path = fallback
         if not path.exists():
             raise FileNotFoundError(f"Preference dataset not found: {dataset_path}")
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, list):
             return data

@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+
 from core.manifest import Manifest
 
 logger = logging.getLogger(__name__)
@@ -33,12 +34,9 @@ HUMAN_ONLY_GLOBS = [
 def _matches_glob(file_path_str: str, globs: list) -> bool:
     """Simple glob matcher for allowed/denied paths."""
     import fnmatch
-    for pattern in globs:
-        if fnmatch.fnmatch(file_path_str, pattern) or fnmatch.fnmatch(Path(file_path_str).name, pattern):
-            return True
-    return False
+    return any(fnmatch.fnmatch(file_path_str, pattern) or fnmatch.fnmatch(Path(file_path_str).name, pattern) for pattern in globs)
 
-def validate_manifest_update(manifest_path: str, current_state_path: str = None) -> tuple:
+def validate_manifest_update(manifest_path: str, current_state_path: str | None = None) -> tuple:
     """Validate a manifest update before applying. Returns (bool, str)."""
     try:
         manifest = Manifest(manifest_path)

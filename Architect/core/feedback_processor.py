@@ -9,14 +9,14 @@ Aligned with blueprint `src/learning/schemas.ts` (`Feedback`) and
 `OMEGA_JULES_TODO.md` Phase 4 (Feedback Processing).
 """
 
+import datetime
 import json
 import logging
-import datetime
 import re
 from collections import Counter
 from pathlib import Path
 
-from core.schema_utils import SchemaInvalid, load_schema, validate_against_schema, default_schema_path
+from core.schema_utils import SchemaInvalid, default_schema_path, load_schema, validate_against_schema
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ class FeedbackProcessor:
         path = Path(file_path)
         if not path.exists():
             raise FileNotFoundError(f"Feedback file not found: {file_path}")
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         validated = self.validate_feedback(data)
         logger.info("Feedback loaded: %s (outcome_id=%s, rating=%s)",

@@ -12,9 +12,10 @@ from unittest import mock
 
 from core.config import NeuConfig
 from core.protocol import ErrorCode, Operations
-from limbs import openmanus_limb
+from limbs import container, openmanus_limb
 from limbs.agent_base import ServiceDown
 from limbs.base import LimbError
+from limbs.container import ConfigError
 from limbs.openmanus_limb import IMAGE, NETWORK, OpenManusLimb, container_args
 
 from . import REPO_ROOT
@@ -22,7 +23,8 @@ from . import REPO_ROOT
 
 class ContainerArgsTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.args = container_args("run_x", Path("/j"), 60, 5)
+        self.job = REPO_ROOT / "runtime" / "agents" / "run_x" / "job"
+        self.args, self.env = container_args("run_x", self.job, 60, 5)
 
     def test_abschottung(self):
         self.assertIn("--read-only", self.args)
@@ -35,12 +37,22 @@ class ContainerArgsTest(unittest.TestCase):
     def test_mounts_nur_vom_lauf(self):
         mounts = [self.args[i + 1] for i, value in enumerate(self.args) if value == "--volume"]
         self.assertEqual(len(mounts), 2)
-        self.assertTrue(all(mount.startswith("/j/") for mount in mounts))
+        self.assertTrue(all(mount.startswith(f"{self.job.resolve()}/") for mount in mounts))
+        self.assertTrue(any(mount.endswith("/config:ro") for mount in mounts))
         self.assertNotIn("docker.sock", " ".join(self.args))
 
     def test_keine_geheimnisse_in_der_umgebung(self):
         envs = [self.args[i + 1] for i, value in enumerate(self.args) if value == "--env"]
-        self.assertEqual({env.split("=")[0] for env in envs}, {"NIO_MAX_RUNTIME_S", "NIO_MAX_STEPS"})
+        self.assertEqual(set(envs), {"NIO_MAX_RUNTIME_S", "NIO_MAX_STEPS"})
+        self.assertEqual(self.env, {"NIO_MAX_RUNTIME_S": "60", "NIO_MAX_STEPS": "5"})
+
+    def test_kein_no_new_privileges_und_kein_autoremove(self):
+        self.assertNotIn("no-new-privileges", self.args)
+        self.assertNotIn("--rm", self.args)
+
+    def test_job_ausserhalb_der_laeufe_wird_abgelehnt(self):
+        with self.assertRaises(ConfigError):
+            container_args("run_x", Path("/j"), 60, 5)
 
     def test_image_steht_zuletzt(self):
         self.assertEqual(self.args[-1], IMAGE)
@@ -56,7 +68,7 @@ class FakeDocker:
         self.network = "true true"
         self.fail_run = False
 
-    def __call__(self, *args: str, timeout: int = 30) -> str:
+    def __call__(self, *args: str, timeout: int = 30, env: dict[str, str] | None = None) -> str:
         self.calls.append(args)
         if args[0] == "network":
             return self.network
@@ -87,13 +99,14 @@ class LimbTest(unittest.TestCase):
         self.docker = FakeDocker()
         patches = [
             mock.patch.object(openmanus_limb, "docker", self.docker),
+            mock.patch.object(container, "_REPO_ROOT", Path(self.tmp.name)),
             mock.patch.dict(os.environ, {"FREELLMAPI_KEY": "geheim-123", "OPENMANUS_MODEL": "m"}),
         ]
         for patch in patches:
             patch.start()
             self.addCleanup(patch.stop)
         self.limb = OpenManusLimb.__new__(OpenManusLimb)
-        self.limb.config = NeuConfig.load(REPO_ROOT, runtime_dir=Path(self.tmp.name))
+        self.limb.config = NeuConfig.load(REPO_ROOT, runtime_dir=Path(self.tmp.name, "runtime"))
         self.limb.operations = Operations.load(self.limb.config.protocol_dir / "operations.json")
         self.ctx = FakeContext()
 
@@ -181,7 +194,14 @@ class LimbTest(unittest.TestCase):
         self.docker.fail_run = True
         with self.assertRaises(LimbError):
             self.start()
-        run_dir = next(Path(self.tmp.name, "agents").iterdir())
+        run_dir = next(Path(self.tmp.name, "runtime", "agents").iterdir())
+        self.assertFalse((run_dir / "job" / "config" / "config.toml").exists())
+
+    def test_unsichere_konfiguration_entfernt_den_key(self):
+        with mock.patch.object(container, "_REPO_ROOT", REPO_ROOT), self.assertRaises(LimbError) as caught:
+            self.start()
+        self.assertEqual(caught.exception.code, ErrorCode.POLICY_DENIED)
+        run_dir = next(Path(self.tmp.name, "runtime", "agents").iterdir())
         self.assertFalse((run_dir / "job" / "config" / "config.toml").exists())
 
     def test_ping(self):

@@ -1,0 +1,13 @@
+[package]
+name = "nio-limb"
+version = "0.1.0"
+edition = "2021"
+description = "NIO Rust-Limb als cdylib: stabile C-FFI fuer den Python-Orchestrator mit Hot-Reloading."
+
+[lib]
+name = "nio_limb"
+crate-type = ["cdylib"]
+
+[profile.release]
+lto = true
+codegen-units = 1

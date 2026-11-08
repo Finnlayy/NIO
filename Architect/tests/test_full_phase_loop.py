@@ -10,35 +10,36 @@
 Runs fully offline (stub AI supply) inside a tempdir.
 """
 
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import tempfile
-import json
 import hashlib
+import json
+import tempfile
 from pathlib import Path
 
-from core.events import EventBus
-from core.state_machine import SystemExecutionState, TRANSITION_MAP
 from core.agent_assignment import AgentAssignment
-from core.post_mortem_trigger import PostMortemTrigger
-from core.manifest_validation import validate_manifest_update
-from core.outcome_parser import OutcomeIngestion
+from core.alignment.alignment_dashboard import AlignmentDashboard
+from core.alignment.alignment_tracker import AlignmentTracker
+from core.evaluation.define_eval import EvalPipeline, define_eval
+from core.evaluation.evaluators import correctness_evaluator
+from core.events import EventBus
 from core.feedback_processor import FeedbackProcessor
-from core.learning.skill_profiles import SkillProfileUpdater
 from core.learning.error_patterns import ErrorPatternDetector, ErrorPatternStorage
 from core.learning.knowledge_base import KnowledgeBase, KnowledgeEntryParser
 from core.learning.preference_model_updater import PreferenceModelUpdater
-from core.evaluation.define_eval import define_eval, EvalPipeline
-from core.evaluation.evaluators import correctness_evaluator
-from core.trajectory.trajectory_collector import TrajectoryCollector
-from core.alignment.alignment_tracker import AlignmentTracker
-from core.alignment.alignment_dashboard import AlignmentDashboard
+from core.learning.skill_profiles import SkillProfileUpdater
+from core.manifest_validation import validate_manifest_update
+from core.outcome_parser import OutcomeIngestion
+from core.post_mortem_trigger import PostMortemTrigger
 from core.self_model.self_model_engine import SelfModelEngine
-from limbs.intelligence.memory_planner import MemoryPlanner
+from core.state_machine import TRANSITION_MAP, SystemExecutionState
+from core.trajectory.trajectory_collector import TrajectoryCollector
 from limbs.intelligence.genai_client import GenAIClient
+from limbs.intelligence.memory_planner import MemoryPlanner
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RLHF_DATASET = str(REPO_ROOT / "evals" / "datasets" / "rlhf_samples.json")
@@ -113,7 +114,7 @@ class TestFullPhaseLoop(unittest.TestCase):
     def _run_execution(self, plan_id, verdict, errors, metrics):
         """Simulate one execution + outcome ingestion (Phase 2/4 seam)."""
         self._emit("execution_started", plan_id, "execution started")
-        outcome = self.ingestion.ingest({
+        return self.ingestion.ingest({
             "job_id": plan_id,
             "intent_id": f"intent_{plan_id}",
             "limb": "microstructure_agent",
@@ -124,7 +125,6 @@ class TestFullPhaseLoop(unittest.TestCase):
             "clock_s": 12.0,
             "timestamp": "2026-09-07T12:00:00Z",
         })
-        return outcome
 
     def test_full_five_phase_loop(self):
         # ---------- Phase 2: planning, assignment, dispatch ----------
@@ -156,7 +156,7 @@ class TestFullPhaseLoop(unittest.TestCase):
         self.assertGreaterEqual(len(self.kb.all()), 1)
 
         # Recovery execution succeeds.
-        outcome_ok = self._run_execution(f"{plan_id}_r2", "accept", [], {"success_rate": 1.0})
+        self._run_execution(f"{plan_id}_r2", "accept", [], {"success_rate": 1.0})
         self._emit("execution_complete", f"{plan_id}_r2", "execution complete")
 
         # ---------- Phase 3: benign self-modification with manifest validation ----------
@@ -185,7 +185,7 @@ class TestFullPhaseLoop(unittest.TestCase):
         # for this offline loop test (no repo files are touched).
         import core.manifest_validation as manifest_validation
         original_globs = list(manifest_validation.ALLOWED_REPO_GLOBS)
-        manifest_validation.ALLOWED_REPO_GLOBS = original_globs + [str(self.tmpdir) + "/*"]
+        manifest_validation.ALLOWED_REPO_GLOBS = [*original_globs, str(self.tmpdir) + "/*"]
         try:
             passed, message = validate_manifest_update(str(manifest_path))
         finally:
@@ -285,7 +285,7 @@ class TestFullPhaseLoop(unittest.TestCase):
         manifest_path = self.tmpdir / "bad_manifest.json"
         with open(manifest_path, "w", encoding="utf-8") as f:
             json.dump(manifest, f)
-        passed, message = validate_manifest_update(str(manifest_path))
+        passed, _message = validate_manifest_update(str(manifest_path))
         self.assertFalse(passed)
 
     def test_alignment_improves_across_iterations(self):

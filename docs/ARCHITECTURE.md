@@ -210,3 +210,64 @@ nicht auf. `neu.config.json` sperrt `runtime/*` und `*.log`. Daraus folgt:
 Wer diese Grenze verschieben will (z. B. `runtime/system.log` für Limbs
 öffnen), ändert `neu.config.json` — und die ist `human_only`.
 
+---
+
+## 7. Dynamische FFI-Plugin-Architektur mit Hot-Reloading (Rust-Limbs)
+
+Rust-Limbs werden nicht länger als statische Binärdateien oder Container
+ausgeliefert, sondern als **Shared Libraries (`.so` unter Linux, gebaut als
+Rust-`cdylib`)**. Der Python-Orchestrator ladet sie zur Laufzeit über `ctypes`
+und tauscht sie atomar aus, wenn der Refinement-Vault (Ciel) eine geheilte
+Version einer Limb freigibt — ohne Neustart des Hauptprozesses und ohne
+Unterbruch des Shared-Memory-Ring-Buffers.
+
+### 7.1 Vertrag (C-ABI)
+
+Jede Limb-Bibliothek exportiert die stabile Schnittstelle
+(`rust/nio-limb/src/lib.rs`, Contract-Version `1.0`):
+
+| Symbol | Signatur | Aufgabe |
+|--------|----------|---------|
+| `limb_contract_version` | `() -> *const c_char` | Contract-Version; wird beim Laden geprüft |
+| `init_limb` | `() -> c_int` | Einmalige Initialisierung (0 = Erfolg) |
+| `process_payload` | `(data, data_len, out, out_cap, out_len) -> c_int` | High-Speed-Verarbeitung direkt auf dem Pointer |
+| `shutdown_limb` | `(void)` | Ressourcen freigeben vor `dlclose` |
+
+### 7.2 Laden und atomarer Hot-Swap (`orchestrator/kanban/limb_ffi.py`)
+
+`LimbHotReloader` hält genau eine Version einer Limb im RAM:
+
+* **Laden:** `ctypes.CDLL` öffnet die `.so`, Symbole werden aufgelöst,
+  `limb_contract_version` mit dem Python-Kontrakt abgeglichen, dann
+  `init_limb` aufgerufen.
+* **`reload(neue_so)`:** Die neue Bibliothek wird **zuerst** geladen und
+  initialisiert. Schlägt das fehl, läuft die alte Limb unverändert weiter
+  (fail-fast). Erst dann wird die alte über `shutdown_limb` + `dlclose`
+  entladen und der Funktionszeiger umgebogen.
+* **`process_payload(data)`:** Übermittelt Bytes an die aktuell geladene Limb
+  und liefert die Ausgabebytes zurück — kein Subprozess, kein Neustart.
+* `process_intent_file()` ist die Bridge zum Protokoll-1.2-Intent (liest die
+  Task-Parameter, ruft die Limb auf, liefert das Ergebnis als Dict).
+
+### 7.3 Schreibsperre auf dem Ring während des Swaps
+
+Während des Funktionszeiger-Wechsels hält der Dispatcher eine
+Schreibsperre auf dem betroffenen Slot des Shared-Memory-Rings
+(`SharedMemoryRingSink.write_lock()`, `orchestrator/ring.py`): kein Event
+wird in den Ring geschrieben, während der Zeiger umgebogen wird. Nach
+`dlclose` der alten und Aktivierung der neuen Bibliothek wird die Sperre
+wieder aufgehoben — der Austausch ist unterbrechungsfrei (Null Downtime).
+
+### 7.4 Build
+
+```bash
+cargo build --release --manifest-path rust/nio-limb/Cargo.toml
+# -> rust/nio-limb/target/release/libnio_limb.so
+```
+
+Die fertige `.so` wird vom Refinement-Vault/Ciel-Pipeline angetragen und
+im Hintergrund kompiliert; der Repository-Build selbst benötigt keinen
+Rust-Toolchain (`make rust-limb` überspringt sauber ohne `cargo`).
+Build-Artefakte (`rust/*/target/`) sind in `.gitignore` ausgenommen.
+
+

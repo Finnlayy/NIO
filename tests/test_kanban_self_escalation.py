@@ -1,17 +1,16 @@
-import json
-import asyncio
-import tempfile
-from pathlib import Path
-import unittest
 import hashlib
+import json
+import tempfile
+import unittest
+from pathlib import Path
 
 from orchestrator.kanban.config import KanbanConfig
-from orchestrator.kanban.models import KanbanTask, Worker, TaskStatus, WorkerStatus, KanbanBoard
-from orchestrator.kanban.sandbox import SandboxSpec, build_sandbox
+from orchestrator.kanban.models import KanbanBoard, KanbanTask, TaskStatus, Worker, WorkerStatus
+from orchestrator.kanban.sandbox import SandboxResult, SandboxSpec, SubprocessSandbox
 from orchestrator.kanban.store import SqliteKanbanStore
 from orchestrator.kanban.sync import sync_back
 from orchestrator.kanban.vault import ObsidianVault
-from orchestrator.kanban.sandbox import SandboxResult, SubprocessSandbox
+
 
 class TestSelfEscalation(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -53,7 +52,7 @@ class TestSelfEscalation(unittest.IsolatedAsyncioTestCase):
 
         res = SandboxResult(exit_code=0, timed_out=False, cancelled=False, out_dir=self.out_dir, stderr_tail="")
 
-        outcome = await sync_back(
+        await sync_back(
             store=self.store,
             vault=self.vault,
             workspace_dir=self.workspace_dir,
@@ -187,7 +186,7 @@ class TestSelfEscalation(unittest.IsolatedAsyncioTestCase):
 
         toolbox = KanbanToolbox(svc, MockTokenStore())
         # Call the complete handler directly with fake tool structure
-        completed_task_dict = await toolbox.call("kanban_complete", {"result_payload": {"x": 1, "proposed_soul": {"status": "approved"}}}, "fake-token")
+        await toolbox.call("kanban_complete", {"result_payload": {"x": 1, "proposed_soul": {"status": "approved"}}}, "fake-token")
 
         updated_task3 = await self.store.get_task(task3.id)
         self.assertNotIn("proposed_soul", updated_task3.result_payload)

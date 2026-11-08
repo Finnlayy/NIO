@@ -1,5 +1,5 @@
-import logging
 import hashlib
+import logging
 import shutil
 from pathlib import Path
 
@@ -47,7 +47,7 @@ class SelfModificationSafety:
             logger.error("Backup creation failed for %s: %s", file_path, exc)
             return None
 
-    def rollback(self, file_path: Path, backup_file: Path = None) -> bool:
+    def rollback(self, file_path: Path, backup_file: Path | None = None) -> bool:
         """Restore file from backup."""
         file_path = Path(file_path)
         if backup_file is None:
@@ -76,7 +76,7 @@ class SelfModificationSafety:
             logger.error("Rollback failed for %s: %s", file_path, exc)
             return False
 
-    def apply_modification(self, manifest_path: str, base_dir: Path = None) -> tuple:
+    def apply_modification(self, manifest_path: str, base_dir: Path | None = None) -> tuple:
         """Apply manifest changes with backup, verification, and rollback capability."""
         from core.manifest import Manifest
         from core.manifest_validation import validate_manifest_update
@@ -125,7 +125,7 @@ class SelfModificationSafety:
                     applied.append(str(file_path) + f" ({change_type}, file not present - expected for create)")
         return (True, f"Applied {len(applied)} changes. Backups: {list(backups.keys())}. Applied: {applied}")
 
-    def validate_after_apply(self, manifest_path: str, base_dir: Path = None) -> bool:
+    def validate_after_apply(self, manifest_path: str, base_dir: Path | None = None) -> bool:
         """Verify all modified files, backups, and checksums after applying manifest."""
         from core.manifest import Manifest
         manifest = Manifest(manifest_path)

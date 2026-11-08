@@ -29,7 +29,7 @@ class InsightDisplay:
         files = sorted(self.insights_dir.glob("*.json"), reverse=True)
         for path in files:
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     payload = json.load(f)
             except Exception as exc:
                 logger.error("Failed to load insights from %s: %s", path, exc)

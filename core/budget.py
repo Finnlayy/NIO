@@ -16,15 +16,15 @@ from __future__ import annotations
 
 import fcntl
 import json
-
 import math
 import os
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any
 
 from core.atomic import atomic_write_bytes
 
@@ -57,8 +57,8 @@ def _parse_env_float(name: str, default: float) -> float:
         if not math.isfinite(f) or f < 0:
             raise ValueError
         return f
-    except (ValueError, TypeError):
-        raise BudgetError(f"Ungueltiger Wert fuer {name}")
+    except (ValueError, TypeError) as exc:
+        raise BudgetError(f"Ungueltiger Wert fuer {name}") from exc
 
 
 def _parse_env_int(name: str, default: int) -> int:
@@ -70,8 +70,8 @@ def _parse_env_int(name: str, default: int) -> int:
         if i < 0:
             raise ValueError
         return i
-    except (ValueError, TypeError):
-        raise BudgetError(f"Ungueltiger Wert fuer {name}")
+    except (ValueError, TypeError) as exc:
+        raise BudgetError(f"Ungueltiger Wert fuer {name}") from exc
 
 
 class BudgetTracker:
@@ -91,7 +91,7 @@ class BudgetTracker:
         self.root.mkdir(parents=True, exist_ok=True)
 
     def _ledger_path(self, dt: datetime | None = None) -> Path:
-        dt = dt or datetime.now(timezone.utc)
+        dt = dt or datetime.now(UTC)
         return self.root / f"{dt.strftime('%Y-%m-%d')}.json"
 
     def _read_ledger(self, path: Path) -> dict[str, Any]:
@@ -107,14 +107,14 @@ class BudgetTracker:
                     "unknown_tokens": int(data.get("unknown_tokens", 0))
                 }
         except Exception as e:
-            raise BudgetError(f"Budget ledger corrupt or unreadable: {e}")
+            raise BudgetError(f"Budget ledger corrupt or unreadable: {e}") from e
 
     def _write_ledger(self, path: Path, data: dict[str, Any]) -> None:
         try:
             content = json.dumps(data, separators=(",", ":")).encode("utf-8")
             atomic_write_bytes(path, content)
         except Exception as e:
-            raise BudgetError(f"Cannot write budget ledger: {e}")
+            raise BudgetError(f"Cannot write budget ledger: {e}") from e
 
     @contextmanager
     def _lock_ledger(self, path: Path) -> Generator[None, None, None]:
@@ -127,9 +127,9 @@ class BudgetTracker:
                 try:
                     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     break
-                except (IOError, OSError):
+                except OSError as exc:
                     if time.monotonic() - start_time > 5.0:
-                        raise BudgetError("Konkurrierender Zugriff auf Budget Ledger (Lock Timeout).")
+                        raise BudgetError("Konkurrierender Zugriff auf Budget Ledger (Lock Timeout).") from exc
                     time.sleep(0.01)
             yield
         finally:

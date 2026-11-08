@@ -1,23 +1,23 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import tempfile
 import json
+import tempfile
 from pathlib import Path
 
 from core.evaluation.define_eval import (
-    define_eval,
-    EvalPipeline,
     EvalConfig,
     EvalDataError,
-    mean_aggregator,
+    EvalPipeline,
+    define_eval,
 )
 from core.evaluation.evaluators import (
+    consistency_evaluator,
     correctness_evaluator,
     safety_evaluator,
-    consistency_evaluator,
     weighted_aggregator,
 )
 
@@ -95,7 +95,7 @@ class TestEvalPipeline(unittest.TestCase):
         path = self.pipeline.save_result(eval_result)
         self.assertTrue(Path(path).exists())
         self.assertIn("saved_eval", str(path))
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             stored = json.load(f)
         self.assertEqual(stored["eval_name"], "saved_eval")
 

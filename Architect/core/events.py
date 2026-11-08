@@ -1,6 +1,6 @@
-import logging
-import json
 import datetime
+import json
+import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -63,19 +63,19 @@ def validate_telemetry_payload(event_kind, payload):
     """
     required = TELEMETRY_PAYLOAD_FIELDS.get(event_kind)
     if required is None:
-        return False, "event_kind %r ist kein Telemetrie-Event" % (event_kind,)
+        return False, f"event_kind {event_kind!r} ist kein Telemetrie-Event"
     if not isinstance(payload, dict):
         return False, "Payload ist kein Objekt"
     for field in required:
         if field not in payload:
-            return False, "Pflichtfeld %r fehlt" % (field,)
+            return False, f"Pflichtfeld {field!r} fehlt"
         value = payload[field]
         if _is_finite_number(value):
             continue
         if isinstance(value, (list, tuple)) and value and all(_is_finite_number(v) for v in value):
             continue
-        return False, "Feld %r ist weder endliche Zahl noch Vektor endlicher Zahlen (gefunden: %r)" % (
-            field, value if not isinstance(value, (list, tuple)) else "%s[%d]" % (type(value).__name__, len(value)))
+        return False, "Feld {!r} ist weder endliche Zahl noch Vektor endlicher Zahlen (gefunden: {!r})".format(
+            field, value if not isinstance(value, (list, tuple)) else f"{type(value).__name__}[{len(value)}]")
     return True, ""
 
 
@@ -123,8 +123,8 @@ class EventBus:
         logger.info("Event emitted: %s (kind=%s, job_id=%s)", event_dict.get("event_id"), event_kind, event_dict.get("job_id"))
         return True
 
-    def build_event(self, event_kind: str, job_id: str = None, intent_id: str = None,
-                    trace_id: str = None, limb: str = None, clock_s: float = None,
+    def build_event(self, event_kind: str, job_id: str | None = None, intent_id: str | None = None,
+                    trace_id: str | None = None, limb: str | None = None, clock_s: float | None = None,
                     message: str = "", **extra) -> dict:
         """Build a validated event dictionary."""
         event_dict = {
@@ -141,8 +141,8 @@ class EventBus:
         event_dict.update(extra)
         return event_dict
 
-    def build_telemetry_event(self, event_kind: str, payload: dict, job_id: str = None,
-                              symbol: str = None, clock_s: float = None, **extra) -> dict:
+    def build_telemetry_event(self, event_kind: str, payload: dict, job_id: str | None = None,
+                              symbol: str | None = None, clock_s: float | None = None, **extra) -> dict:
         """Baut ein Engine-Telemetrie-Event und prueft es gegen den Wire-Vertrag.
 
         Wirft ``ValueError``, wenn der Payload unvollstaendig oder nicht numerisch
@@ -151,7 +151,7 @@ class EventBus:
         """
         ok, reason = validate_telemetry_payload(event_kind, payload)
         if not ok:
-            raise ValueError("Telemetrie-Payload fuer %s abgewiesen: %s" % (event_kind, reason))
+            raise ValueError(f"Telemetrie-Payload fuer {event_kind} abgewiesen: {reason}")
         event_dict = self.build_event(event_kind, job_id=job_id, clock_s=clock_s,
                                       message="engine telemetry", **extra)
         if symbol is not None:

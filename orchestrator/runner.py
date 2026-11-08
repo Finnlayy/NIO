@@ -2107,5 +2107,5 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
         index = start + max(1, end)
     for candidate in reversed(candidates):
         if candidate.get("protocol") == "neu/result":
-            return candidate
-    return candidates[-1] if candidates else None
+            return dict(candidate)
+    return dict(candidates[-1]) if candidates else None

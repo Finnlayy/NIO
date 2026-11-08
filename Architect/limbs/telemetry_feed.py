@@ -31,8 +31,9 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any
 
 # Paketwurzel ist Architect/ (core.*, limbs.*) -- genau wie in Architect/tests.
 # Die Repo-Wurzel darf **nicht** auf sys.path: dort liegt ein zweites Paket
@@ -42,6 +43,7 @@ if str(_ARCHITECT) not in sys.path:
     sys.path.insert(0, str(_ARCHITECT))
 
 from core.events import EventBus  # noqa: E402
+
 from limbs.intelligence.microstructure_engine import MicrostructureEngine  # noqa: E402
 from limbs.math.ac_gravity_engine import ACGravityEngine  # noqa: E402
 
@@ -73,7 +75,7 @@ def hour_labels(count: int = CVD_BINS, *, now: float | None = None) -> list[str]
     """Stundenbeschriftung im 2-h-Raster der Widget-Vorlage, ende bei ``now``."""
     base = time.gmtime(now if now is not None else time.time())
     end_hour = (base.tm_hour // 2) * 2
-    return ["%02d" % ((end_hour - 2 * i) % 24,) for i in range(count)][::-1]
+    return [f"{(end_hour - 2 * i) % 24:02d}" for i in range(count)][::-1]
 
 
 class TelemetryFeed:
@@ -134,9 +136,9 @@ class TelemetryFeed:
                 l2_depth, l3_iceberg, self.polymarket_prob
             )
             in_forbidden = self.gravity.is_in_forbidden_zone(price, self._history)
-        except Exception:  # noqa: BLE001 -- ein Tick darf den Feed nicht beenden
+        except Exception:
             self.rejected += 1
-            return {kind: False for kind in ("microstructure_tick", "gravity_tick", "regime_tick")}
+            return dict.fromkeys(("microstructure_tick", "gravity_tick", "regime_tick"), False)
 
         self._history.append(price)
         clock_s = self.clock()
@@ -272,7 +274,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     feed = TelemetryFeed(bus, uds.UDSBroadcastSink(args.socket), symbol=args.symbol,
                          polymarket_prob=args.polymarket_prob)
     walk = _TapeWalk(args.price, args.seed)
-    print("telemetry feed -> %s (symbol=%s, tick=%.2fs)" % (args.socket, args.symbol, args.tick_s),
+    print(f"telemetry feed -> {args.socket} (symbol={args.symbol}, tick={args.tick_s:.2f}s)",
           file=sys.stderr, flush=True)
     try:
         while args.ticks == 0 or feed.ticks < args.ticks:
@@ -284,7 +286,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         if feed.sink is not None:
             feed.sink.close()
-    print("telemetry feed beendet: %d Events, %d verworfen" % (feed.sent, feed.rejected),
+    print(f"telemetry feed beendet: {feed.sent} Events, {feed.rejected} verworfen",
           file=sys.stderr, flush=True)
     return 0
 

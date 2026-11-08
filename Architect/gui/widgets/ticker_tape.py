@@ -1,6 +1,7 @@
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QGraphicsColorizeEffect
-from PyQt6.QtCore import Qt, pyqtSlot
+from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QGraphicsColorizeEffect, QHBoxLayout, QLabel, QWidget
+
 
 class FeedItem(QWidget):
     def __init__(self, symbol, price="---"):

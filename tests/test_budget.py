@@ -1,17 +1,18 @@
 import json
 import os
 import threading
-from datetime import datetime, timezone, timedelta
+import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import unittest
 from unittest.mock import patch
 
-from core.budget import BudgetTracker, Usage, BudgetError
-from core.protocol import ErrorCode
-from limbs.base import LimbError
-from limbs.agent_base import AgentLimb, Poll, LimbContext, MIN_POLL_S
+from core.budget import BudgetError, BudgetTracker, Usage
 from core.config import NeuConfig
+from core.protocol import ErrorCode
+from limbs.agent_base import AgentLimb, LimbContext, Poll
+from limbs.base import LimbError
+
 
 class BudgetTest(unittest.TestCase):
     def setUp(self):
@@ -68,8 +69,8 @@ class BudgetTest(unittest.TestCase):
                 self.tracker.check_start()
 
     def test_day_rollover(self):
-        dt_today = datetime(2025, 1, 1, tzinfo=timezone.utc)
-        dt_tomorrow = datetime(2025, 1, 2, tzinfo=timezone.utc)
+        dt_today = datetime(2025, 1, 1, tzinfo=UTC)
+        dt_tomorrow = datetime(2025, 1, 2, tzinfo=UTC)
 
         with patch.dict(os.environ, self.env, clear=True):
             # Verbrauche das heutige Budget
@@ -91,7 +92,7 @@ class BudgetTest(unittest.TestCase):
             self.assertFalse((self.root / "2025-01-02.json").exists())
 
     def test_corrupt_ledger(self):
-        dt = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        dt = datetime(2025, 1, 1, tzinfo=UTC)
         path = self.root / "2025-01-01.json"
         path.write_text("invalid json")
 
@@ -116,7 +117,7 @@ class BudgetTest(unittest.TestCase):
 
     def test_two_writers(self):
         import time
-        dt = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        dt = datetime(2025, 1, 1, tzinfo=UTC)
 
         with patch.dict(os.environ, self.env, clear=True):
             def writer(amount, tokens):

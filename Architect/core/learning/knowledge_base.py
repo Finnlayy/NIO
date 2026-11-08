@@ -8,10 +8,10 @@ no vector store required).
 Storage: `Architect/runtime/learning/knowledge/<entry_id>.json`
 """
 
-import json
-import logging
 import datetime
 import hashlib
+import json
+import logging
 import re
 from pathlib import Path
 
@@ -56,20 +56,20 @@ class KnowledgeBase:
         path = self.kb_dir / f"{entry_id}.json"
         if not path.exists():
             raise FileNotFoundError(f"Knowledge entry not found: {path}")
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
 
     def all(self) -> list:
         entries = []
         for path in sorted(self.kb_dir.glob("*.json")):
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     entries.append(json.load(f))
             except Exception as exc:
                 logger.error("Failed to load knowledge entry %s: %s", path, exc)
         return entries
 
-    def search(self, query_tags: list = None, query_content: str = None, limit: int = 10) -> list:
+    def search(self, query_tags: list | None = None, query_content: str | None = None, limit: int = 10) -> list:
         """Search by tag overlap and/or content substring; returns scored matches.
 
         Score = 2 * matched_tags + content_hit_frequency. Entries with zero score

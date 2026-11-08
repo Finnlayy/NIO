@@ -291,7 +291,8 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
             raise HTTPException(status_code=401, detail="Task-Token ungueltig oder abgelaufen")
         try:
             if runtime.telegram is not None and runtime.telegram.toolbox.handles(name):
-                return await runtime.telegram.toolbox.call(name, body.arguments)
+                telegram_result: dict[str, Any] = await runtime.telegram.toolbox.call(name, body.arguments)
+                return telegram_result
             return await runtime.toolbox.call(name, body.arguments, token)
         except PermissionError as e:
             raise HTTPException(status_code=403, detail=str(e)) from e

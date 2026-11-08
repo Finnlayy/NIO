@@ -1,14 +1,15 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import tempfile
 import json
+import tempfile
 from pathlib import Path
 
-from core.self_model.self_model_engine import SelfModelEngine, Insight
 from core.self_model.insight_display import InsightDisplay
+from core.self_model.self_model_engine import Insight, SelfModelEngine
 from core.trajectory.trajectory_collector import TrajectoryPoint
 
 
@@ -115,7 +116,7 @@ class TestSelfModelEngine(unittest.TestCase):
         path = self.engine.save_insights(insights)
         self.assertTrue(Path(path).exists())
         self.assertIn("insights", str(path))
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             payload = json.load(f)
         self.assertEqual(payload["insight_count"], len(insights))
         self.assertEqual(len(payload["insights"]), len(insights))

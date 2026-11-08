@@ -1,10 +1,12 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import tempfile
 from pathlib import Path
+
 
 # Mock GenAI client for post-mortem tests
 class MockGenAIClient:
@@ -21,7 +23,8 @@ class MockGenAIClient:
             "source": "mock_genai",
         }
 
-from core.post_mortem_trigger import PostMortemTrigger
+from core.post_mortem_trigger import PostMortemTrigger  # noqa: E402
+
 
 class TestPostMortemTrigger(unittest.TestCase):
     def setUp(self):

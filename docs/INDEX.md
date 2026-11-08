@@ -59,6 +59,8 @@ Stand: `9598911` (Merge PR #243) · Sprache: Deutsch, Code und Identifier englis
 | [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md) | ~490 | **normativ**: Intent, Result, Timer, Fehlercodes | Entwickler |
 | [`../prompts/limbs/`](../prompts/limbs/) | 3 Dateien | Rollen-Specs: bootstrap, rea, trading | Entwickler |
 | [`../prompts/agents/evidence_harness_v2.md`](../prompts/agents/evidence_harness_v2.md) | ~266 | Kanonischer Rollenvertrag für recherchende Agenten (H/M-Regeln, Ledger, Gate) | Entwickler |
+| [`PROMPT-OPTIMIZER.md`](PROMPT-OPTIMIZER.md) | ~200 | Ausführbarer Prompt-Optimierer: 4 Stufen, Sperren, Telemetrie, Quellenprüfung | Entwickler, Konzept |
+| [`../prompts/system/prompt_optimizer.md`](../prompts/system/prompt_optimizer.md) | ~230 | Normativtext des Optimierers (Ping-Pong-Architektur, Normalform 1.0) | Entwickler, Konzept |
 
 ### Historische Dokumente
 

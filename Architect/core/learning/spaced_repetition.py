@@ -9,9 +9,9 @@ Aligned with blueprint `Skill.intervalDays` / `Skill.easeFactor` and
 `OMEGA_JULES_TODO.md` Phase 4 (SM-2 Spaced Repetition).
 """
 
+import datetime
 import json
 import logging
-import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -86,14 +86,14 @@ class SpacedRepetitionEngine:
 
     # ---- Scheduling -----------------------------------------------------------
 
-    def schedule_review(self, item_id: str, now: datetime.datetime = None) -> str:
+    def schedule_review(self, item_id: str, now: datetime.datetime | None = None) -> str:
         """Next review timestamp (ISO8601) = now + interval_days."""
         record = self._reviews.get(item_id, self._new_record(item_id))
         now = now or self.clock_fn()
         next_at = now + datetime.timedelta(days=record["interval_days"])
         return next_at.isoformat() + "Z"
 
-    def due_reviews(self, now: datetime.datetime = None) -> list:
+    def due_reviews(self, now: datetime.datetime | None = None) -> list:
         """Items whose next_review_at <= now; emits `review_due` events."""
         now = now or self.clock_fn()
         due = []
@@ -132,7 +132,7 @@ class SpacedRepetitionEngine:
             return self._reviews
         for path in self.reviews_dir.glob("*.json"):
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     record = json.load(f)
                 self._reviews[record.get("item_id", path.stem)] = record
             except Exception as exc:
@@ -153,7 +153,7 @@ class ReviewScheduler:
     def review_item(self, item_id: str, quality: float) -> dict:
         return self.engine.review(item_id, quality)
 
-    def items_due(self, now: datetime.datetime = None) -> list:
+    def items_due(self, now: datetime.datetime | None = None) -> list:
         return self.engine.due_reviews(now=now)
 
     def next_review(self, item_id: str) -> str:

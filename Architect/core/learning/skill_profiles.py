@@ -8,10 +8,10 @@ Files: `Architect/core/learning/skill_profiles.py`
 Storage: `Architect/runtime/learning/skills/<skill_id>.json`
 """
 
-import json
-import logging
 import datetime
 import hashlib
+import json
+import logging
 import math
 from pathlib import Path
 
@@ -55,8 +55,8 @@ class SkillProfile:
     """A learned capability with a Wilson-scored proficiency estimate."""
 
     def __init__(self, skill_id: str, name: str, successes: int = 0, total_attempts: int = 0,
-                 wilson_score: float = 0.0, last_evaluated: str = None,
-                 interval_days: float = 1.0, ease_factor: float = 2.5, meta: dict = None):
+                 wilson_score: float = 0.0, last_evaluated: str | None = None,
+                 interval_days: float = 1.0, ease_factor: float = 2.5, meta: dict | None = None):
         self.skill_id = skill_id
         self.name = name
         self.successes = successes
@@ -120,11 +120,11 @@ class SkillProfile:
         path = Path(base_dir) / f"{skill_id}.json"
         if not path.exists():
             raise FileNotFoundError(f"SkillProfile not found: {path}")
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return cls.from_dict(json.load(f))
 
 
-def make_skill_id(domain: str, algorithm_tag: str = None) -> str:
+def make_skill_id(domain: str, algorithm_tag: str | None = None) -> str:
     """Deterministic skill key (blueprint `skillKey(domain, algorithmTag)`)."""
     key = f"{domain}:{algorithm_tag or 'general'}"
     return "skill_" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]
@@ -145,8 +145,8 @@ class SkillProfileUpdater:
     def get(self, skill_id: str) -> SkillProfile:
         return SkillProfile.load(skill_id, str(self.skills_dir))
 
-    def record_outcome(self, skill_id: str, success: bool, name: str = None,
-                       domain: str = "misc", algorithm_tag: str = None) -> SkillProfile:
+    def record_outcome(self, skill_id: str, success: bool, name: str | None = None,
+                       domain: str = "misc", algorithm_tag: str | None = None) -> SkillProfile:
         """Record one outcome against a skill; create the profile if missing."""
         try:
             profile = SkillProfile.load(skill_id, str(self.skills_dir))
@@ -165,7 +165,7 @@ class SkillProfileUpdater:
         profiles = []
         for path in sorted(self.skills_dir.glob("*.json")):
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     profiles.append(SkillProfile.from_dict(json.load(f)))
             except Exception as exc:
                 logger.error("Failed to load skill profile %s: %s", path, exc)

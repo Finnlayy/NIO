@@ -1,10 +1,11 @@
-import unittest
 import os
+import unittest
+
 
 class TestRequirements(unittest.TestCase):
     def test_google_genai_is_pinned(self):
         req_file = os.path.join(os.path.dirname(__file__), "..", "requirements.txt")
-        with open(req_file, "r") as f:
+        with open(req_file) as f:
             lines = f.readlines()
 
         google_genai_line = None

@@ -13,12 +13,13 @@ ergaenzt (Ouroboros-Test) -- deshalb ist hier eine klar markierte Andockstelle:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
+import os
 import sys
 import time
 from collections.abc import Iterable, Mapping
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, TextIO
@@ -266,14 +267,10 @@ class FileSink:
             s = self.path.with_name(f"{self.path.name}.{i}")
             d = self.path.with_name(f"{self.path.name}.{i + 1}")
             if s.exists():
-                try:
+                with contextlib.suppress(OSError):
                     os.replace(s, d)
-                except OSError:
-                    pass
-        try:
+        with contextlib.suppress(OSError):
             os.replace(self.path, self.path.with_name(f"{self.path.name}.1"))
-        except OSError:
-            pass
 
     def write(self, record: Mapping[str, Any]) -> None:
         self._emit_line(render_record(record))
@@ -444,10 +441,7 @@ def build_event_bus(*, quiet: bool = False, collector: CollectingSink | None = N
     env_log = os.environ.get("NIO_SYSTEM_LOG")
     if env_log != "":
         if log_path is None:
-            if env_log:
-                log_path = Path(env_log)
-            else:
-                log_path = Path(__file__).parents[1] / "runtime" / "system.log"
+            log_path = Path(env_log) if env_log else Path(__file__).parents[1] / "runtime" / "system.log"
         sinks.append(FileSink(log_path))
 
     sinks.append(ConsoleSink(stream=stream, quiet=quiet))

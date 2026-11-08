@@ -8,10 +8,10 @@ are auditable (GenAI enrichment can be layered later via `genai_client`).
 Storage: `Architect/runtime/insights/<timestamp>.json`
 """
 
-import json
-import logging
 import datetime
 import hashlib
+import json
+import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -25,8 +25,8 @@ class Insight:
     """A structured, auditable self-model insight."""
 
     def __init__(self, category: str, content: str, confidence: float = 0.5,
-                 related_events: list = None, related_plans: list = None,
-                 insight_id: str = None, timestamp: str = None):
+                 related_events: list | None = None, related_plans: list | None = None,
+                 insight_id: str | None = None, timestamp: str | None = None):
         if category not in ("strength", "weakness", "recommendation"):
             raise ValueError(f"Insight category must be strength|weakness|recommendation, got {category!r}")
         self.category = category
@@ -38,7 +38,7 @@ class Insight:
         self.insight_id = insight_id or self._make_id()
 
     def _make_id(self) -> str:
-        digest = hashlib.sha1(f"{self.category}|{self.content}|{self.timestamp}".encode("utf-8")).hexdigest()
+        digest = hashlib.sha1(f"{self.category}|{self.content}|{self.timestamp}".encode()).hexdigest()
         return f"ins_{digest[:12]}"
 
     def to_dict(self) -> dict:
@@ -99,9 +99,9 @@ class SelfModelEngine:
 
     # ---- Insight generation ---------------------------------------------------------
 
-    def generate_insights(self, trajectory_points: list, alignment_metrics: dict = None,
-                          skill_profiles: list = None, error_patterns: list = None,
-                          plan_id: str = None) -> list:
+    def generate_insights(self, trajectory_points: list, alignment_metrics: dict | None = None,
+                          skill_profiles: list | None = None, error_patterns: list | None = None,
+                          plan_id: str | None = None) -> list:
         """Analyze trajectory + metrics; return list[Insight] (strengths, weaknesses,
         recommendations)."""
         alignment_metrics = alignment_metrics or {}
@@ -208,7 +208,6 @@ class SelfModelEngine:
                 confidence=0.7,
                 related_plans=related_plans,
             ))
-        top_pattern = None
         if error_patterns:
             sorted_patterns = sorted(
                 error_patterns,
@@ -219,7 +218,6 @@ class SelfModelEngine:
             frequency = top.get("frequency") if isinstance(top, dict) else getattr(top, "frequency", 0)
             error_type = top.get("error_type") if isinstance(top, dict) else getattr(top, "error_type", "?")
             if frequency >= 2:
-                top_pattern = error_type
                 insights.append(Insight(
                     category="recommendation",
                     content=f"Prioritize a remediation task for error pattern {error_type} "

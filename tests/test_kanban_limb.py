@@ -1,4 +1,3 @@
-import asyncio
 import json
 import tempfile
 import unittest
@@ -6,9 +5,10 @@ from pathlib import Path
 
 from core.config import NeuConfig
 from core.policy import Policy
-from core.protocol import Intent, Operations
-from orchestrator.runner import Orchestrator
+from core.protocol import Operations
 from orchestrator.kanban.limb_bridge import run_limb_request
+from orchestrator.runner import Orchestrator
+
 
 class TestLimbBridge(unittest.TestCase):
     def setUp(self):
@@ -45,7 +45,7 @@ class TestLimbBridge(unittest.TestCase):
 
     def test_operation_mismatch_denied(self):
         self._write_req({"operation": "sys.echo", "params": {"message": "hello"}})
-        success, reason, payload = run_limb_request(
+        success, reason, _payload = run_limb_request(
             self.req_file, self.ops, self.pol, self.orch, "t1", self._soul("limb", "sys.ping")
         )
         self.assertFalse(success)
@@ -53,7 +53,7 @@ class TestLimbBridge(unittest.TestCase):
 
     def test_unknown_operation_denied(self):
         self._write_req({"operation": "sys.unknown", "params": {}})
-        success, reason, payload = run_limb_request(
+        success, reason, _payload = run_limb_request(
             self.req_file, self.ops, self.pol, self.orch, "t1", self._soul("limb", "sys.unknown")
         )
         self.assertFalse(success)
@@ -61,7 +61,7 @@ class TestLimbBridge(unittest.TestCase):
 
     def test_high_risk_denied(self):
         self._write_req({"operation": "openmanus.start", "params": {"task": "do something"}})
-        success, reason, payload = run_limb_request(
+        success, reason, _payload = run_limb_request(
             self.req_file, self.ops, self.pol, self.orch, "t1", self._soul("limb", "openmanus.start")
         )
         self.assertFalse(success)
@@ -103,7 +103,7 @@ class TestLimbBridge(unittest.TestCase):
 
     def test_forged_request_file_denied(self):
         self.req_file.write_bytes(b"a" * (65 * 1024))
-        success, reason, payload = run_limb_request(
+        success, reason, _payload = run_limb_request(
             self.req_file, self.ops, self.pol, self.orch, "t1", self._soul("limb", "sys.echo")
         )
         self.assertFalse(success)
@@ -112,7 +112,7 @@ class TestLimbBridge(unittest.TestCase):
 
     def test_non_object_request_denied(self):
         self.req_file.write_text("[]", encoding="utf-8")
-        success, reason, payload = run_limb_request(
+        success, reason, _payload = run_limb_request(
             self.req_file, self.ops, self.pol, self.orch, "t1", self._soul("limb", "sys.echo")
         )
         self.assertFalse(success)
@@ -120,7 +120,7 @@ class TestLimbBridge(unittest.TestCase):
 
     def test_deadline_timer_set(self):
         self._write_req({"operation": "sys.echo", "params": {"message": "hello"}})
-        success, reason, payload = run_limb_request(
+        success, _reason, payload = run_limb_request(
             self.req_file, self.ops, self.pol, self.orch, "t1", self._soul("limb", "sys.echo")
         )
         self.assertTrue(success)

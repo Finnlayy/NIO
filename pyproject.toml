@@ -48,7 +48,7 @@ Homepage = "https://github.com/Finnlayy/NIO"
 
 [tool.setuptools]
 # Nur die Python-Pakete; src/, evals/, frontend/ gehoeren zum Legacy-Harness.
-packages = ["core", "orchestrator", "orchestrator.kanban", "orchestrator.telegram", "limbs", "apollo", "apollo.ciel"]
+packages = ["core", "core.prompt_optimizer", "orchestrator", "orchestrator.kanban", "orchestrator.telegram", "limbs", "apollo", "apollo.ciel"]
 
 [tool.setuptools.package-data]
 "orchestrator" = ["provider_catalog.json"]

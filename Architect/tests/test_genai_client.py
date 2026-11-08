@@ -1,14 +1,13 @@
-import unittest
-from unittest.mock import MagicMock, patch
-import json
 import os
 import sys
+import unittest
+from unittest.mock import MagicMock, patch
 
 # Remove sys.path.append, replace with sys.path.insert for the parent directory, matching other tests
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from limbs.intelligence.genai_client import GenAIClient
-from google.genai import types
+
 
 class DummyConfig:
     GEMINI_API_KEY = "dummy_key"
