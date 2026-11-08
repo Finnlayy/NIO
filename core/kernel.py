@@ -29,6 +29,7 @@ eskaliert statt iteriert -- ein Neustart wuerde dieselbe Uhr erneut ueberlaufen.
 
 from __future__ import annotations
 
+import concurrent.futures
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -420,16 +421,23 @@ class Kernel:
     # ------------------------------------------------------------- Internes
     def _verify_artifact_hashes(self, result: Result) -> list[str]:
         problems: list[str] = []
-        for artifact in result.artifacts:
+
+        def check_artifact(artifact: Any) -> str | None:
             if artifact.action in {"deleted", "read"} or not artifact.sha256:
-                continue
+                return None
             path = self.config.repo_root / artifact.path
             if not path.is_file():
-                problems.append(f"Artefakt fehlt auf Platte: {artifact.path}")
-                continue
+                return f"Artefakt fehlt auf Platte: {artifact.path}"
             actual = sha256_file(path)
             if actual != artifact.sha256:
-                problems.append(f"Hash-Abweichung bei {artifact.path}: erwartet {artifact.sha256[:12]}…, gefunden {actual[:12]}…")
+                return f"Hash-Abweichung bei {artifact.path}: erwartet {artifact.sha256[:12]}…, gefunden {actual[:12]}…"
+            return None
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for p in executor.map(check_artifact, result.artifacts):
+                if p:
+                    problems.append(p)
+
         return problems
 
     @staticmethod
