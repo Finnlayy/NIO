@@ -1,6 +1,7 @@
 import pyqtgraph as pg
-from PyQt6.QtWidgets import QWidget, QVBoxLayout
 from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import QVBoxLayout, QWidget
+
 
 class UnifiedChartTab(QWidget):
     def __init__(self):

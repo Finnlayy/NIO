@@ -1,0 +1,27 @@
+7:``fs.delete``, ``shell.exec``, ``test.run`` und ``core.memory_write`` gehoeren
+41:    description = "Erster echter Arm: fs.read_file / fs.write_file / fs.patch / fs.list / fs.mkdir"
+43:    def handlers(self) -> dict[str, Callable[[Mapping[str, Any], LimbContext], Mapping[str, Any]]]:
+45:            "fs.read_file": self._read_file,
+46:            "fs.write_file": self._write_file,
+47:            "fs.patch": self._patch,
+48:            "fs.list": self._list,
+49:            "fs.mkdir": self._mkdir,
+60:            raise LimbError(ErrorCode.PATH_NOT_FOUND, f"Ziel existiert nicht: {ctx.rel(target)}", hint="Pfad korrigieren oder fs.write_file mit mode=create.")
+62:            raise LimbError(ErrorCode.IO, f"Ziel ist keine Datei: {ctx.rel(target)}", hint="fs.read_file erwartet eine Datei.")
+85:    def _write_file(self, params: Mapping[str, Any], ctx: LimbContext) -> dict[str, Any]:
+101:                hint="mode=overwrite mit expect_sha256 verwenden.",
+104:            raise LimbError(ErrorCode.PATH_NOT_FOUND, f"expect_sha256 gesetzt, aber Datei fehlt: {ctx.rel(target)}", hint="Ohne Vorbedingung mode=create nutzen.")
+121:        backup_path = ""
+142:        if existed and ctx.intent.constraints.backup:
+143:            backup_path = ctx.backup(target) or ""
+145:        artifact = ctx.record(target, action, backup_path=backup_path)
+153:            "backup_path": backup_path,
+169:            raise LimbError(ErrorCode.IO, f"Ziel ist keine Datei: {ctx.rel(target)}", hint="fs.patch erwartet eine Datei.")
+203:        backup_path = ctx.backup(target) or "" if ctx.intent.constraints.backup else ""
+205:        artifact = ctx.record(target, "modified", backup_path=backup_path)
+213:            "backup_path": backup_path,
+230:            raise LimbError(ErrorCode.PATH_NOT_FOUND, f"Ziel existiert nicht: {ctx.rel(target)}", hint="Pfad korrigieren oder fs.mkdir zuerst.")
+322:    raw = params.get("expect_sha256")
+326:        raise LimbError(ErrorCode.SCHEMA_INVALID, "params.expect_sha256 muss 64 Kleinbuchstaben-Hex-Zeichen sein.")
+338:            hint="Datei zuerst mit fs.read_file lesen, dann mit aktuellem sha256 schreiben.",
+366:                hint="Erst fs.read_file, dann fs.write_file statt blindem Patch.",

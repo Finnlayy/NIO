@@ -4,11 +4,12 @@
 /* the server; browsers talk to /api/market/* routes instead.          */
 /* ------------------------------------------------------------------ */
 
-const MCP_URL = process.env.TVREMIX_MCP_URL ?? "https://tvremix.xyz/api/mcp/v1";
-const API_KEY = process.env.TVREMIX_API_KEY ?? "";
+import { createHash } from "node:crypto";
+import { secretEnvironment } from "../secretManager";
 
 let sessionId: string | null = null;
 let initPromise: Promise<void> | null = null;
+let credentialFingerprint = "";
 
 /** Minimal TTL cache so the 20/min · 200/hr · 1500/day limits are respected. */
 const cache = new Map<string, { at: number; ttl: number; value: unknown }>();
@@ -25,6 +26,24 @@ export function cachedGet<T>(key: string): T | undefined {
 
 export function cachedSet<T>(key: string, value: T, ttlMs: number) {
   cache.set(key, { at: Date.now(), ttl: ttlMs, value });
+}
+
+/** Rotation/removal invalidates cached results and the authenticated session. */
+async function credentials() {
+  const env = await secretEnvironment();
+  const key = env.TVREMIX_API_KEY?.trim();
+  const endpoint = env.TVREMIX_MCP_URL || "https://tvremix.xyz/api/mcp/v1";
+  const fingerprint = createHash("sha256").update(`${key ?? ""}\0${endpoint}`).digest("hex");
+  if (fingerprint !== credentialFingerprint) {
+    credentialFingerprint = fingerprint;
+    cache.clear();
+    sessionId = null;
+    initPromise = null;
+  }
+  if (!key) throw new McpError(503, "TVREMIX_API_KEY not configured");
+  const url = new URL(endpoint);
+  if (url.protocol !== "https:" || url.username || url.password) throw new McpError(503, "Invalid TVremix endpoint");
+  return { key, endpoint };
 }
 
 function parseMcpBody(raw: string): any | null {
@@ -54,9 +73,7 @@ function parseMcpBody(raw: string): any | null {
 }
 
 async function rpc(method: string, params: Record<string, unknown>): Promise<any> {
-  if (!API_KEY) {
-    throw new McpError(503, "TVREMIX_API_KEY not configured");
-  }
+  const { key: API_KEY, endpoint: MCP_URL } = await credentials();
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${API_KEY}`,
@@ -70,21 +87,23 @@ async function rpc(method: string, params: Record<string, unknown>): Promise<any
     headers,
     body: JSON.stringify({ jsonrpc: "2.0", id: Math.floor(Math.random() * 1e9), method, params }),
     cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+    redirect: "error",
   });
 
   const newSession = res.headers.get("mcp-session-id");
   if (newSession) sessionId = newSession;
 
-  const raw = await res.text();
+  const raw = (await res.text()).split(API_KEY).join("[REDACTED]");
   const payload = parseMcpBody(raw);
 
   if (!res.ok || payload?.error) {
-    const message = payload?.error?.message ?? `MCP ${res.status}`;
+    const message = `MCP HTTP ${res.status}${payload?.error ? " RPC error" : ""}`;
     if (res.status === 429) throw new McpError(429, `Rate limited: ${message}`);
     if (res.status === 401 || res.status === 403) throw new McpError(res.status, `Auth failed: ${message}`);
     throw new McpError(res.status || 502, message);
   }
-  if (!payload) throw new McpError(502, `Unparseable MCP response: ${raw.slice(0, 200)}`);
+  if (!payload) throw new McpError(502, "Unparseable MCP response");
   return payload.result;
 }
 
@@ -128,6 +147,7 @@ export async function callTool(
   args: Record<string, unknown>,
   ttlMs = 60_000,
 ): Promise<unknown> {
+  await credentials();
   const cacheKey = `tool:${name}:${JSON.stringify(args)}`;
   const cached = cachedGet<unknown>(cacheKey);
   if (cached !== undefined) return cached;
@@ -173,6 +193,7 @@ function extractParsed(result: any): unknown {
 
 /** List tools (used by the /api/market/tools debug route). */
 export async function listTools(): Promise<any> {
+  await credentials();
   const cacheKey = "tools:list";
   const cached = cachedGet<any>(cacheKey);
   if (cached) return cached;

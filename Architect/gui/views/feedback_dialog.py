@@ -11,13 +11,13 @@ is a thin PyQt6 shell (import-guarded, since PyQt6 is an optional desktop
 dependency — see Architect/docs/DIVERGENCES.md).
 """
 
+import datetime
 import json
 import logging
-import datetime
 from pathlib import Path
 
-from core.schema_utils import SchemaInvalid, load_schema, validate_against_schema, default_schema_path
 from core.events import EventBus
+from core.schema_utils import SchemaInvalid, default_schema_path, load_schema, validate_against_schema
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +50,8 @@ class FeedbackSubmission:
             raise SchemaInvalid("outcome_summary must contain 'outcome_id' or 'job_id'.")
         try:
             rating_int = int(rating)
-        except (TypeError, ValueError):
-            raise SchemaInvalid(f"Rating must be an integer 1-5, got {rating!r}.")
+        except (TypeError, ValueError) as exc:
+            raise SchemaInvalid(f"Rating must be an integer 1-5, got {rating!r}.") from exc
         if not 1 <= rating_int <= 5:
             raise SchemaInvalid(f"Rating must be between 1 and 5, got {rating_int}.")
 
@@ -104,7 +104,7 @@ class FeedbackSubmission:
 # ---- PyQt6 shell (import-guarded) ---------------------------------------------
 
 try:  # pragma: no cover - exercised only when PyQt6 is installed
-    from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QSpinBox, QComboBox, QTextEdit, QPushButton, QHBoxLayout
+    from PyQt6.QtWidgets import QComboBox, QDialog, QHBoxLayout, QLabel, QPushButton, QSpinBox, QTextEdit, QVBoxLayout
 
     PYQT6_AVAILABLE = True
 except ImportError:  # pragma: no cover
@@ -142,7 +142,7 @@ if PYQT6_AVAILABLE:
             layout.addWidget(self.rating_spin)
 
             self.preference_combo = QComboBox()
-            self.preference_combo.addItems(["(no preference)"] + PREFERENCE_CHOICES)
+            self.preference_combo.addItems(["(no preference)", *PREFERENCE_CHOICES])
             layout.addWidget(self.preference_combo)
 
             self.comment_edit = QTextEdit()

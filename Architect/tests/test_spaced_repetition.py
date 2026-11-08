@@ -1,17 +1,17 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import tempfile
 import datetime
+import tempfile
 from pathlib import Path
 
 from core.learning.spaced_repetition import (
-    SpacedRepetitionEngine,
-    ReviewScheduler,
-    DEFAULT_EASE_FACTOR,
     MIN_EASE_FACTOR,
+    ReviewScheduler,
+    SpacedRepetitionEngine,
 )
 
 

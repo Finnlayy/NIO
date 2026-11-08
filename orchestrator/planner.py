@@ -187,7 +187,7 @@ class IterationPlanner:
                 cause=f"Zielpfad liegt ausserhalb der Sandbox: {message[:400]}",
                 measure=(
                     "Selbstmodifikation korrekt beantragen: elevation.level='repo_write' mit Begruendung, "
-                    "approved_by='core' und explizit deklarierten requested_paths."
+                    "explizit deklarierten requested_paths und anschliessender Freigabe."
                 ),
                 elevation_patch={
                     "level": "repo_write",
@@ -195,7 +195,7 @@ class IterationPlanner:
                         "Korrekturdurchgang: Der Auftrag verlangt eine Aenderung am System selbst "
                         f"(Ziel: {target}). Begruendung aus Fehlschlag {intent.intent_id}: {message[:200]}"
                     )[:2000],
-                    "approved_by": "core",
+                    "approved_by": "",
                     "requested_paths": (target,) if target else (),
                 },
                 constraint_patch={"sandbox_root": ".", "backup": True},

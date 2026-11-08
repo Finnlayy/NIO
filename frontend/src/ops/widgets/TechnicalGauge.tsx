@@ -1,6 +1,6 @@
 import type { GaugeData } from "../marketData";
 import { toTvSymbol, useMarketData } from "../hooks/useMarketData";
-import { LiveBadge } from "./bits";
+import { MarketUnavailable, LiveBadge } from "./bits";
 
 function verdictColor(v: string) {
   if (v.includes("Strong Buy") || v === "Buy") return "#34d399";
@@ -21,6 +21,8 @@ export function TechnicalGauge({ data, symbol }: { data: Record<string, unknown>
     sim,
     180_000,
   );
+  if (source !== "live") return <MarketUnavailable source={source} />;
+
   const g = live;
   if (!g) return null;
   const color = verdictColor(g.verdict);
@@ -31,7 +33,7 @@ export function TechnicalGauge({ data, symbol }: { data: Record<string, unknown>
   const needleY = 50 - 34 * Math.sin((angle * Math.PI) / 180);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
       <div className="relative">
         <svg viewBox="0 0 100 58" className="w-full max-w-[260px] mx-auto block">
           {/* track */}

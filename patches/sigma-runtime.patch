@@ -539,3 +539,22 @@ index cb7120a..097c676 100644
  
  
  def test_websocket_tool_call_flow(client):
+diff --git a/tests/test_api_contract.py b/tests/test_api_contract.py
+index ef3f140..458525e 100644
+--- a/tests/test_api_contract.py
++++ b/tests/test_api_contract.py
+@@ -214,11 +214,12 @@ def test_webhook_rejects_stale_and_unknown_symbol(client):
+     assert bad_symbol.status_code == 403
+ 
+ 
+-def test_kill_switch_endpoint_blocks_webhook(client):
++def test_kill_switch_endpoint_blocks_webhook(client, monkeypatch):
++    monkeypatch.setenv("SIGMA_OPERATOR_TOKEN", "secret")
+     assert client.post("/api/v1/safety/kill").json()["kill_switch"] is True
+     blocked = client.post(bp.WEBHOOK_ROUTE, json=_alert())
+     assert blocked.status_code == bp.WEBHOOK_BLOCKED_STATUS
+-    client.post("/api/v1/safety/release")
++    client.post("/api/v1/safety/release", headers={"Authorization": "Bearer secret"})
+     assert client.post(bp.WEBHOOK_ROUTE, json=_alert()).status_code == 200
+ 
+ 

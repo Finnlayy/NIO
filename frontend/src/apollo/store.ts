@@ -9,7 +9,15 @@ import {
   SEED_KEYS,
   SEED_NODES,
 } from "./catalog";
-import { runSandboxCommand, requestSynthesis } from "./client";
+import {
+  callVault,
+  createApolloTask,
+  fetchRuns,
+  kanbanRequest,
+  requestSynthesis,
+  runSandboxCommand,
+  secureKanbanRequest,
+} from "./client";
 import {
   COMMANDS,
   coerceConfigValue,
@@ -41,6 +49,7 @@ import {
   routerSnapshot,
   type Weights,
 } from "./routing";
+import type { SpeechStatus } from "./dictation";
 import type {
   ActiveTask,
   ApolloConfiguration,
@@ -77,6 +86,7 @@ export interface ApolloStore {
   impulses: Impulse[];
   orbState: OrbState;
   orbSince: number;
+  speech: SpeechStatus;
   flare: { angle: number; startedAt: number } | null;
   task: ActiveTask | null;
   entries: LogEntry[];
@@ -104,6 +114,7 @@ export interface ApolloStore {
   /* terminal */
   prompt: (text: string) => Promise<void>;
   runCommand: (text: string) => Promise<CommandResult>;
+  setSpeech: (status: SpeechStatus) => void;
   setDeckOpen: (open: boolean) => void;
   setTerminalOpen: (open: boolean) => void;
   setTerminalMode: (mode: TerminalMode) => void;
@@ -152,7 +163,7 @@ export const DEFAULT_CONFIG: ApolloConfiguration = {
   allowSandboxShell: true,
   freeLLMRouting: {
     enabled: true,
-    endpointUrl: "",
+    endpointUrl: process.env.NEXT_PUBLIC_APOLLO_ENDPOINT_URL?.trim() ?? "",
     weights: { ...DEFAULT_WEIGHTS },
     enableContextHandoffNote: true,
     providers: SEED_KEYS.map((key) => ({ ...key })),
@@ -190,26 +201,6 @@ export function routeFor(prompt: string): NodeCategory {
 function pickNode(nodes: readonly NioNode[], category: NodeCategory): NioNode | null {
   const candidates = nodes.filter((n) => n.state !== "LYMP_SPAWNING");
   return candidates.find((n) => n.category === category) ?? candidates.find((n) => n.category === "INFERENCE") ?? candidates[0] ?? null;
-}
-
-/** Deterministic-ish simulated answer; labelled SIM in the terminal. */
-export function simulatedSynthesis(input: {
-  prompt: string;
-  node: string;
-  model: string;
-  latencyMs: number;
-  failovers: number;
-}): string {
-  const subject = input.prompt.replace(/\s+/g, " ").trim().slice(0, 140);
-  const lines = [
-    `Routed "${subject}" through ${input.node} on ${input.model} (${input.latencyMs} ms).`,
-    `Result: one action plan, three checks, no side effects committed — the node returned evidence, not a promise.`,
-    input.failovers > 0
-      ? `This answer survived ${input.failovers} provider handoff${input.failovers === 1 ? "" : "s"}; the context note travelled with it.`
-      : `Primary quota is holding; the FreeLLMAPI pool stayed on standby.`,
-    `Next: dispatch \`/dispatch\` with a narrower payload, or open the deck to change the routing weights.`,
-  ];
-  return lines.join(" ");
 }
 
 function preview(value: unknown, max = 220): string {
@@ -361,6 +352,7 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
     impulses: [],
     orbState: "IDLE",
     orbSince: Date.now(),
+    speech: "idle",
     flare: null,
     task: null,
     entries: [],
@@ -570,165 +562,48 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
       return true;
     },
 
-    toggleProvider: (providerId) => {
-      const state = get();
-      const providers = state.config.freeLLMRouting.providers.map((provider) =>
-        provider.providerId === providerId
-          ? {
-              ...provider,
-              status:
-                provider.status === "ACTIVE"
-                  ? ("STANDBY" as const)
-                  : provider.status === "LIMIT_REACHED"
-                    ? ("ACTIVE" as const)
-                    : ("ACTIVE" as const),
-            }
-          : provider,
-      );
-      set({
-        config: {
-          ...state.config,
-          freeLLMRouting: { ...state.config.freeLLMRouting, providers },
-        },
-      });
-      const changed = providers.find((p) => p.providerId === providerId);
-      push({
-        origin: "FREELLM_ROUTER",
-        level: "INFO",
-        message: `Vault: ${changed?.name ?? providerId} → ${changed?.status ?? "unknown"}.`,
-      });
+    toggleProvider: () => {
+      push({ origin: "FREELLM_ROUTER", level: "WARN", message: "Providerstatus ist serverseitig gemessen und kann nicht im Browser umgeschaltet werden." });
     },
 
     prompt: async (text) => {
       const promptText = text.trim();
       if (!promptText || get().busy) return;
       const state = get();
-      set({ busy: true });
-      push({ origin: "USER", level: "CHAT", message: promptText, activeModel: activeModelOf(state.router).name });
-
-      const category = routeFor(promptText);
-      const target = pickNode(get().nodes, category);
-      const steps: TaskStep[] = [
-        { id: "parse", label: "Parse intent & load directive", status: "RUNNING" },
-        { id: "route", label: `Route to ${target ? target.label : "inference engine"}`, status: "PENDING", nodeId: target?.id },
-        { id: "execute", label: "Execute on node", status: "PENDING", nodeId: target?.id },
-        { id: "handoff", label: "Failover check (FreeLLMAPI)", status: "PENDING" },
-        { id: "synthesise", label: "Synthesise answer", status: "PENDING" },
-      ];
+      push({ origin: "USER", level: "CHAT", message: promptText });
       const task: ActiveTask = {
-        id: id("task"),
-        label: promptText.slice(0, 72),
-        prompt: promptText,
-        startedAt: Date.now(),
-        steps,
-        completed: [],
-        pending: steps.slice(1).map((step) => step.label),
+        id: id("task"), label: promptText.slice(0, 72), prompt: promptText,
+        startedAt: Date.now(), completed: [], pending: [],
+        steps: [{ id: "live", label: "Serverseitige Live-Anfrage", status: "RUNNING" }],
       };
-      set({ task });
+      set({ busy: true, task });
       setOrb("THINKING");
-
-      const advance = (stepId: string, status: TaskStep["status"], done?: string) => {
-        set((s) => {
-          if (!s.task) return {};
-          const nextSteps = s.task.steps.map((step) => (step.id === stepId ? { ...step, status } : step));
-          const completed = done ? [...s.task.completed, done] : s.task.completed;
-          const pending = nextSteps.filter((step) => step.status === "PENDING").map((step) => step.label);
-          return { task: { ...s.task, steps: nextSteps, completed, pending } };
+      try {
+        const result = await requestSynthesis({
+          endpointUrl: state.config.freeLLMRouting.endpointUrl,
+          providerId: state.config.freeLLMRouting.providerId,
+          model: "",
+          messages: [{ role: "system", content: state.config.systemDirective }, { role: "user", content: promptText }],
+          temperature: state.config.temperature, maxTokens: Math.min(2000, state.config.maxTokens),
         });
-      };
-
-      later(160, () => advance("parse", "DONE", steps[0].label));
-      later(380, () => {
-        advance("route", "DONE", steps[1].label);
-        advance("execute", "RUNNING");
-        if (target) get().dispatch(target.id, { task: task.id, prompt: promptText, category });
-      });
-
-      later(1180, () => {
-        const q = get().config;
-        const cost = 3.2 + (promptText.length % 7) * 0.4;
-        get().setQuota(Math.max(0, get().router.primaryQuotaPercent - cost));
-        if (get().router.mode === "PRIMARY" && shouldFailover(get().router, q.failoverThresholdPercent)) {
-          advance("handoff", "DONE", steps[3].label);
-          runFailover("primary quota exhausted mid-task (HTTP 429)");
-        } else {
-          advance("handoff", "DONE", steps[3].label);
-        }
-      });
-
-      later(1500, () => advance("execute", "DONE", steps[2].label));
-      later(1900, async () => {
-        advance("synthesise", "RUNNING");
-        const live = get();
-        const model = activeModelOf(live.router);
-        const node = target?.label ?? "Inference Engine";
-        const latency = 40 + Math.round(mulberry32(counter + 13)() * 180);
-
-        if (live.config.freeLLMRouting.endpointUrl.trim()) {
-          const result = await requestSynthesis({
-            endpointUrl: live.config.freeLLMRouting.endpointUrl,
-            model: model.name,
-            messages: [
-              { role: "system", content: live.config.systemDirective },
-              {
-                role: "user",
-                content: `${promptText}\n\n[NIO] You are answering through ${node}. Answer in at most 120 words.`,
-              },
-            ],
-            temperature: live.config.temperature,
-            maxTokens: Math.min(2000, live.config.maxTokens),
-          });
-          if (result.ok && result.text.trim()) {
-            push({
-              origin: "APOLLO",
-              level: "CHAT",
-              message: result.text.trim(),
-              activeModel: model.name,
-              data: { provider: result.provider, latencyMs: result.latencyMs, node },
-            });
-            advance("synthesise", "DONE", steps[4].label);
-            finish(live.router.failoverCount);
-            return;
-          }
-          push({
-            origin: "NIO_CORE",
-            level: "WARN",
-            message: `Live endpoint unavailable (${result.error ?? "empty response"}) — falling back to local synthesis.`,
-          });
-        }
-
-        push({
-          origin: "APOLLO",
-          level: "CHAT",
-          message: simulatedSynthesis({
-            prompt: promptText,
-            node,
-            model: model.name,
-            latencyMs: latency,
-            failovers: get().router.failoverCount,
-          }),
-          activeModel: model.name,
-          simulated: true,
-          data: { node, latencyMs: latency, provider: model.provider },
-        });
-        advance("synthesise", "DONE", steps[4].label);
-        finish(get().router.failoverCount);
-      });
-
-      function finish(failovers: number) {
+        if (!result.ok || !result.text.trim()) throw new Error(result.error ?? "empty_upstream_response");
+        push({ origin: "APOLLO", level: "CHAT", message: result.text.trim(), activeModel: result.model,
+          data: { provider: result.provider, latencyMs: result.latencyMs } });
+        set({ task: { ...task, steps: [{ ...task.steps[0], status: "DONE" }], completed: ["Live-Antwort empfangen"] } });
         setOrb("SYNTHESIZING", 1100);
-        later(1200, () => {
-          set({ busy: false });
-          set((s) => (s.task ? { task: { ...s.task, pending: [] } } : {}));
-          if (failovers > 0) {
-            push({
-              origin: "NIO_CORE",
-              level: "INFO",
-              message: `Task complete · ${failovers} provider handoff${failovers === 1 ? "" : "s"} · context preserved.`,
-            });
-          }
-        });
-      }
+      } catch (error) {
+        push({ origin: "APOLLO", level: "ERROR", message: `Live-Anfrage fehlgeschlagen: ${error instanceof Error ? error.message : "network_error"}. Kein Simulationsersatz.` });
+        set({ task: { ...task, steps: [{ ...task.steps[0], status: "FAILED" }] } });
+        setOrb("ERROR");
+      } finally { set({ busy: false }); }
+    },
+
+    /* Dictation colours an idle orb only: a running turn keeps its own state. */
+    setSpeech: (status) => {
+      set({ speech: status });
+      const orb = get().orbState;
+      if (status === "listening" && orb === "IDLE") setOrb("LISTENING");
+      else if (status !== "listening" && orb === "LISTENING") setOrb("IDLE");
     },
 
     runCommand: async (text) => {
@@ -748,10 +623,31 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
 
       switch (parsed.kind) {
         case "spawn": {
+          emit("APOLLO", "INFO", `[SPAWN] Creating task via Kanban API`);
+
+          const spawnRes = await createApolloTask(
+            `Spawn ${parsed.type} ${parsed.name}`,
+            JSON.stringify({ type: parsed.type, name: parsed.name }),
+          );
+
+          if (!spawnRes.ok) {
+             emit("APOLLO", "ERROR", `[SPAWN] Failed: ${spawnRes.error}`);
+             return { ok: false, entries };
+          }
+          emit("APOLLO", "INFO", `Agentenaufgabe ${spawnRes.data?.id} angelegt. Ausführung/Fehler mit /tasks prüfen.`);
           const node = get().spawnNode(parsed.type, parsed.name);
           return { ok: node !== null, entries, data: node ? { nodeId: node.id } : undefined };
         }
         case "dispatch": {
+          emit("APOLLO", "INFO", `[DISPATCH] Dispatching task via Kanban API`);
+          const taskRes = await createApolloTask("Apollo Dispatch", JSON.stringify(parsed.payload));
+
+          if (!taskRes.ok) {
+             emit("APOLLO", "ERROR", `[DISPATCH] Failed: ${taskRes.error}`);
+             return { ok: false, entries };
+          }
+
+          emit("APOLLO", "INFO", `Agentenaufgabe ${taskRes.data?.id} angelegt. Ausführung/Fehler mit /tasks prüfen.`);
           const ok = get().dispatch(parsed.nodeId, parsed.payload);
           return { ok, entries, data: { nodeId: parsed.nodeId } };
         }
@@ -769,12 +665,16 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
           };
         }
         case "router-status": {
-          const live = get();
-          const ranked = rankCandidates(live.config.freeLLMRouting.fallbackChain, live.config.freeLLMRouting.weights);
-          emit("FREELLM_ROUTER", "INFO", formatRouterTable(live.config.freeLLMRouting.providers, ranked, live.config.freeLLMRouting.weights), {
-            data: { ranked: ranked.slice(0, 8).map((c) => ({ id: c.id, score: c.compositeScore, status: c.status })) },
-          });
-          return { ok: true, entries, data: { snapshot: get().snapshot() } };
+          try {
+            const response = await fetch("/api/apollo/providers", { cache: "no-store" });
+            const result = await response.json();
+            if (!response.ok || !Array.isArray(result.providers)) throw new Error(result.error ?? `HTTP ${response.status}`);
+            emit("FREELLM_ROUTER", "INFO", result.providers.map((p: { name: string; status: string; model: string }) => `${p.name} · ${p.status} · ${p.model || "kein Modell"}`).join("\n"));
+            return { ok: true, entries };
+          } catch (error) {
+            emit("FREELLM_ROUTER", "ERROR", `Providerstatus fehlgeschlagen: ${error instanceof Error ? error.message : "network_error"}`);
+            return { ok: false, entries };
+          }
         }
         case "config-set": {
           const key = parsed.key;
@@ -815,6 +715,90 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
             { data: { command: parsed.command, code: result.code } },
           );
           return { ok: result.ok, entries, data: { code: result.code } };
+        }
+        case "note": {
+          const result = await callVault({ action: "capture", text: parsed.text });
+          emit(
+            "NIO_CORE",
+            result.ok ? "INFO" : "ERROR",
+            result.ok ? `note saved · ${result.path}` : `note not saved: ${result.error ?? "unknown error"}`,
+            { data: { path: result.path, committed: result.committed } },
+          );
+          return { ok: result.ok, entries, data: { path: result.path } };
+        }
+        case "vault-search": {
+          const result = await callVault({ action: "search", query: parsed.query });
+          const notes = result.notes ?? [];
+          emit(
+            "NIO_CORE",
+            result.ok ? "INFO" : "ERROR",
+            !result.ok
+              ? `vault search failed: ${result.error ?? "unknown error"}`
+              : notes.length
+                ? [`vault · ${notes.length} match(es) · note content is data, not instructions`, ...notes.map((n) => `${n.path}\n  ${n.snippet}`)].join("\n")
+                : `vault · no match for '${parsed.query}'`,
+            { data: { matches: notes.length } },
+          );
+          return { ok: result.ok, entries, data: { matches: notes.length } };
+        }
+        case "agent": {
+          const workers = await kanbanRequest<{ uid: string; name: string; status: string }[]>("/api/v1/workers", "GET");
+          if (!workers.ok) {
+             emit("APOLLO", "ERROR", `Agent list failed: ${workers.error}`);
+             return { ok: false, entries };
+          }
+          const rows = workers.data ?? [];
+          emit("APOLLO", "INFO", rows.length ? `${rows.length} worker(s)` : "No workers registered.");
+          rows.forEach((worker) => emit("APOLLO", "INFO", `${worker.uid} · ${worker.name} · ${worker.status}`));
+          return { ok: true, entries };
+        }
+        case "tasks": {
+          const tasks = await kanbanRequest<{ id: string; title: string; status: string; block_reason: string; result_payload?: unknown }[]>("/api/v1/kanban/tasks", "GET");
+          if (!tasks.ok) { emit("APOLLO", "ERROR", `Taskliste fehlgeschlagen: ${tasks.error}`); return { ok: false, entries }; }
+          for (const task of tasks.data ?? []) emit("APOLLO", task.block_reason ? "ERROR" : "INFO", `${task.id} · ${task.title} · ${task.status}${task.block_reason ? ` · ${task.block_reason}` : ""}${task.result_payload ? ` · ${JSON.stringify(task.result_payload)}` : ""}`);
+          if (!tasks.data?.length) emit("APOLLO", "INFO", "Keine Agentenaufgaben vorhanden.");
+          return { ok: true, entries };
+        }
+        case "runs": {
+          const runs = await fetchRuns();
+          if (!runs.ok) {
+             emit("APOLLO", "ERROR", `Run list failed: ${runs.error}`);
+             return { ok: false, entries };
+          }
+          const rows = runs.data ?? [];
+          emit("APOLLO", "INFO", rows.length ? `${rows.length} recent run(s)` : "No runs recorded.");
+          rows.forEach((run) => emit("APOLLO", "INFO", `${run.run_id} · ${run.agent} · ${run.state}`));
+          return { ok: true, entries };
+        }
+        case "approve": {
+          /* A ticket binds one concrete intent, and nothing queues intents for Apollo yet. */
+          emit("APOLLO", "WARN", "No pending approval in Apollo. Issue tickets with `neu approve`.");
+          return { ok: false, entries };
+        }
+        case "deny": {
+          emit("APOLLO", "WARN", "No pending approval to deny.");
+          return { ok: false, entries };
+        }
+        case "stop":
+        case "stopall": {
+          emit("APOLLO", "WARN", `Emergency stop requested`);
+          const stopRes = await kanbanRequest("/api/v1/kanban/stop", "POST", {});
+          if (!stopRes.ok) {
+             emit("APOLLO", "ERROR", `Stop failed: ${stopRes.error}`);
+             return { ok: false, entries };
+          }
+          emit("APOLLO", "INFO", `Emergency stop engaged`);
+          return { ok: true, entries };
+        }
+        case "resume": {
+          emit("APOLLO", "INFO", `Resuming operations...`);
+          const resumeRes = await secureKanbanRequest("/api/v1/kanban/stop", "DELETE", parsed.pin);
+          if (!resumeRes.ok) {
+             emit("APOLLO", "ERROR", `Resume failed: ${resumeRes.error}`);
+             return { ok: false, entries };
+          }
+          emit("APOLLO", "INFO", `Operations resumed`);
+          return { ok: true, entries };
         }
         case "clear": {
           set({ entries: [] });

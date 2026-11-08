@@ -1,13 +1,16 @@
 # HTTP-API
 
-Alle Routen liegen unter `frontend/src/app/api/`. Vier Endpunkte, alle
+Alle Routen liegen unter `frontend/src/app/api/`. Alle Endpunkte nutzen
 `runtime = "nodejs"` und `dynamic = "force-dynamic"`.
 
 | Route | Methode | Zweck | Geheimnis nötig |
 |---|---|---|---|
-| `/api/apollo` | POST | LLM-Proxy (FreeLLMAPI) | ja, serverseitig |
+| `/api/apollo` | GET, POST | Providerstatus / echte Completion | ja, serverseitig für Completion |
+| `/api/apollo/providers` | GET, POST | Status lesen / explizite Mini-Completion-Probes | ja für Probes |
+| `/api/apollo/transcribe` | GET, POST | Sprachstatus und Diktat über lokales speaches, 503 bei Ausfall ([`SPEECH.md`](SPEECH.md)) | nein |
 | `/api/market/[tool]` | GET | Marktdaten über tvremix MCP | ja, serverseitig |
 | `/api/sandbox` | POST | read-only Shell-Allowlist | nein |
+| `/api/apollo/vault` | POST | Notizen ablegen und suchen über den Vault-Limb ([`VAULT.md`](VAULT.md)) | nein |
 | `/api/telemetry/stream` | GET | SSE der Python-Engine | nein |
 
 **Grundregel:** Kein API-Key erreicht je den Browser. Der Client spricht nur
@@ -17,70 +20,41 @@ diese Routen an; die Routen sprechen die Außenwelt.
 
 ## 1. `POST /api/apollo`
 
-OpenAI-kompatibler Proxy. Der Client schickt Endpoint und Nachrichten, der
-Server setzt den passenden Key aus der Umgebung.
+Serverseitige Providerauswahl und Secret-Anbindung, ohne simulierten Fallback.
+Beispiel (nur Provider-ID, niemals Key):
 
-### Request
-
-```jsonc
+```json
 {
-  "endpointUrl": "https://api.groq.com/openai/v1/chat/completions",
-  "model": "gpt-4o-mini",
-  "messages": [{ "role": "user", "content": "…" }],
-  "temperature": 0.4,
-  "maxTokens": 1024
+  "providerId": "groq",
+  "messages": [{ "role": "user", "content": "Reply with OK." }],
+  "temperature": 0,
+  "maxTokens": 16
 }
 ```
 
-Key-Zuordnung über die Endpoint-URL — der erste Treffer gewinnt:
+Ohne `providerId` wählt der Server `NIO_LLM_PROVIDER` bzw. den ersten
+konfigurierten Registry-Eintrag. Legacy-`endpointUrl` wird nur für exakt erlaubte
+Hosts akzeptiert; keine Substring-Matches. Credentials und Modellkonfiguration
+werden serverseitig aus Umgebung oder owner-only `NIO_SECRET_FILE` geladen.
+Die gemeinsame Registry ist `orchestrator/provider_catalog.json`.
 
-| Muster | Variable |
-|---|---|
-| `/openrouter/i` | `OPENROUTER_API_KEY` |
-| `/groq/i` | `GROQ_API_KEY` |
-| `/googleapis\|generativelanguage/i` | `GOOGLE_API_KEY` |
-| `/mistral/i` | `MISTRAL_API_KEY` |
-| `/cerebras/i` | `CEREBRAS_API_KEY` |
+Limits: 512.000 Body-Zeichen, 24 Nachrichten, 24.000 Zeichen je Nachricht,
+16–4096 Output-Tokens (Default 256), 20 Sekunden Timeout, keine Redirects.
+OpenAI-kompatible, native Anthropic- und Cohere-Antworten werden validiert.
 
-### Grenzen
+Erfolg: HTTP 200 mit `{ok:true,text,provider,model,latencyMs}`. Fehlende
+Konfiguration/Secrets: 503. Auth-/Quota-/Upstream-/Netzwerkfehler und ungültige
+Completions: 502 mit festem Fehlercode; Timeout: 504. Upstream-Fehlertexte werden
+nicht roh zurückgegeben. **Kein Fehler wird durch Simulation ersetzt.**
 
-| Grenze | Wert |
-|---|---|
-| Body | **512 000 B** (`MAX_BODY`) |
-| Nachrichten | **24** (`MAX_MESSAGES`) |
-| Zeichen pro Nachricht | 24 000 |
-| `maxTokens` | 16 … 4096, Default 1024 |
-| `temperature` | 0 … 2, Default 0.4 |
-| Timeout | **20 000 ms**, danach 504 |
+`GET /api/apollo` sowie `GET /api/apollo/providers` liefern nur Statusmetadaten.
+`configured` ist Credential-Präsenz, `ready` erfordert eine echte Completion
+(höchstens fünf Minuten gültig, bei Rotation ungültig). `POST
+/api/apollo/providers` startet explizit einen echten 16-Token-Test pro
+konfiguriertem Provider mit Modell; keine automatische Probe bei GET.
 
-Nachrichten mit unbekannter `role` oder nicht-string `content` werden
-**übersprungen**, nicht als Fehler behandelt.
-
-### Antworten
-
-Erfolg `200`:
-
-```json
-{ "ok": true, "text": "…", "provider": "groq", "model": "…", "latencyMs": 412 }
-```
-
-`text` ist auf 12 000 Zeichen geschnitten.
-
-| Status | `error` | Bedeutung |
-|---|---|---|
-| 400 | `no_endpoint` | `endpointUrl` fehlt/leer |
-| 400 | `invalid JSON body` | Body nicht parsebar |
-| 400 | `payload too large` | > 512 KB |
-| 400 | Scheme/`messages`-Fehler | Endpoint nicht `https?` oder keine Nachrichten |
-| 502 | `upstream HTTP <code>` | Upstream antwortete mit Fehlerstatus |
-| 502 | `empty_upstream_response` | Upstream gab leeren Text |
-| 502 | `upstream_not_json` | Antwort war kein JSON |
-| 502 | `upstream_not_openai_compatible` | JSON, aber keine Completion-Struktur |
-| 504 | Timeout | nach 20 s |
-
-**Fail-closed:** Ein 200 wird nur zurückgegeben, wenn die Antwort tatsächlich
-als OpenAI-Completion geparst wurde. Eine 200 mit fremdem Body wird zu 502 —
-sonst würde Müll als Modellantwort im Terminal landen.
+Tatsächlicher Stand, offene Blocker, Secret-Setup und Testbelege:
+[`LIVE-PROVIDER-AUDIT-2026-11-03.md`](LIVE-PROVIDER-AUDIT-2026-11-03.md).
 
 ---
 
@@ -200,6 +174,8 @@ puffert. Beim Abort des Clients werden Intervall und Subscription freigegeben.
 | `/apollo` | ○ statisch | — | — |
 | `/ops` | ○ statisch | — | — |
 | `/api/apollo` | ƒ dynamisch | serverseitiger Key | ja |
+| `/api/apollo/transcribe` | ƒ dynamisch | Endpoint nur aus der Server-Umgebung | ja |
 | `/api/market/[tool]` | ƒ dynamisch | serverseitiger Key | ja |
 | `/api/sandbox` | ƒ dynamisch | Allowlist | ja |
+| `/api/apollo/vault` | ƒ dynamisch | nur JSON, Aktionen `search` und `capture` | ja |
 | `/api/telemetry/stream` | ƒ dynamisch | — | ja (Validierung) |

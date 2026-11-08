@@ -1,0 +1,17 @@
+15:Version einer Limb-Bibliothek im RAM. ``reload()`` tauscht **atomar** aus:
+19:2. Erst dann wird die alte Bibliothek über ``shutdown_limb`` + ``dlclose``
+49:class LimbFFIError(RuntimeError):
+54:class LimbFFISpec:
+60:#: ctypes-Signatur für libc.dlclose(void *handle) -> int.
+64:class _LoadedLimb:
+67:    def __init__(self, so_path: Path, dlclose: _DlClose) -> None:
+70:        self._dlclose = dlclose
+77:                raise LimbFFIError(
+84:                raise LimbFFIError(f"init_limb lieferte Status {rc} ({self.path})")
+115:            raise LimbFFIError(f"limb_contract_version gab NULL zurück ({self.path})")
+128:            raise LimbFFIError(f"process_payload lieferte Status {rc} ({self.path})")
+139:            raise LimbFFIError(f"Kein dlopen-Handle für {self.path}")
+145:            self._dlclose(self.handle())
+151:class LimbHotReloader:
+./orchestrator/ring.py
+./tests/test_limb_ffi.py

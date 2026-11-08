@@ -42,13 +42,21 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          # Kein pip-Install noetig: NEU laeuft auf der Standardbibliothek.
+          # NEU laeuft auf der Standardbibliothek. Nur der Ciel-Test braucht pytest.
 
       - name: Bytecode pruefen (Syntax auf dieser Version)
         run: python -m compileall -q core orchestrator limbs tests scripts
 
+      - name: pytest installieren
+        run: python -m pip install pytest
+
       - name: Test-Suite (echte Subprozesse, echte Timer)
+        env:
+          NIO_KANBAN_TEST_DOCKER: "1"
         run: python -m unittest discover -s tests -t . -v
+
+      - name: Ciel-Tests (pytest-Funktionen, von unittest nicht erfasst)
+        run: python -m pytest -q tests/test_ciel_mcp_nodes.py
 
   quality:
     name: Lint & Typen
@@ -66,7 +74,7 @@ jobs:
       - name: Entwicklungswerkzeuge installieren
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "ruff>=0.16" "mypy>=1.11"
+          python -m pip install "ruff>=0.16" "mypy>=1.11" "fastapi>=0.110" "pydantic>=2"
 
       - name: ruff (Lint, Konfiguration aus pyproject.toml)
         run: ruff check .
@@ -92,12 +100,16 @@ jobs:
       - name: Protokoll-Selbstauskunft zeigt 1.2
         run: |
           set -euo pipefail
-          python -m orchestrator spec | grep -q "NEU-Protokoll 1.2"
-          python -m orchestrator spec | grep -q "unlimited"
-          python -m orchestrator spec | grep -q "finish_job"
+          # Erst speichern: grep -q schliesst die Pipe frueh, das waere mit pipefail ein Fehler.
+          spec="$(python -m orchestrator spec)"
+          grep -q "NEU-Protokoll 1.2" <<<"$spec"
+          grep -q "unlimited" <<<"$spec"
+          grep -q "finish_job" <<<"$spec"
 
       - name: Exit-Code-Vertrag (Nutzungsfehler = 3, Protokollfehler = 1)
         run: |
+          # GitHub startet bash -e, die erwarteten Exit-Codes duerfen hier nicht abbrechen.
+          set +e
           set -uo pipefail
           tmp="$(mktemp -d)"
           python -m orchestrator --runtime-dir "$tmp/rt" --json job run --op sys.ping

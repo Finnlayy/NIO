@@ -1,7 +1,6 @@
-import logging
-import json
-import os
 import datetime
+import json
+import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -111,6 +110,7 @@ class GenAIClient:
 
         if self.real_client and self.client:
             try:
+                from google.genai import types
                 prompt = (
                     "You are OMEGA's reflection engine. Generate a concise journal entry "
                     "based on the following execution context. Include: (1) summary, "
@@ -120,6 +120,9 @@ class GenAIClient:
                 response = self.client.models.generate_content(
                     model=self.model_deep,
                     contents=prompt,
+                    config=types.GenerateContentConfig(
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+                    )
                 )
                 output_text = response.text
                 output_structured = {
@@ -203,6 +206,7 @@ class GenAIClient:
 
         if self.real_client and self.client:
             try:
+                from google.genai import types
                 prompt = (
                     "You are OMEGA's post-mortem reflection engine (DSR: Diagnosis, Summary, Recommendation). "
                     "Analyze the following post-mortem data and produce a structured reflection with these exact sections: "
@@ -213,6 +217,9 @@ class GenAIClient:
                 response = self.client.models.generate_content(
                     model=self.model_deep,
                     contents=prompt,
+                    config=types.GenerateContentConfig(
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)
+                    )
                 )
                 output_text = response.text
                 output_structured = self._parse_dsr_output(output_text, timestamp, post_mortem_data, mode="real")
@@ -304,13 +311,13 @@ class GenAIClient:
             if any(key in lower for key in ["diagnosis", "root cause"]):
                 current_section = "diagnosis"
                 continue
-            elif any(key in lower for key in ["summary", "what happened"]):
+            if any(key in lower for key in ["summary", "what happened"]):
                 current_section = "summary"
                 continue
-            elif any(key in lower for key in ["recommendation", "corrective", "action"]):
+            if any(key in lower for key in ["recommendation", "corrective", "action"]):
                 current_section = "recommendation"
                 continue
-            elif any(key in lower for key in ["confidence", "certainty"]):
+            if any(key in lower for key in ["confidence", "certainty"]):
                 current_section = "confidence"
                 # Try to extract numeric confidence from line
                 try:
@@ -320,7 +327,7 @@ class GenAIClient:
                 except ValueError:
                     pass
                 continue
-            elif any(key in lower for key in ["risk", "flag", "concern"]):
+            if any(key in lower for key in ["risk", "flag", "concern"]):
                 current_section = "risk_flags"
                 continue
 
@@ -330,9 +337,8 @@ class GenAIClient:
                 summary_lines.append(line_stripped)
             elif current_section == "recommendation":
                 recommendation_lines.append(line_stripped)
-            elif current_section == "risk_flags":
-                if line_stripped:
-                    risk_flags.append(line_stripped)
+            elif current_section == "risk_flags" and line_stripped:
+                risk_flags.append(line_stripped)
 
         diagnosis = " ".join(diagnosis_lines) or text[:300]
         summary = " ".join(summary_lines) or text[:500]

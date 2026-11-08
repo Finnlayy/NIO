@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import Link from "next/link";
-import { BrainCircuit, Download, GitBranch, Library, Radio, Zap } from "lucide-react";
+import { MainWindowLink } from "@/components/MainWindowLink";
+import { BrainCircuit, Download, Library, Radio, Zap } from "lucide-react";
 import { GridCanvas } from "@/ops/GridCanvas";
 import { GalleryDrawer } from "@/ops/GalleryDrawer";
 import { McpConsole } from "@/ops/McpConsole";
@@ -82,22 +82,6 @@ export default function OpsGridPage() {
     }
   }, []);
 
-  /* Simulated live-tick telemetry: direct (virtualized) data binding —
-     streams into the store without flooding the MCP control log. */
-  useEffect(() => {
-    const timer = setInterval(() => {
-      useGridStore.getState().widgets.forEach((w) => {
-        if (w.templateId === "TPL_02" && Array.isArray(w.data.spark)) {
-          const spark = w.data.spark as number[];
-          const last = spark[spark.length - 1] ?? 0.5;
-          const next = Math.min(0.98, Math.max(0.02, last + (Math.random() - 0.48) * 0.08));
-          useGridStore.getState().mergeData(w.id, { spark: [...spark.slice(1), next] });
-        }
-      });
-    }, 2200);
-    return () => clearInterval(timer);
-  }, []);
-
   function exportLayout() {
     const widgets = useGridStore.getState().widgets;
     const payload = {
@@ -123,7 +107,7 @@ export default function OpsGridPage() {
   return (
     <main className="min-h-screen bg-[#080a10] pb-10">
       {/* Header */}
-      <header className="sticky top-0 z-30 h-14 border-b border-white/[0.06] bg-[#080a10]/90 backdrop-blur-xl px-4 sm:px-6 flex items-center gap-3">
+      <header className="sticky top-0 z-30 min-h-14 flex-wrap py-2 border-b border-white/[0.06] bg-[#080a10]/90 backdrop-blur-xl px-4 sm:px-6 flex items-center gap-3">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-400 via-blue-500 to-violet-600 grid place-items-center shrink-0">
           <BrainCircuit className="w-4 h-4 text-white" />
         </div>
@@ -136,38 +120,31 @@ export default function OpsGridPage() {
           </p>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <span
             className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wide border ${
               dataSource === "live"
                 ? "text-emerald-300 border-emerald-400/25 bg-emerald-400/10"
-                : dataSource === "sim"
+                : dataSource === "error"
                   ? "text-amber-300 border-amber-400/25 bg-amber-400/10"
                   : "text-slate-400 border-white/10 bg-white/[0.04]"
             }`}
             title={
               dataSource === "live"
                 ? "Live TradingView data via tvremix MCP"
-                : dataSource === "sim"
-                  ? "tvremix unreachable — showing simulated data"
+                : dataSource === "error"
+                  ? "tvremix unreachable — no simulated fallback"
                   : "Checking tvremix connection…"
             }
           >
             <span
               className={`w-1.5 h-1.5 rounded-full ${
-                dataSource === "live" ? "bg-emerald-400 pulse-dot" : dataSource === "sim" ? "bg-amber-400" : "bg-slate-500 animate-pulse"
+                dataSource === "live" ? "bg-emerald-400 pulse-dot" : dataSource === "error" ? "bg-amber-400" : "bg-slate-500 animate-pulse"
               }`}
             />
-            {dataSource === "live" ? "tvremix · Live" : dataSource === "sim" ? "Simulated" : "Connecting"}
+            {dataSource === "live" ? "tvremix · Live" : dataSource === "error" ? "Live-Fehler" : "Connecting"}
           </span>
-          <Link
-            href="/apollo"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-cyan-400/25 bg-cyan-400/[0.07] text-cyan-200 hover:bg-cyan-400/15 transition-colors"
-            title="Apollo orchestrator stage — orb, neural graph, FreeLLMAPI router"
-          >
-            <GitBranch className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Apollo stage</span>
-          </Link>
+          <MainWindowLink />
           <button
             onClick={() => setConsoleOpen(!consoleOpen)}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
@@ -191,7 +168,7 @@ export default function OpsGridPage() {
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:brightness-110 transition-colors"
           >
             <Library className="w-3.5 h-3.5" />
-            Add widget <kbd className="ml-1 opacity-50 font-sans">Ctrl/⌘G</kbd>
+            Add widget <kbd className="ml-1 hidden opacity-50 font-sans sm:inline">Ctrl/⌘G</kbd>
             <Zap className="w-3 h-3 opacity-80" />
           </button>
         </div>

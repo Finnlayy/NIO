@@ -20,6 +20,9 @@ export function FilterBar({
         return (
           <button
             key={filter.id}
+            type="button"
+            aria-pressed={active}
+            aria-label={`Filter by ${filter.label}`}
             onClick={() => onFilter(filter.id)}
             className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors ${
               active

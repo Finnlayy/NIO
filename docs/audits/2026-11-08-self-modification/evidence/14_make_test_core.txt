@@ -1,0 +1,103 @@
+python3 -W error::ResourceWarning -m unittest discover -s tests -t . -q
+2026-11-08 13:49:54,246 - Abgelehnt (Code 502): DNS-Fehler fuer test.com.
+2026-11-08 13:49:54,246 - Abgelehnt (Code 403): Ziel-Host oder Port nicht erlaubt: allowed.example.com:80
+2026-11-08 13:49:54,249 - Abgelehnt (Code 502): DNS-Fehler fuer port-allowed.test.
+2026-11-08 13:49:54,249 - Abgelehnt (Code 400): Ungueltiger Port.
+2026-11-08 13:49:54,249 - Abgelehnt (Code 405): Nur HTTP CONNECT erlaubt.
+2026-11-08 13:49:54,249 - Abgelehnt (Code 403): Ziel-Host oder Port nicht erlaubt: not-allowed.example.com:443
+2026-11-08 13:49:54,249 - Abgelehnt (Code 403): Ziel-IP abgelehnt fuer 127.0.0.1 (127.0.0.1 nicht global).
+[events] System-Log /tmp/tmpjio6flh9/system.log nicht schreibbar: [Errno 13] Permission denied: '/tmp/tmpjio6flh9/system.log'
+2026-11-08 13:49:56,446 - LLM decomposition failed: Expecting value: line 1 column 1 (char 0). Using fallback.
+2026-11-08 13:49:56,512 - Error in _run_worker for 1: Crash
+Traceback (most recent call last):
+  File "/home/user/NIO/orchestrator/kanban/dispatcher.py", line 295, in _run_worker
+    result = await self.sandbox.run(spec, on_heartbeat=hb_callback)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/NIO/tests/test_kanban_dispatcher.py", line 160, in run
+    async def run(self, *a, **k): raise ValueError("Crash")
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: Crash
+2026-11-08 13:49:56,554 - Failed to setup git worktree: fatal: cannot change to '/tmp/tmpud_nxf63/kein-repo': No such file or directory
+
+2026-11-08 13:49:56,560 - Could not remove git worktree /tmp/tmpud_nxf63/ws/runs/1-a0/work: Command '['git', 'worktree', 'remove', '--force', '/tmp/tmpud_nxf63/ws/runs/1-a0/work']' returned non-zero exit status 128.
+{"seq":1,"timestamp":"2026-11-08T13:49:56.567Z","kind":"intent.accepted","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":null,"payload":{"operation":"sys.echo","limb":"echo","iteration":1,"elevation":"none","timer_mode":"deadline","deadline_s":100.0,"safety_net_s":null,"slot_kind":"job"}}
+{"seq":2,"timestamp":"2026-11-08T13:49:56.567Z","kind":"policy.decided","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":null,"payload":{"allowed":true,"code":"","reason":"","sandbox_root":"workspace","resolved_targets":[],"warnings":[]}}
+{"seq":3,"timestamp":"2026-11-08T13:49:56.567Z","kind":"timer.armed","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":0.001,"payload":{"mode":"deadline","t0":"2026-11-08T13:49:56.567Z","armed_at":"2026-11-08T13:49:56.567Z","soft_expires_at":"2026-11-08T13:51:26.567Z","expires_at":"2026-11-08T13:51:36.567Z","deadline_s":100.0,"soft_deadline_s":90.0,"grace_s":5.0,"safety_net_s":null,"hard_timeout_s":105.0,"triggers":[]}}
+{"seq":4,"timestamp":"2026-11-08T13:49:56.567Z","kind":"agent.lock.acquired","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":0.001,"payload":{"index":0,"path":"/home/user/NIO/runtime/locks/agent-0.lock","job_id":"job_0000t1","pid":1376,"acquired_at":"2026-11-08T13:49:56.567Z","expires_at":"2026-11-08T13:51:46.567Z","kind":"job"}}
+{"seq":5,"timestamp":"2026-11-08T13:49:56.568Z","kind":"limb.spawned","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":0.002,"payload":{"argv":["/usr/bin/python3","/home/user/NIO/limbs/echo_limb.py","--intent","/home/user/NIO/runtime/inbox/echo/int_0000t1.json","--iteration","1","--repo-root","/home/user/NIO","--profile","dev"],"hard_timeout_s":105.0}}
+{"seq":6,"timestamp":"2026-11-08T13:49:56.670Z","kind":"agent.lock.released","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":0.103,"payload":{"index":0,"kind":"job"}}
+{"seq":7,"timestamp":"2026-11-08T13:49:56.670Z","kind":"result.recorded","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":0.103,"payload":{"status":"success","iteration":1,"duration_ms":0,"timer_mode":"deadline","elapsed_s":0.087,"artifacts":[],"status_report":null,"error":null}}
+{"seq":8,"timestamp":"2026-11-08T13:49:56.670Z","kind":"result.verdict","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":0.103,"payload":{"decision":"accept","reasons":["Ergebnis deckt den Auftrag."],"next_action":"read_artifacts_and_continue"}}
+{"seq":9,"timestamp":"2026-11-08T13:49:56.674Z","kind":"transport.archived","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":0.107,"payload":{"dir":"runtime/archive/2026-11-08/int_0000t1"}}
+{"seq":1,"timestamp":"2026-11-08T13:49:56.697Z","kind":"intent.accepted","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":null,"payload":{"operation":"sys.echo","limb":"echo","iteration":1,"elevation":"none","timer_mode":"deadline","deadline_s":100.0,"safety_net_s":null,"slot_kind":"job"}}
+{"seq":2,"timestamp":"2026-11-08T13:49:56.697Z","kind":"policy.decided","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":null,"payload":{"allowed":true,"code":"","reason":"","sandbox_root":"workspace","resolved_targets":[],"warnings":[]}}
+{"seq":3,"timestamp":"2026-11-08T13:49:56.697Z","kind":"timer.armed","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":0.001,"payload":{"mode":"deadline","t0":"2026-11-08T13:49:56.697Z","armed_at":"2026-11-08T13:49:56.697Z","soft_expires_at":"2026-11-08T13:51:26.697Z","expires_at":"2026-11-08T13:51:36.697Z","deadline_s":100.0,"soft_deadline_s":90.0,"grace_s":5.0,"safety_net_s":null,"hard_timeout_s":105.0,"triggers":[]}}
+{"seq":4,"timestamp":"2026-11-08T13:49:56.698Z","kind":"agent.lock.acquired","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":0.001,"payload":{"index":0,"path":"/home/user/NIO/runtime/locks/agent-0.lock","job_id":"job_0000t1","pid":1376,"acquired_at":"2026-11-08T13:49:56.697Z","expires_at":"2026-11-08T13:51:46.697Z","kind":"job"}}
+{"seq":5,"timestamp":"2026-11-08T13:49:56.699Z","kind":"limb.spawned","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":0.002,"payload":{"argv":["/usr/bin/python3","/home/user/NIO/limbs/echo_limb.py","--intent","/home/user/NIO/runtime/inbox/echo/int_0000t1.json","--iteration","1","--repo-root","/home/user/NIO","--profile","dev"],"hard_timeout_s":105.0}}
+{"seq":6,"timestamp":"2026-11-08T13:49:56.783Z","kind":"agent.lock.released","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":0.087,"payload":{"index":0,"kind":"job"}}
+{"seq":7,"timestamp":"2026-11-08T13:49:56.783Z","kind":"result.recorded","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":0.087,"payload":{"status":"success","iteration":1,"duration_ms":0,"timer_mode":"deadline","elapsed_s":0.077,"artifacts":[],"status_report":null,"error":null}}
+{"seq":8,"timestamp":"2026-11-08T13:49:56.783Z","kind":"result.verdict","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":0.087,"payload":{"decision":"accept","reasons":["Ergebnis deckt den Auftrag."],"next_action":"read_artifacts_and_continue"}}
+{"seq":9,"timestamp":"2026-11-08T13:49:56.788Z","kind":"transport.archived","job_id":"job_0000t1","trace_id":"job_0000t1","intent_id":"int_0000t1","limb":"echo","clock_s":0.091,"payload":{"dir":"runtime/archive/2026-11-08/int_0000t1"}}
+2026-11-08 13:49:56,820 - <Server sockets=(<asyncio.TransportSocket fd=9, family=2, type=1, proto=6, laddr=('127.0.0.1', 33475)>,)> is serving
+2026-11-08 13:49:56,928 - <Server sockets=(<asyncio.TransportSocket fd=9, family=2, type=1, proto=6, laddr=('127.0.0.1', 42585)>,)> is serving
+2026-11-08 13:49:56,936 - <Server sockets=(<asyncio.TransportSocket fd=9, family=2, type=1, proto=6, laddr=('127.0.0.1', 45253)>,)> is serving
+2026-11-08 13:49:57,046 - <Server sockets=(<asyncio.TransportSocket fd=9, family=2, type=1, proto=6, laddr=('127.0.0.1', 35541)>,)> is serving
+2026-11-08 13:49:57,055 - <Server sockets=(<asyncio.TransportSocket fd=9, family=2, type=1, proto=6, laddr=('127.0.0.1', 34579)>,)> is serving
+2026-11-08 13:49:57,062 - <Server sockets=(<asyncio.TransportSocket fd=9, family=2, type=1, proto=6, laddr=('127.0.0.1', 36323)>,)> is serving
+127.0.0.1 - - [08/Nov/2026 13:49:58] "GET /api/v1/kanban/tools HTTP/1.1" 200 -
+127.0.0.1 - - [08/Nov/2026 13:49:58] "POST /api/v1/kanban/tools/test_tool HTTP/1.1" 200 -
+127.0.0.1 - - [08/Nov/2026 13:49:58] "POST /api/v1/kanban/tools/test_tool HTTP/1.1" 401 -
+2026-11-08 13:49:59,449 - Vault-Sync fuer exp-3c74bfef78d2 ausstehend: [Errno 13] Permission denied: '/tmp/tmplh80zbp4/vault/workers'
+2026-11-08 13:50:00,531 - execute program '/usr/bin/python3': <_UnixSubprocessTransport pid=1656 running stderr=<_UnixReadPipeTransport fd=12 polling>>
+2026-11-08 13:50:00,591 - <_UnixReadPipeTransport fd=12 polling> was closed by peer
+2026-11-08 13:50:00,592 - <_UnixSubprocessTransport pid=1656 running stderr=<_UnixReadPipeTransport closed fd=12 closed>> exited with return code 1
+2026-11-08 13:50:01,085 - Executing <Task pending name='Task-250' coro=<LLMWorkerTests.test_auth_failure_and_redirect_never_fall_back_or_retry() running at /home/user/NIO/tests/test_llm_worker.py:102> wait_for=<Future pending cb=[Task.task_wakeup()] created at /usr/lib/python3.11/asyncio/base_events.py:427> cb=[_run_until_complete_cb() at /usr/lib/python3.11/asyncio/base_events.py:180] created at /usr/lib/python3.11/asyncio/runners.py:100> took 0.492 seconds
+2026-11-08 13:50:01,085 - execute program '/usr/bin/python3': <_UnixSubprocessTransport pid=1662 running stderr=<_UnixReadPipeTransport fd=12 polling>>
+2026-11-08 13:50:01,150 - <_UnixReadPipeTransport fd=12 polling> was closed by peer
+2026-11-08 13:50:01,151 - <_UnixSubprocessTransport pid=1662 running stderr=<_UnixReadPipeTransport closed fd=12 closed>> exited with return code 1
+2026-11-08 13:50:01,640 - Executing <Task finished name='Task-250' coro=<LLMWorkerTests.test_auth_failure_and_redirect_never_fall_back_or_retry() done, defined at /home/user/NIO/tests/test_llm_worker.py:100> result=None created at /usr/lib/python3.11/asyncio/runners.py:100> took 0.489 seconds
+2026-11-08 13:50:01,645 - execute program '/usr/bin/python3': <_UnixSubprocessTransport pid=1666 running stderr=<_UnixReadPipeTransport fd=11 polling>>
+2026-11-08 13:50:01,707 - <_UnixReadPipeTransport fd=11 polling> was closed by peer
+2026-11-08 13:50:01,707 - <_UnixSubprocessTransport pid=1666 running stderr=<_UnixReadPipeTransport closed fd=11 closed>> exited with return code 1
+2026-11-08 13:50:01,712 - execute program '/usr/bin/python3': <_UnixSubprocessTransport pid=1669 running stderr=<_UnixReadPipeTransport fd=11 polling>>
+2026-11-08 13:50:01,775 - <_UnixReadPipeTransport fd=11 polling> was closed by peer
+2026-11-08 13:50:01,775 - <_UnixSubprocessTransport pid=1669 running stderr=<_UnixReadPipeTransport closed fd=11 closed>> exited with return code 1
+2026-11-08 13:50:01,779 - execute program '/usr/bin/python3': <_UnixSubprocessTransport pid=1673 running stderr=<_UnixReadPipeTransport fd=12 polling>>
+2026-11-08 13:50:01,847 - <_UnixReadPipeTransport fd=12 polling> was closed by peer
+2026-11-08 13:50:01,848 - <_UnixSubprocessTransport pid=1673 running stderr=<_UnixReadPipeTransport closed fd=12 closed>> exited with return code 0
+2026-11-08 13:50:02,336 - Executing <Task finished name='Task-281' coro=<LLMWorkerTests.test_real_http_child_uses_only_one_small_request_and_redacts_output() done, defined at /home/user/NIO/tests/test_llm_worker.py:92> result=None created at /usr/lib/python3.11/asyncio/runners.py:100> took 0.487 seconds
+[    0.111s] timer.trigger       ab6bfc Intervall every_s=0.1s faellig (t_unlimited=0.111s, Bezu
+[    0.111s] job.scheduled       ab6bfc kontrolle -> sys.ping (job_20261108T135010Z_7e7e63)
+[    0.001s] timer.armed         7e7e63  mode=deadline deadline=60.0 safety_net=3600.0
+[    0.002s] limb.spawned        7e7e63 
+[    0.086s] result.verdict      7e7e63  entscheidung=accept
+[    0.254s] timer.trigger       ab6bfc Intervall every_s=0.1s faellig (t_unlimited=0.254s, Bezu
+[    0.254s] timer.finished      ab6bfc when 'elapsed >= 0.25' wurde wahr bei t_unlimited=0.254s
+[    0.254s] job.scheduled       ab6bfc kontrolle -> sys.ping (job_20261108T135011Z_4972fd)
+[    0.001s] timer.armed         4972fd  mode=deadline deadline=60.0 safety_net=3600.0
+[    0.002s] limb.spawned        4972fd 
+[    0.107s] result.verdict      4972fd  entscheidung=accept
+======================================================================
+ERROR: tests.test_ciel_mcp_nodes (unittest.loader._FailedTest.tests.test_ciel_mcp_nodes)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: tests.test_ciel_mcp_nodes
+Traceback (most recent call last):
+  File "/usr/lib/python3.11/unittest/loader.py", line 407, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/unittest/loader.py", line 350, in _get_module_from_name
+    __import__(name)
+  File "/home/user/NIO/tests/test_ciel_mcp_nodes.py", line 23, in <module>
+    import pytest
+ModuleNotFoundError: No module named 'pytest'
+
+
+----------------------------------------------------------------------
+Ran 662 tests in 47.936s
+
+FAILED (errors=1, skipped=20)
+[not-aus] gesetzt: Laufende Limbs enden, neue werden abgelehnt.
+[not-aus] aufgehoben.
+[not-aus] aufgehoben.
+make: *** [Makefile:26: test-core] Error 1
+exit=2

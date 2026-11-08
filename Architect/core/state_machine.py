@@ -1,5 +1,6 @@
 from enum import Enum, auto
 
+
 class SystemExecutionState(Enum):
     PLANNING = auto()
     DISPATCHED = auto()

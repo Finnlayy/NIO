@@ -9,10 +9,14 @@ import {
   CornerDownLeft,
   Eraser,
   ListFilter,
+  LoaderCircle,
+  Mic,
+  Square,
   TerminalSquare,
   X,
 } from "lucide-react";
 import { COMMANDS } from "./commands";
+import { joinDictation, useDictation } from "./dictation";
 import { useApolloStore, type LogEntry } from "./store";
 import { Badge, Segmented, type Tone } from "./ui";
 import type { TerminalMode } from "./types";
@@ -43,6 +47,7 @@ export function HybridTerminal() {
   const runCommand = useApolloStore((s) => s.runCommand);
   const clear = useApolloStore((s) => s.clearTerminal);
   const busy = useApolloStore((s) => s.busy);
+  const setSpeech = useApolloStore((s) => s.setSpeech);
 
   const [input, setInput] = useState("");
   const [history, setHistory] = useState<string[]>([]);
@@ -53,6 +58,23 @@ export function HybridTerminal() {
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const dictation = useDictation((text) => {
+    const joined = joinDictation(inputRef.current?.value ?? "", text);
+    if (joined === null) dictation.reject("approvals are typed, not dictated");
+    else setInput(joined);
+    inputRef.current?.focus({ preventScroll: true });
+  });
+  const { cancel: cancelDictation, probe: probeDictation, speech } = dictation;
+
+  useEffect(() => {
+    if (open) void probeDictation();
+    else cancelDictation();
+  }, [open, cancelDictation, probeDictation]);
+
+  useEffect(() => {
+    setSpeech(speech);
+  }, [speech, setSpeech]);
 
   useEffect(() => {
     if (!open) return;
@@ -97,7 +119,8 @@ export function HybridTerminal() {
       return;
     }
     setInput("");
-    setHistory((prev) => [...prev.slice(-49), text]);
+    /* /resume carries the operator PIN, which must not come back on ArrowUp. */
+    if (!/^\/resume\b/i.test(text)) setHistory((prev) => [...prev.slice(-49), text]);
     setHistoryIndex(-1);
     setPinned(true);
     await runCommand(text);
@@ -189,7 +212,7 @@ export function HybridTerminal() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <div className="w-[168px]">
             <Segmented<TerminalMode>
               label="Terminal mode"
@@ -238,10 +261,10 @@ export function HybridTerminal() {
           <button
             type="button"
             onClick={() => setOpen(false)}
-            aria-label="Close terminal"
-            className="grid h-6 w-6 place-items-center rounded-md border border-white/10 text-slate-400 transition-colors hover:text-slate-100"
+            aria-label="Zurück zu Apollo (Terminal schließen)"
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-white/10 px-2.5 text-xs text-slate-300 transition-colors hover:text-slate-100"
           >
-            <X size={12} />
+            <X size={12} aria-hidden="true" /> Zurück zu Apollo
           </button>
         </div>
       </header>
@@ -315,12 +338,59 @@ export function HybridTerminal() {
       )}
 
       <div className="border-t border-white/[0.07] bg-black/30 p-2.5">
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-300">
+          <label className="flex items-center gap-1.5">
+            Speech
+            <select
+              aria-label="Speech input mode"
+              value={dictation.mode}
+              disabled={dictation.state !== "idle"}
+              onChange={(event) => {
+                dictation.clearError();
+                dictation.setMode(event.target.value as "local" | "browser");
+              }}
+              className="rounded border border-white/15 bg-[#101725] px-2 py-1 disabled:opacity-50"
+            >
+              <option value="local">Local engine{dictation.engine === "offline" ? " (offline)" : ""}</option>
+              <option value="browser" disabled={!dictation.browserSupported}>Browser speech{!dictation.browserSupported ? " (unsupported)" : ""}</option>
+            </select>
+          </label>
+          {dictation.mode === "browser" && (
+            <select
+              aria-label="Dictation language"
+              value={dictation.language}
+              disabled={dictation.state !== "idle"}
+              onChange={(event) => dictation.setLanguage(event.target.value)}
+              className="rounded border border-white/15 bg-[#101725] px-2 py-1"
+            >
+              <option value="en-US">English</option>
+              <option value="de-DE">Deutsch</option>
+            </select>
+          )}
+          <a href="/apollo" target="_blank" rel="noopener noreferrer" className="ml-auto text-cyan-300 underline underline-offset-2">
+            Open in new tab for microphone access ↗
+          </a>
+        </div>
+        {dictation.mode === "local" && dictation.engine === "offline" ? (
+          <p className="mb-2 text-[11px] text-amber-200" role="status">
+            Local speech engine is offline. {dictation.browserSupported ? (
+              <button type="button" onClick={() => { dictation.clearError(); dictation.setMode("browser"); }} className="underline underline-offset-2">
+                Use browser speech instead
+              </button>
+            ) : "Use Chrome/Edge for browser speech, or configure STT_ENDPOINT_URL."}
+          </p>
+        ) : dictation.mode === "browser" ? (
+          <p className="mb-2 text-[11px] text-slate-400">Browser speech may send audio to your browser provider. Click Dictate, say e.g. “slash help”, then review the text and press Send.</p>
+        ) : null}
         <div className="flex items-center gap-2">
           <span className="select-none font-mono text-[12px] text-emerald-300">›</span>
           <input
             ref={inputRef}
             value={input}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(event) => {
+              setInput(event.target.value);
+              dictation.clearError();
+            }}
             onKeyDown={onKeyDown}
             placeholder={busy ? "apollo is working…" : "ask apollo, or /spawn inference Vision Cortex"}
             aria-label="Apollo terminal input"
@@ -329,6 +399,29 @@ export function HybridTerminal() {
             className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-slate-100 outline-none placeholder:text-slate-400"
             data-testid="terminal-input"
           />
+          <button
+            type="button"
+            onClick={dictation.toggle}
+            disabled={dictation.state === "transcribing"}
+            aria-label={dictation.state === "recording" ? "Stop dictation" : "Start dictation"}
+            aria-pressed={dictation.state === "recording"}
+            title={dictation.state === "recording" ? "Stop dictation" : "Dictate"}
+            data-testid="terminal-mic"
+            className={`flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border px-2 text-[11px] transition-colors disabled:opacity-40 ${
+              dictation.state === "recording"
+                ? "border-rose-400/60 text-rose-300"
+                : "border-white/10 text-slate-400 hover:border-cyan-400/40 hover:text-cyan-200"
+            }`}
+          >
+            {dictation.state === "recording" ? (
+              <Square size={10} />
+            ) : dictation.state === "transcribing" ? (
+              <LoaderCircle size={11} className="animate-spin" />
+            ) : (
+              <Mic size={14} />
+            )}
+            {dictation.state === "recording" ? "Stop" : dictation.state === "transcribing" ? "Wait" : "Dictate"}
+          </button>
           <button
             type="button"
             onClick={() => void submit()}
@@ -340,9 +433,22 @@ export function HybridTerminal() {
             <CornerDownLeft size={11} />
           </button>
         </div>
-        <div className="mt-1 flex items-center justify-between font-mono text-[8.5px] uppercase tracking-[0.14em] text-slate-400">
-          <span aria-live="polite" className={blocked ? "text-amber-300" : undefined}>
-            {blocked ? "mid-turn · command held" : busy ? "apollo is working · input held" : "↑↓ history · tab complete · /help"}
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-1 font-mono text-[8.5px] uppercase tracking-[0.14em] text-slate-400">
+          <span
+            aria-live="polite"
+            className={dictation.error ? "text-rose-300" : blocked ? "text-amber-300" : undefined}
+            data-testid="terminal-status"
+          >
+            {dictation.error ??
+              (dictation.state === "recording"
+                ? "listening · click stop when done"
+                : dictation.state === "transcribing"
+                  ? "transcribing…"
+                  : blocked
+                    ? "mid-turn · command held"
+                    : busy
+                      ? "apollo is working · input held"
+                      : "↑↓ history · tab complete · /help")}
           </span>
           <span className="flex items-center gap-1"><ListFilter size={8} /> {entries.length} entries</span>
         </div>

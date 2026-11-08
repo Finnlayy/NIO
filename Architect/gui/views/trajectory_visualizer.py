@@ -7,11 +7,8 @@ Architect/docs/DIVERGENCES.md); data preparation lives in the headless
 `TrajectoryModel` so it is testable without PyQt6.
 """
 
-import logging
 import datetime
-
-from core.trajectory.trajectory_collector import TrajectoryPoint
-from core.state_machine import SystemExecutionState
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +31,7 @@ class TrajectoryModel:
     def build(cls, trajectory_points: list) -> dict:
         """Return {points: [{x, y, state, event_ids, event_kind, timestamp}],
         transitions: [{from, to, x}], states: STATE_ORDER}."""
-        points = [p for p in (trajectory_points or [])]
+        points = list(trajectory_points or [])
         if not points:
             return {"points": [], "transitions": [], "states": STATE_ORDER}
 
@@ -45,7 +42,7 @@ class TrajectoryModel:
         model_points = []
         transitions = []
         prev_state = None
-        for point, t in zip(points, times):
+        for point, t in zip(points, times, strict=False):
             state = str(cls._field(point, "state", "PLANNING"))
             x = (t - t_min) / span
             y = STATE_ORDER.index(state) / (len(STATE_ORDER) - 1) if state in STATE_ORDER else 0.0
@@ -79,9 +76,8 @@ class TrajectoryModel:
 # ---- PyQt6 shell (import-guarded) ---------------------------------------------
 
 try:  # pragma: no cover - exercised only when PyQt6 is installed
-    from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
-    from PyQt6.QtGui import QPainter, QColor, QPen
-    from PyQt6.QtCore import Qt
+    from PyQt6.QtGui import QColor, QPainter, QPen
+    from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
     PYQT6_AVAILABLE = True
 except ImportError:  # pragma: no cover
@@ -93,7 +89,7 @@ if PYQT6_AVAILABLE:
     class TrajectoryVisualizer(QWidget):
         """Timeline widget: x = time, y = execution state; transitions highlighted."""
 
-        STATE_COLORS = {
+        STATE_COLORS = {  # noqa: RUF012
             "PLANNING": QColor("#F28C00"),
             "DISPATCHED": QColor("#FFD600"),
             "RUNNING": QColor("#00C176"),
@@ -121,7 +117,7 @@ if PYQT6_AVAILABLE:
             self.highlighted_event_ids = set(event_ids or [])
             self.update()
 
-        def paintEvent(self, event):  # noqa: N802 (Qt naming)
+        def paintEvent(self, event):
             painter = QPainter(self)
             painter.fillRect(self.rect(), QColor("#000000"))
             w, h = self.width(), self.height()

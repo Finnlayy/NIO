@@ -1,6 +1,7 @@
-import sys
 import asyncio
-from core.state_machine import SystemExecutionState, MarketRegimeState
+import sys
+
+from core.state_machine import MarketRegimeState, SystemExecutionState
 
 try:
     from core.daemon_supervisor import DaemonSupervisor
@@ -23,7 +24,7 @@ def test_imports():
     assert SystemExecutionState.PLANNING in TRANSITION_MAP
     assert "plan_approved" in TRANSITION_MAP[SystemExecutionState.PLANNING]["triggers"]
     # Event bus whitelist (Phase 3/4/5 kinds)
-    from core.events import EventBus, VALID_EVENT_KINDS
+    from core.events import VALID_EVENT_KINDS, EventBus
     for kind in ("execution_complete", "feedback_submitted", "model_updated",
                  "trajectory_collected", "alignment_updated", "review_due",
                  "risk_guard_failed"):
@@ -50,7 +51,7 @@ def test_imports():
     assert cfg.eval_name == "smoke"
     assert mean_aggregator([100.0, 50.0]) == 75.0
     # Phase 5 collectors/engines import cleanly
-    from core.trajectory.trajectory_collector import TrajectoryCollector, TrajectoryPoint
+    from core.trajectory.trajectory_collector import TrajectoryPoint
     point = TrajectoryPoint(timestamp="t", state="RUNNING")
     assert point.state == "RUNNING"
     from core.alignment.alignment_tracker import AlignmentTracker

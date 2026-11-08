@@ -1,10 +1,11 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import tempfile
 import json
+import tempfile
 from pathlib import Path
 
 from core.feedback_processor import FeedbackProcessor
@@ -107,7 +108,7 @@ class TestFeedbackProcessor(unittest.TestCase):
         aggregate_result = {"count": 1, "average_rating": 4.0}
         path = self.processor.save_aggregate("job_100", aggregate_result)
         self.assertTrue(Path(path).exists())
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             stored = json.load(f)
         self.assertEqual(stored["outcome_id"], "job_100")
 

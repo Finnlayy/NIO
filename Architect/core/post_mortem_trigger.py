@@ -1,7 +1,7 @@
+import datetime
+import json
 import logging
 from pathlib import Path
-import json
-import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +23,12 @@ class PostMortemTrigger:
         timeout_occurred = execution_result.get("timeout", False)
         safety_net_activated = execution_result.get("safety_net_activated", False)
 
-        triggered = (
+        return (
             verdict == "rejected"
             or len(errors) > 0
             or timeout_occurred
             or safety_net_activated
         )
-        return triggered
 
     def trigger(self, post_mortem_data: dict) -> dict:
         """Execute post-mortem: emit event, call GenAI reflection, save result."""

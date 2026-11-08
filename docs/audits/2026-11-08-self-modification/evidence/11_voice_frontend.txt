@@ -1,0 +1,21 @@
+7:/* side effect, so every command can be tested without a DOM.            */
+16:  | { kind: "sandbox-exec"; command: string }
+20:    | { kind: "agent"; command: string }
+33:  { command: "/spawn", usage: "/spawn <type> <name>", detail: "Lymp mitosis: grow a new neural node" },
+34:  { command: "/dispatch", usage: "/dispatch <node_id> <json>", detail: "fire an axon impulse from Apollo" },
+35:  { command: "/failover", usage: "/failover simulate", detail: "drain the primary quota, hot-swap to FreeLLMAPI" },
+36:  { command: "/router", usage: "/router status", detail: "providers, pool estimates, score ranking" },
+37:  { command: "/config", usage: "/config set <key> <value>", detail: "mutate Apollo runtime parameters" },
+38:  { command: "/sandbox", usage: "/sandbox exec <cmd>", detail: "run a read-only command in the sandbox jail" },
+39:  { command: "/note", usage: "/note <text>", detail: "save a note to the vault inbox (works with dictation)" },
+40:  { command: "/vault", usage: "/vault <search>", detail: "search the Obsidian vault" },
+41:  { command: "/clear", usage: "/clear", detail: "flush terminal history" },
+42:    { command: "/agent", usage: "/agent", detail: "list Kanban workers" },
+43:  { command: "/tasks", usage: "/tasks", detail: "Agentenaufgaben mit echtem Ergebnis oder Fehlerstatus" },
+44:  { command: "/runs", usage: "/runs", detail: "list recent agent runs" },
+45:  { command: "/approve", usage: "/approve", detail: "approve pending action" },
+46:  { command: "/deny", usage: "/deny", detail: "deny pending action" },
+47:  { command: "/stop", usage: "/stop", detail: "emergency stop" },
+48:  { command: "/stopall", usage: "/stopall", detail: "emergency stop all runs" },
+49:  { command: "/resume", usage: "/resume <pin>", detail: "resume operations" },
+178:  return kanbanRequest<{ id: string }>("/api/v1/kanban/tasks", "POST", {
