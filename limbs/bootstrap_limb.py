@@ -306,7 +306,7 @@ def _optional_int(params: Mapping[str, Any], key: str, default: int, *, minimum:
         raise LimbError(ErrorCode.SCHEMA_INVALID, f"params.{key} muss eine Ganzzahl sein.")
     if not minimum <= value <= maximum:
         raise LimbError(ErrorCode.SCHEMA_INVALID, f"params.{key}={value} liegt ausserhalb [{minimum},{maximum}].")
-    return value
+    return int(value)
 
 
 def _optional_bool(params: Mapping[str, Any], key: str, default: bool) -> bool:

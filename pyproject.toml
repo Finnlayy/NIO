@@ -102,7 +102,7 @@ ignore_errors = true
 
 # Optionale Kanban-Adapter (Extra ``kanban``): werden nur lazy importiert.
 [[tool.mypy.overrides]]
-module = ["asyncpg", "asyncpg.*", "uvicorn"]
+module = ["asyncpg", "asyncpg.*", "uvicorn", "fastapi", "fastapi.*", "pydantic"]
 ignore_missing_imports = true
 
 # Transitiv ueber fastapi/pydantic erreichbare GUI-Stubs (PIL.ImageQt -> PyQt6) sind

@@ -217,7 +217,7 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
     def task_token(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> str:  # noqa: B008
         if credentials is None or not credentials.credentials:
             raise HTTPException(status_code=401, detail="Task-Token fehlt")
-        return credentials.credentials
+        return str(credentials.credentials)
 
     # -- Boards --
     @router.get("/kanban/boards", response_model=list[BoardOut])

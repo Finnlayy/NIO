@@ -295,7 +295,7 @@ def _as_number(value: Any, path: str, *, minimum: float, maximum: float, integer
         raise ProtocolError(ErrorCode.SCHEMA_INVALID, "erwartet Ganzzahl", path)
     if not (minimum <= value <= maximum):
         raise ProtocolError(ErrorCode.SCHEMA_INVALID, f"Wert {value} ausserhalb [{minimum},{maximum}]", path)
-    return value
+    return float(value)
 
 
 def _as_dict(value: Any, path: str) -> dict[str, Any]:
