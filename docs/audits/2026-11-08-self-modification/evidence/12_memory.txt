@@ -1,0 +1,7 @@
+5:Punkt-Ordnern, geschrieben nur nach ``Inbox/``, ``workers/`` und ``tasks/``.
+46:VAULT_FOLDERS = ("Inbox", "Daily", "Knowledge", "workers", "tasks")
+47:WRITE_FOLDERS = ("Inbox", "workers", "tasks")
+173:    def capture(self, text: str, *, folder: str = "Inbox", title: str = "", source: str = "agent") -> dict[str, Any]:
+251:    description = "Obsidian-Vault: vault.ping / vault.search / vault.read / vault.capture"
+261:            "vault.capture": self._capture,
+282:            folder=str(params.get("folder", "Inbox")),

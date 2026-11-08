@@ -1,0 +1,15 @@
+### BASELINE job (intakt, frische Laufzeit)
+Genutzte Limbs         echo
+Outcome                {"intent_id": "int_20261108T122649Z_686b62", "iteration": 1, "artifacts": [], "duration_ms": 0}
+==============================================================================
+exit=0
+### EXPERIMENT B: Syntaxfehler in limbs/echo_limb.py
+Durchgaenge            1/1  (Profil dev)
+Massnahmen             0
+Wirklich failed        nein
+Genutzte Limbs         echo
+Outcome                {"reason": "Iterations-Budget erschoepft (1/1, Profil dev). Massnahme waere: Umfang halbieren und erneut ausfuehren; der Limb schreibt ausschliesslich ein JSON-Objekt auf stdout, alles andere nach stderr.", "measure_available": true, "budget_available": false, "identified_measure": "Umfang halbieren
+==============================================================================
+exit=2
+### Orchestrator-Prozess nach Limb-Fehler weiter lauffaehig?
+status_exit=0
