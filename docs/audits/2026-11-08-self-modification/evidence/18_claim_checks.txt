@@ -1,0 +1,38 @@
+== handlers for test.run / shell.exec / core.memory_write in code ==
+./core/policy.py:54:EXEC_OPERATIONS = frozenset({"shell.exec", "test.run"})
+./core/policy.py:335:                        if operation == "shell.exec" and not self.config.allow_shell_ops:
+./core/policy.py:341:                        if operation == "test.run" and not self.config.allow_test_ops:
+./core/policy.py:440:            if intent.operation == "shell.exec" and not self.config.allow_shell_ops:
+./core/policy.py:446:            if intent.operation == "test.run" and not self.config.allow_test_ops:
+exit=0
+== callers of vault.capture / vault_limb outside limb ==
+./scripts/vault_mcp.py:5:es hier nicht: Notizen legt nur ``vault.capture`` ueber den Orchestrator an.
+./scripts/vault_mcp.py:26:from limbs.vault_limb import DEFAULT_LIMIT, MAX_LIMIT, VaultStore  # noqa: E402
+== commands.ts NEU/intent refs ==
+6:/* Pure: text in, intent out. The store is what turns an intent into a   */
+33:  { command: "/spawn", usage: "/spawn <type> <name>", detail: "Lymp mitosis: grow a new neural node" },
+39:  { command: "/note", usage: "/note <text>", detail: "save a note to the vault inbox (works with dictation)" },
+54:  orchestrator: "ORCHESTRATOR",
+55:  orch: "ORCHESTRATOR",
+== kanban api auth/approval (proxy) ==
+
+  if (path.includes("..") || path.includes("%") || path.includes("\\") || path.includes("\0")) {
+    return { status: 403, body: { ok: false, error: "route not in allowlist" } };
+  }
+
+  const isApproved = (method === "POST" && path === "/api/v1/approvals/issue") ||
+                     (method === "DELETE" && path === "/api/v1/kanban/stop") ||
+                     (method === "POST" && path === "/api/v1/workers");
+
+  if (!isApproved) {
+    return { status: 403, body: { ok: false, error: "route not in secure allowlist" } };
+== worker_entry: git identity / commit? ==
+== sandbox image opencode? ==
+== git ignore docs/audits? ==
+not ignored
+== Architect tests use backup dir? ==
+16:        self.safety = SelfModificationSafety(workspace_root=str(Path(self.tmpdir) / "workspace"))
+17:        # Override backup dir
+18:        self.safety.backup_dir = Path(self.tmpdir) / "backups"
+19:        self.safety.backup_dir.mkdir(parents=True, exist_ok=True)
+21:    def test_create_backup_and_verify(self):

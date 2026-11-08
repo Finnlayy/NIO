@@ -1,0 +1,9 @@
+22:from .sync import sync_back
+243:            # Setup Git worktree
+249:                        ["git", "-C", git_repo, "worktree", "add", str(work_dir), "-b", f"kanban/{run_id}"],
+254:                    self.log.error(f"Failed to setup git worktree: {e.stderr.decode()}")
+255:                    await self.breaker.record_failure(task.id, worker.uid, "git worktree setup failed")
+295:            result = await self.sandbox.run(spec, on_heartbeat=hb_callback)
+296:            outcome = await sync_back(
+335:                        ["git", "worktree", "remove", "--force", str(work_dir)],
+340:                    self.log.warning(f"Could not remove git worktree {work_dir}: {e}")
