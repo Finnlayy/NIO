@@ -45,6 +45,7 @@ Stand: `9598911` (Merge PR #243) · Sprache: Deutsch, Code und Identifier englis
 | [`SPEECH.md`](SPEECH.md) | ~80 | Spracheingabe, speaches lokal einrichten, Speech-Limb, Sprachstatus im Orb | Nutzer, Betrieb |
 | [`DATA-FLOW.md`](DATA-FLOW.md) | ~200 | Marktdaten: MCP → Adapter → Browser; Formate und Messungen | Entwickler, Betrieb |
 | [`VAULT.md`](VAULT.md) | ~65 | Obsidian-Vault: `/note`, `/vault`, Vault-Limb, lesender MCP-Server | Nutzer, Entwickler |
+| [`REFINEMENT-VAULT.md`](REFINEMENT-VAULT.md) | ~110 | Refinement-Vault: FSM geparkter Rust-Limbs, Hintergrund-Heilung, Scheduler/Cron, Ciel-Hook | Nutzer, Entwickler, Betrieb |
 | [`TRADING-LIMB.md`](TRADING-LIMB.md) | ~230 | Sigma als Handels-Knoten; Sparse-Clone, Pin, Lifecycle | Betrieb |
 | [`EVIDENCE-HARNESS.md`](EVIDENCE-HARNESS.md) | ~650 | Masterprompt v2 für recherchende Agenten: Rollenverträge, Claim-Ledger, Fail-Closed-Gate, Ticket, Budget | Entwickler, Konzept |
 | [`helpers/HARNESS_PLAN.md`](helpers/HARNESS_PLAN.md) | ~330 | Harness-Lücken, Phasenplan und Aufteilung auf Claude und Jules | Entwickler, Betrieb |

@@ -266,6 +266,16 @@ class NeuConfig:
         return Path(self.runtime_dir) / "locks"
 
     @property
+    def refinement_vault_dir(self) -> Path:
+        """Refinement-Vault: geparkte Limbs mit FSM (``orchestrator/refinement.py``).
+
+        Eigenes Verzeichnis unter ``runtime/``, damit geparkte Artefakte nie mit
+        Job-/Schedule-Zustand verwechselt werden und der Vault per
+        ``--runtime-dir`` vollstaendig isoliert (Tests, CI) betrieben werden kann.
+        """
+        return Path(self.runtime_dir) / "refinement-vault"
+
+    @property
     def schedules_dir(self) -> Path:
         """Zustand der zeitgesteuerten Ausloeser (Protokoll 1.2).
 
