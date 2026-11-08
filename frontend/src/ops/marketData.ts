@@ -39,6 +39,8 @@ export const tickers: Ticker[] = [
   { symbol: "DOTUSDT", name: "Polkadot", price: 6.84, changePct: 6.84, decimals: 2 },
 ];
 
+const tickersMap = new Map<string, Ticker>(tickers.map(t => [t.symbol, t]));
+
 export function fmt(price: number, decimals: number) {
   return price.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
@@ -65,7 +67,7 @@ export interface GaugeData {
 
 export function gaugeFor(symbol: string, seedOffset = 0): GaugeData {
   const rnd = seededRandom(symbol.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) + seedOffset);
-  const t = tickers.find((x) => x.symbol === symbol);
+  const t = tickersMap.get(symbol);
   const score = Math.round(15 + rnd() * 80);
   const verdict = score < 25 ? "Strong Sell" : score < 42 ? "Sell" : score < 58 ? "Neutral" : score < 75 ? "Buy" : "Strong Buy";
   const buy = Math.round(rnd() * 8);
@@ -103,7 +105,7 @@ export interface KeyLevel {
 }
 
 export function keyLevelsFor(symbol: string): KeyLevel[] {
-  const t = tickers.find((x) => x.symbol === symbol);
+  const t = tickersMap.get(symbol);
   const price = t?.price ?? 100;
   const decimals = t?.decimals ?? 2;
   const rnd = seededRandom(symbol.length * 77 + Math.round(price));
@@ -135,7 +137,7 @@ export function keyLevelsFor(symbol: string): KeyLevel[] {
 }
 
 export function sparklineFor(symbol: string, points = 48, drift = 0): number[] {
-  const t = tickers.find((x) => x.symbol === symbol);
+  const t = tickersMap.get(symbol);
   const rnd = seededRandom(symbol.length * 131 + 7);
   const out: number[] = [];
   let v = 0.5;
@@ -161,7 +163,7 @@ export interface TradePlanData {
 }
 
 export function tradePlanFor(symbol: string): TradePlanData {
-  const t = tickers.find((x) => x.symbol === symbol);
+  const t = tickersMap.get(symbol);
   const price = t?.price ?? 79764;
   const decimals = t?.decimals ?? 2;
   const factor = 10 ** decimals;
