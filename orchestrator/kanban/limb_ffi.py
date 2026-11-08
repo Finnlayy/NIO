@@ -33,7 +33,7 @@ import json
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from orchestrator.ring import SharedMemoryRingSink
@@ -58,13 +58,13 @@ class LimbFFISpec:
 
 
 #: ctypes-Signatur für libc.dlclose(void *handle) -> int.
-_DlClose = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p)
+_DlCloseType = Callable[[int], int]
 
 
 class _LoadedLimb:
     """Eine im RAM geladene .so mit aufgelösten Funktionszeigern."""
 
-    def __init__(self, so_path: Path, dlclose: _DlClose) -> None:
+    def __init__(self, so_path: Path, dlclose: _DlCloseType) -> None:
         self.path = so_path
         self.lib = ctypes.CDLL(str(so_path))  # RTLD_LOCAL, RTLD_LAZY
         self._dlclose = dlclose
@@ -113,7 +113,7 @@ class _LoadedLimb:
         raw = self.lib.limb_contract_version()
         if raw is None:
             raise LimbFFIError(f"limb_contract_version gab NULL zurück ({self.path})")
-        return raw.decode("utf-8")
+        return ctypes.cast(raw, ctypes.c_char_p).value.decode("utf-8")  # type: ignore
 
     # -- Aufrufe ----------------------------------------------------------
 
@@ -157,7 +157,7 @@ class LimbHotReloader:
         libc = ctypes.CDLL(None, use_errno=True)
         libc.dlclose.argtypes = [ctypes.c_void_p]
         libc.dlclose.restype = ctypes.c_int
-        self._dlclose: _DlClose = libc.dlclose
+        self._dlclose: _DlCloseType = libc.dlclose
         self.load(Path(so_path))
 
     # -- Eigenschaften ----------------------------------------------------
@@ -247,7 +247,8 @@ def process_intent_file(
     payload = json.dumps(params, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     out = reloader.process_payload(payload)
     try:
-        return json.loads(out.decode("utf-8"))
+        result: dict[str, Any] = json.loads(out.decode("utf-8"))
+        return result
     except json.JSONDecodeError:
         return {"raw": out.decode("utf-8", errors="replace")}
 
