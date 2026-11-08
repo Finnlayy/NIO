@@ -1,3 +1,3 @@
-## 2024-05-18 - [UI Aesthetic Insight]
-**Learning:** Found raw inline styles for colors and dark background with missing font-mono in numerical data inside TradePlan.tsx. This breaks the Dark-Glassmorphism standard.
-**Action:** Replaced inline styles with semantic Tailwind tokens (bg-[#0a0a0c]/80 backdrop-blur-md) and enforced font-mono tabular-nums on Stat component.
+## 2026-11-08 - [UI Aesthetic Insight]
+**Learning:** Found raw hardcoded hex colors and inline styling violating the Dark-Glassmorphism token standards in KeyLevelsTable. Raw hex values like #f87171, #34d399, and inline color interpolations bypass Tailwind's utility class advantages.
+**Action:** Enforce strict usage of semantic Tailwind tokens (e.g. text-rose-400, bg-emerald-400/20) and restrict inline styles purely to dynamic layout transformations (e.g., width computation).
