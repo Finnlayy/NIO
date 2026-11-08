@@ -58,7 +58,7 @@ class LimbFFISpec:
 
 
 #: ctypes-Signatur für libc.dlclose(void *handle) -> int.
-_DlClose = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p)
+_DlClose = Any
 
 
 class _LoadedLimb:
@@ -113,7 +113,7 @@ class _LoadedLimb:
         raw = self.lib.limb_contract_version()
         if raw is None:
             raise LimbFFIError(f"limb_contract_version gab NULL zurück ({self.path})")
-        return raw.decode("utf-8")
+        return str(raw.decode("utf-8"))
 
     # -- Aufrufe ----------------------------------------------------------
 
@@ -141,10 +141,8 @@ class _LoadedLimb:
 
     def _dispose(self) -> None:
         self.shutdown()
-        try:
+        with contextlib.suppress(Exception):
             self._dlclose(self.handle())
-        except Exception:
-            pass
         self._configured = False
 
 
@@ -249,13 +247,13 @@ def process_intent_file(
     payload = json.dumps(params, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     out = reloader.process_payload(payload)
     try:
-        return json.loads(out.decode("utf-8"))
+        return dict(json.loads(out.decode("utf-8")))
     except json.JSONDecodeError:
         return {"raw": out.decode("utf-8", errors="replace")}
 
 
 def write_lock_around(
-    sink: "SharedMemoryRingSink",
+    sink: SharedMemoryRingSink,
     reloader: LimbHotReloader,
     new_so_path: str | Path,
 ) -> LimbFFISpec:

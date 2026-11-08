@@ -107,7 +107,7 @@ def _compile_cc(source: str, out_path: Path) -> None:
     )
 
 
-@unittest.skipUnless(_HAS_GCC, "gcc/cc nicht verfügbar – FFI-Hot-Reload-Tests übersprungen")
+@unittest.skipUnless(_HAS_GCC, "gcc/cc nicht verfügbar - FFI-Hot-Reload-Tests übersprungen")
 class LimbHotReloadTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -242,7 +242,7 @@ class RingWriteLockTest(unittest.TestCase):
                 try:
                     blocked.set()          # kurz davor, den Ring-Lock zu brauchen
                     sink.write({"event": "waehrend-der-sperre"})
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     result[0] = exc
                 finally:
                     done.set()
