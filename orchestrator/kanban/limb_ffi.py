@@ -31,6 +31,7 @@ import contextlib
 import ctypes
 import json
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -57,8 +58,8 @@ class LimbFFISpec:
     contract_version: str
 
 
-#: ctypes-Signatur für libc.dlclose(void *handle) -> int.
-_DlClose = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p)
+#: libc.dlclose(void *handle) -> int, als ctypes-Funktion aus dem Hauptprozess.
+_DlClose = Callable[[int], int]
 
 
 class _LoadedLimb:
@@ -113,7 +114,8 @@ class _LoadedLimb:
         raw = self.lib.limb_contract_version()
         if raw is None:
             raise LimbFFIError(f"limb_contract_version gab NULL zurück ({self.path})")
-        return raw.decode("utf-8")
+        version: str = raw.decode("utf-8")
+        return version
 
     # -- Aufrufe ----------------------------------------------------------
 
@@ -141,10 +143,8 @@ class _LoadedLimb:
 
     def _dispose(self) -> None:
         self.shutdown()
-        try:
+        with contextlib.suppress(Exception):
             self._dlclose(self.handle())
-        except Exception:
-            pass
         self._configured = False
 
 
@@ -249,13 +249,14 @@ def process_intent_file(
     payload = json.dumps(params, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     out = reloader.process_payload(payload)
     try:
-        return json.loads(out.decode("utf-8"))
+        result: dict[str, Any] = json.loads(out.decode("utf-8"))
+        return result
     except json.JSONDecodeError:
         return {"raw": out.decode("utf-8", errors="replace")}
 
 
 def write_lock_around(
-    sink: "SharedMemoryRingSink",
+    sink: SharedMemoryRingSink,
     reloader: LimbHotReloader,
     new_so_path: str | Path,
 ) -> LimbFFISpec:
