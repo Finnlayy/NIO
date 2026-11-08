@@ -31,9 +31,10 @@ import contextlib
 import ctypes
 import json
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from orchestrator.ring import SharedMemoryRingSink
