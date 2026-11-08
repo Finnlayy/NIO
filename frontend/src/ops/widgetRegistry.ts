@@ -178,9 +178,16 @@ export const widgetTemplates: WidgetTemplate[] = [
   },
 ];
 
+const byKeyMap = new Map<string, WidgetTemplate>();
+const byIdMap = new Map<WidgetTemplate["id"], WidgetTemplate>();
+
+for (const tpl of widgetTemplates) {
+  byKeyMap.set(tpl.key, tpl);
+  byIdMap.set(tpl.id, tpl);
+}
+
 export const templateByKey = (key: string) =>
-  widgetTemplates.find((t) => t.key === key) ??
-  widgetTemplates.find((t) => t.id === key);
+  byKeyMap.get(key) ?? byIdMap.get(key as WidgetTemplate["id"]);
 
 export const templateById = (id: WidgetTemplate["id"]) =>
-  widgetTemplates.find((t) => t.id === id);
+  byIdMap.get(id);
