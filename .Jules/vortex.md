@@ -6,3 +6,10 @@
 ## 2026-11-02 - [Graphics / Rendering Insight]
 **Learning:** Animating `width` via CSS transitions (`transition-[width]`) in the Apollo orchestrator UI triggers synchronous layout recalculations and CPU layout thrashing.
 **Action:** Replaced `width` animations with `transform: scaleX(...)` and `transformOrigin: left` combined with `transition-transform` to offload animations to the GPU composite layer and maintain 120 FPS frame budgets.
+## 2026-11-09 - [Graphics / Rendering Insight]
+**Learning:** Animating  or using `transition-[max-height,...]` triggers synchronous layout recalculations and CPU layout thrashing, even when restricted to specific properties.
+**Action:** Replaced `max-height` animations with `transform: scaleY()` combined with `origin-top` and `transition-[transform,opacity,...]` to fully offload animations to the GPU composite layer and maintain 120 FPS frame budgets.
+
+## 2024-05-24 - [Graphics / Rendering Insight]
+**Learning:** Animating `max-height` or using `transition-[max-height,...]` triggers synchronous layout recalculations and CPU layout thrashing, even when restricted to specific properties.
+**Action:** Replaced `max-height` animations with `transform: scaleY()` combined with `origin-top` and `transition-[transform,opacity,...]` to fully offload animations to the GPU composite layer and maintain 120 FPS frame budgets.
