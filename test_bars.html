@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+.flex { display: flex; }
+.relative { position: relative; }
+.absolute { position: absolute; }
+.h { height: 20px; }
+.w-full { width: 100%; }
+.bg-rose { background: #f87171; }
+.bg-slate { background: #64748b; }
+.bg-emerald { background: #34d399; }
+</style>
+</head>
+<body style="width: 300px; background: #000;">
+
+  <!-- Current PatternScanner/NewsSentiment (Broken flex scale) -->
+  <div class="flex h" style="margin-bottom: 20px;">
+    <div class="bg-rose" style="width: 100%; transform: scaleX(0.2); transform-origin: left;"></div>
+    <div class="bg-slate" style="width: 100%; transform: scaleX(0.5); transform-origin: left;"></div>
+    <div class="bg-emerald" style="width: 100%; transform: scaleX(0.3); transform-origin: left;"></div>
+  </div>
+
+  <!-- Fixed relative stacked bars -->
+  <div class="relative h w-full">
+    <!-- Base layer (positive) -->
+    <div class="absolute w-full h bg-emerald" style="transform: scaleX(1); transform-origin: left;"></div>
+    <!-- Middle layer (neutral + negative) -->
+    <div class="absolute w-full h bg-slate" style="transform: scaleX(0.7); transform-origin: left;"></div>
+    <!-- Top layer (negative) -->
+    <div class="absolute w-full h bg-rose" style="transform: scaleX(0.2); transform-origin: left;"></div>
+  </div>
+
+</body>
+</html>
