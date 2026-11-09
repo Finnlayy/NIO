@@ -2,12 +2,12 @@ import type { KeyLevel } from "../marketData";
 import { fmt } from "../marketData";
 import { Insight } from "./bits";
 
-const kindColor: Record<KeyLevel["kind"], string> = {
-  resistance: "#f87171",
-  support: "#34d399",
-  poc: "#34d399",
-  user: "#60a5fa",
-  now: "#818cf8",
+const kindTokens: Record<KeyLevel["kind"], { text: string; bg: string; border: string }> = {
+  resistance: { text: "text-rose-400", bg: "bg-rose-400/20", border: "border-rose-400" },
+  support: { text: "text-emerald-400", bg: "bg-emerald-400/20", border: "border-emerald-400" },
+  poc: { text: "text-emerald-400", bg: "bg-emerald-400/20", border: "border-emerald-400" },
+  user: { text: "text-blue-400", bg: "bg-blue-400/20", border: "border-blue-400" },
+  now: { text: "text-indigo-400", bg: "bg-indigo-400/20", border: "border-indigo-400" },
 };
 
 export function KeyLevelsTable({ data, symbol }: { data: Record<string, unknown>; symbol?: string }) {
@@ -17,13 +17,13 @@ export function KeyLevelsTable({ data, symbol }: { data: Record<string, unknown>
     <div className="flex flex-col h-full">
       <div className="space-y-[7px]">
         {levels.map((lvl, i) => {
-          const color = kindColor[lvl.kind];
+          const tokens = kindTokens[lvl.kind];
           const isNow = lvl.kind === "now";
+          const textToken = isNow ? "text-indigo-400" : tokens.text;
           return (
             <div key={`${lvl.label}-${i}`} className="flex items-center gap-2 text-[11px]">
               <span
-                className="w-24 shrink-0 truncate font-medium flex items-center gap-1.5"
-                style={{ color: isNow ? "#818cf8" : color }}
+                className={`w-24 shrink-0 truncate font-medium flex items-center gap-1.5 ${textToken}`}
               >
                 {lvl.kind === "user" && <span className="text-[8px] px-1 rounded bg-blue-500/20 text-blue-300">YOURS</span>}
                 {lvl.label}
@@ -33,12 +33,10 @@ export function KeyLevelsTable({ data, symbol }: { data: Record<string, unknown>
                   <span className="absolute inset-x-0 top-1/2 border-t border-dashed border-indigo-400/70" />
                 ) : (
                   <span
-                    className="absolute top-1/2 -translate-y-1/2 rounded-[2px] border"
+                    className={`absolute top-1/2 -translate-y-1/2 rounded-[2px] border ${tokens.border} ${tokens.bg}`}
                     style={{
                       width: `${Math.max(10, lvl.width * 100)}%`,
                       marginLeft: lvl.distancePct < 0 ? `${Math.max(0, (1 - lvl.width) * 100 - 40)}%` : "0",
-                      borderColor: color,
-                      background: `${color}22`,
                       height: "8px",
                     }}
                   />
@@ -48,8 +46,7 @@ export function KeyLevelsTable({ data, symbol }: { data: Record<string, unknown>
                 {fmt(lvl.price, lvl.price > 100 ? 2 : 4)}
               </span>
               <span
-                className="w-14 text-right font-mono tabular-nums shrink-0"
-                style={{ color: lvl.distancePct >= 0 ? "#f87171" : "#34d399" }}
+                className={`w-14 text-right font-mono tabular-nums shrink-0 ${lvl.distancePct >= 0 ? "text-rose-400" : "text-emerald-400"}`}
               >
                 {lvl.distancePct >= 0 ? "+" : ""}
                 {lvl.distancePct.toFixed(2)}%
