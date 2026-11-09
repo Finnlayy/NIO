@@ -9,7 +9,7 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   return FORM_TAGS.has(el.tagName) || Boolean(el.isContentEditable);
 }
 
-export type OpsHotkey = "toggle-console" | "toggle-gallery" | "close-panels" | null;
+export type OpsHotkey = "toggle-console" | "toggle-gallery" | "close-panels" | "execute-task" | null;
 
 export function opsHotkey(e: {
   key: string;
@@ -20,6 +20,7 @@ export function opsHotkey(e: {
   const mod = e.metaKey || e.ctrlKey;
   if (mod && key === "k") return "toggle-console";
   if (mod && key === "g") return "toggle-gallery";
+  if (mod && key === "Enter") return "execute-task";
   if (key === "Escape") return "close-panels";
   return null;
 }
