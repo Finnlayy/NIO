@@ -1,0 +1,47 @@
+### FULL OUTPUT Experiment B
+exit=2
+==============================================================================
+Durchgang              1/1  (Job job_20261108T122653Z_fbefe2)
+Intent                 int_20261108T122653Z_7c875c
+Operation              sys.echo  ->  Limb 'echo'
+Timer                  mode=deadline deadline=60.0s soft=45.0s armed_at=2026-11-08T12:26:53.742Z expires_at=2026-11-08T12:27:53.742Z
+Ergebnis               status=failed  dauer=0 ms  exit=1
+Zeit                   t_unlimited=Nones  verbleibend=59984 ms  ueberzug=0 ms  self_reported=False
+Verdict                needs_correction  next=iterate_autodidactic
+Fehler                 E_LIMB_CRASH: Limb lieferte kein gueltiges Result auf stdout (exit=1).
+  Hinweis                Ein Limb darf auf stdout nur genau ein JSON-Objekt schreiben; Logs gehoeren nach stderr.
+Diagnose               E_LIMB_CRASH
+  Ursache                Limb lieferte kein protokollkonformes Result: Limb lieferte kein gueltiges Result auf stdout (exit=1).
+  Massnahme              Umfang halbieren und erneut ausfuehren; der Limb schreibt ausschliesslich ein JSON-Objekt auf stdout, alles andere nach stderr.
+Begruendung            Ausfuehrung fehlgeschlagen: E_LIMB_CRASH -- Limb lieferte kein gueltiges Result auf stdout (exit=1).
+Archiv                 /tmp/neo_c/runtime/archive/2026-11-08/int_20261108T122653Z_7c875c
+==============================================================================
+==============================================================================
+Job                    job_20261108T122653Z_fbefe2
+Ziel                   Probe3
+Status                 failed (budget_exhausted)
+Durchgaenge            1/1  (Profil dev)
+Massnahmen             0
+Wirklich failed        nein
+Genutzte Limbs         echo
+Outcome                {"reason": "Iterations-Budget erschoepft (1/1, Profil dev). Massnahme waere: Umfang halbieren und erneut ausfuehren; der Limb schreibt ausschliesslich ein JSON-Objekt auf stdout, alles andere nach stderr.", "measure_available": true, "budget_available": false, "identified_measure": "Umfang halbieren
+==============================================================================
+--- stderr ---
+{"seq":1,"timestamp":"2026-11-08T12:26:53.741Z","kind":"job.created","job_id":"job_20261108T122653Z_fbefe2","trace_id":"","intent_id":"","limb":"echo","clock_s":0.0,"payload":{"goal":"Probe3","max_iterations":1,"mode":"dev","kind":"job","timer_mode":"deadline","t0":"2026-11-08T12:26:53.741Z","deadline_s":60.0,"safety_net_s":3600.0,"schedule":"keine zeitgesteuerten Ausloeser","parent_job_id":"","trigger_id":""}}
+{"seq":2,"timestamp":"2026-11-08T12:26:53.742Z","kind":"job.iteration.started","job_id":"job_20261108T122653Z_fbefe2","trace_id":"job_20261108T122653Z_fbefe2","intent_id":"int_20261108T122653Z_7c875c","limb":"echo","clock_s":null,"payload":{"iteration":1,"max_iterations":1,"operation":"sys.echo","limb":"echo"}}
+{"seq":3,"timestamp":"2026-11-08T12:26:53.742Z","kind":"intent.accepted","job_id":"job_20261108T122653Z_fbefe2","trace_id":"job_20261108T122653Z_fbefe2","intent_id":"int_20261108T122653Z_7c875c","limb":"echo","clock_s":null,"payload":{"operation":"sys.echo","limb":"echo","iteration":1,"elevation":"none","timer_mode":"deadline","deadline_s":60.0,"safety_net_s":3600.0,"slot_kind":"job"}}
+{"seq":4,"timestamp":"2026-11-08T12:26:53.742Z","kind":"policy.decided","job_id":"job_20261108T122653Z_fbefe2","trace_id":"job_20261108T122653Z_fbefe2","intent_id":"int_20261108T122653Z_7c875c","limb":"echo","clock_s":null,"payload":{"allowed":true,"code":"","reason":"","sandbox_root":"workspace","resolved_targets":[],"warnings":[]}}
+{"seq":5,"timestamp":"2026-11-08T12:26:53.742Z","kind":"timer.armed","job_id":"job_20261108T122653Z_fbefe2","trace_id":"job_20261108T122653Z_fbefe2","intent_id":"int_20261108T122653Z_7c875c","limb":"echo","clock_s":0.001,"payload":{"mode":"deadline","t0":"2026-11-08T12:26:53.742Z","armed_at":"2026-11-08T12:26:53.742Z","soft_expires_at":"2026-11-08T12:27:38.742Z","expires_at":"2026-11-08T12:27:53.742Z","deadline_s":60.0,"soft_deadline_s":45.0,"grace_s":5.0,"safety_net_s":3600.0,"hard_timeout_s":65.0,"triggers":[]}}
+{"seq":6,"timestamp":"2026-11-08T12:26:53.743Z","kind":"agent.lock.acquired","job_id":"job_20261108T122653Z_fbefe2","trace_id":"job_20261108T122653Z_fbefe2","intent_id":"int_20261108T122653Z_7c875c","limb":"echo","clock_s":0.001,"payload":{"index":0,"path":"/tmp/neo_c/runtime/locks/agent-0.lock","job_id":"job_20261108T122653Z_fbefe2","pid":2765,"acquired_at":"2026-11-08T12:26:53.743Z","expires_at":"2026-11-08T12:28:03.743Z","kind":"job"}}
+{"seq":7,"timestamp":"2026-11-08T12:26:53.745Z","kind":"limb.spawned","job_id":"job_20261108T122653Z_fbefe2","trace_id":"job_20261108T122653Z_fbefe2","intent_id":"int_20261108T122653Z_7c875c","limb":"echo","clock_s":0.003,"payload":{"argv":["/usr/bin/python3","/tmp/neo_c/limbs/echo_limb.py","--intent","/tmp/neo_c/runtime/inbox/echo/int_20261108T122653Z_7c875c.json","--iteration","1","--repo-root","/tmp/neo_c","--profile","dev"],"hard_timeout_s":65.0}}
+{"seq":8,"timestamp":"2026-11-08T12:26:53.758Z","kind":"agent.lock.released","job_id":"job_20261108T122653Z_fbefe2","trace_id":"job_20261108T122653Z_fbefe2","intent_id":"int_20261108T122653Z_7c875c","limb":"echo","clock_s":0.016,"payload":{"index":0,"kind":"job"}}
+{"seq":9,"timestamp":"2026-11-08T12:26:53.758Z","kind":"result.recorded","job_id":"job_20261108T122653Z_fbefe2","trace_id":"job_20261108T122653Z_fbefe2","intent_id":"int_20261108T122653Z_7c875c","limb":"echo","clock_s":0.016,"payload":{"status":"failed","iteration":1,"duration_ms":0,"timer_mode":"deadline","elapsed_s":null,"artifacts":[],"status_report":null,"error":{"code":"E_LIMB_CRASH","message":"Limb lieferte kein gueltiges Result auf stdout (exit=1).","hint":"Ein Limb darf auf stdout nur genau ein JSON-Objekt schreiben; Logs gehoeren nach stderr."}}}
+{"seq":10,"timestamp":"2026-11-08T12:26:53.758Z","kind":"result.verdict","job_id":"job_20261108T122653Z_fbefe2","trace_id":"job_20261108T122653Z_fbefe2","intent_id":"int_20261108T122653Z_7c875c","limb":"echo","clock_s":0.016,"payload":{"decision":"needs_correction","reasons":["Ausfuehrung fehlgeschlagen: E_LIMB_CRASH -- Limb lieferte kein gueltiges Result auf stdout (exit=1)."],"next_action":"iterate_autodidactic"}}
+{"seq":11,"timestamp":"2026-11-08T12:26:53.760Z","kind":"transport.archived","job_id":"job_20261108T122653Z_fbefe2","trace_id":"job_20261108T122653Z_fbefe2","intent_id":"int_20261108T122653Z_7c875c","limb":"echo","clock_s":0.019,"payload":{"dir":"runtime/archive/2026-11-08/int_20261108T122653Z_7c875c"}}
+{"seq":12,"timestamp":"2026-11-08T12:26:53.761Z","kind":"job.diagnosed","job_id":"job_20261108T122653Z_fbefe2","trace_id":"job_20261108T122653Z_fbefe2","intent_id":"int_20261108T122653Z_7c875c","limb":"echo","clock_s":0.019,"payload":{"diagnosis":{"code":"E_LIMB_CRASH","cause":"Limb lieferte kein protokollkonformes Result: Limb lieferte kein gueltiges Result auf stdout (exit=1).","measure":"Umfang halbieren und erneut ausfuehren; der Limb schreibt ausschliesslich ein JSON-Objekt auf stdout, alles andere nach stderr.","escalate":false,"escalation_reason":"","operation_override":null,"limb_override":null,"param_patch":{"message":"hi"},"constraint_patch":{},"elevation_patch":null,"timer_patch":{"deadline_s":75.0,"soft_deadline_s":56.25,"grace_s":5.0},"extra_acceptance":["stdout enthaelt genau ein JSON-Objekt mit protocol='neu/result'."],"forbidden_repeats":["ff0c4464c1ae91c3"]},"measure_available":true,"budget_available":false,"budget_reason":"Iterations-Budget erschoepft (1/1, Profil dev).","can_iterate":false,"reason":"Iterations-Budget erschoepft (1/1, Profil dev). Massnahme waere: Umfang halbieren und erneut ausfuehren; der Limb schreibt ausschliesslich ein JSON-Objekt auf stdout, alles andere nach stderr."}}
+{"seq":13,"timestamp":"2026-11-08T12:26:53.762Z","kind":"job.finished","job_id":"job_20261108T122653Z_fbefe2","trace_id":"job_20261108T122653Z_fbefe2","intent_id":"int_20261108T122653Z_7c875c","limb":"echo","clock_s":0.02,"payload":{"status":"failed","failure_kind":"budget_exhausted","iterations":1,"measures_taken":0,"t_unlimited_s":null,"ticks":0}}
+--- SyntaxError occurrences in runtime logs ---
+runtime/archive/2026-11-08/int_20261108T122653Z_7c875c/result.iteration1.json
+runtime/archive/2026-11-08/int_20261108T122653Z_7c875c/result.json
+    "stderr": "  File \"/tmp/neo_c/limbs/echo_limb.py\", line 144\n    def broken(:\n               ^\nSyntaxError: invalid syntax\n",
+    "stderr": "  File \"/tmp/neo_c/limbs/echo_limb.py\", line 144\n    def broken(:\n               ^\nSyntaxError: invalid syntax\n",

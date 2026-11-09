@@ -1,0 +1,9 @@
+26:            shutil.copy2(str(file_path), str(backup_file))
+50:    def rollback(self, file_path: Path, backup_file: Path | None = None) -> bool:
+55:            backups = list(self.backup_dir.glob(f"{file_path.name}_*.bak"))
+59:            backup_file = sorted(backups)[-1]
+66:            shutil.copy2(str(backup_file), str(file_path))
+79:    def apply_modification(self, manifest_path: str, base_dir: Path | None = None) -> tuple:
+114:                # For simplicity: assume the file content is provided externally (e.g., by bootstrap limb or external process)
+116:                # In a full implementation, the actual content patch would be applied here.
+141:            backups = list(self.backup_dir.glob(f"{file_path.name}_*.bak"))

@@ -1,0 +1,4 @@
+28:    "prompts/*",
+30:    "tests/*",
+32:    "workspace/*",
+57:    "prompts/core/kernel_system.md",

@@ -1,0 +1,213 @@
+{
+  "audit": "Self-Modification Readiness (NEU / Neo)",
+  "date": "2026-11-08",
+  "branch": "arena/20a81b7a-nio",
+  "base_commit": "2d18eebdcf2b4f7af6e5d0ee0f3bcec1b59a36f6",
+  "scope": "Repo-Zugriff, Schreibrechte, Hot-Reload, Rollback, Voice->Agent->Memory-Kette, Testbasis",
+  "status_legend": {
+    "verified": "durch Code-Lesen UND/ODER Ausfuehrung belegt (Evidenz-Datei genannt)",
+    "open": "nicht abschliessend geprueft"
+  },
+  "findings": [
+    {
+      "id": "SC-01", "area": "self_coding_readiness", "severity": "info", "status": "verified",
+      "title": "Repo-Schreibzugriff ist technisch vorhanden (repo_write-Elevation)",
+      "detail": "Policy erlaubt sandbox_root '.' bzw. elevation.level='repo_write'. Schreibpfade werden gegen allowed_repo_globs, denied_globs, human_only_globs und requested_paths geprueft.",
+      "evidence": ["evidence/01_config_policy.txt", "evidence/02_policy_code.txt"],
+      "code_refs": ["core/policy.py (resolve_path)", "neu.config.json"]
+    },
+    {
+      "id": "SC-02", "area": "self_coding_readiness", "severity": "info", "status": "verified",
+      "title": "Constitution Guard schuetzt den Orchestrator-Kern",
+      "detail": "human_only_globs enthaelt core/policy.py, core/config.py, core/kernel.py, orchestrator/runner.py, orchestrator/planner.py, limbs/registry.json, protocol/operations.json, neu.config.json, .git/*, .github/*. Freigabe nur mit approved_by=human und Ticket.",
+      "evidence": ["evidence/01_config_policy.txt", "evidence/02_policy_code.txt"],
+      "code_refs": ["neu.config.json:human_only_globs", "core/policy.py:resolve_path"]
+    },
+    {
+      "id": "SC-03", "area": "self_coding_readiness", "severity": "high", "status": "verified",
+      "title": "Testsuite, Prompts und Workspace sind selbst schreibbar (Goodhart-/Reward-Hacking-Risiko)",
+      "detail": "tests/* und prompts/* (ausser prompts/core/kernel_system.md) und workspace/* stehen in allowed_repo_globs. Ein Agent koennte Tests anpassen, bis sie gruen sind, oder Rollenprompts umschreiben. Die Verhaltensmessung ist damit nicht unabhaengig vom Agenten.",
+      "evidence": ["evidence/01_config_policy.txt", "evidence/13_selfmod_vectors.txt"],
+      "recommendation": "Kern-Tests (tests/*) und Rollen-Prompts in human_only_globs aufnehmen oder per Hash sperren."
+    },
+    {
+      "id": "SC-04", "area": "self_coding_readiness", "severity": "low", "status": "verified",
+      "title": "Frontend, Architect, rust, scripts, schemas, evals liegen ausserhalb des Schreibbereichs",
+      "detail": "Neo kann die Voice-Oberflaeche und das Architect-Teilprojekt nicht selbst aendern. Ob das beabsichtigt ist, ist nicht dokumentiert.",
+      "evidence": ["evidence/01_config_policy.txt"],
+      "open_question": "Soll Neo langfristig das Frontend/Voice-Interface aendern koennen?"
+    },
+    {
+      "id": "SC-05", "area": "self_coding_readiness", "severity": "critical", "status": "verified",
+      "title": "Kein Verifikationsschritt: Ausfuehrung von Tests/Shell ist deaktiviert und nicht implementiert",
+      "detail": "allow_test_ops=false und allow_shell_ops=false. test.run und shell.exec haben Policy-Gates (core/policy.py:335,341,440,446), aber KEINEN Handler in limbs/. Ein vom Agenten geaenderter Code wird nie ausgefuehrt, bevor er wirksam wird.",
+      "evidence": ["evidence/01_config_policy.txt", "evidence/02_policy_code.txt", "evidence/04_registry_operations.txt", "evidence/18_claim_checks.txt"],
+      "recommendation": "Isoliertes sandbox_gate-Skript (Compile, Unittest, Smoke) als Pflicht-Gate vor jeder Uebernahme."
+    },
+    {
+      "id": "SC-06", "area": "self_coding_readiness", "severity": "medium", "status": "verified",
+      "title": "Architektur-Lesen beschraenkt auf Datei-Lesen und Listen",
+      "detail": "Verfuegbar: fs.read_file (max 1 MB), fs.list (max 500 Eintraege). Nicht vorhanden: Repo-Index, Import-/Symbolgraph, git log/diff-Lesetool. Lesen geschieht nur ueber handgeschriebene Intent-JSONs.",
+      "evidence": ["evidence/03_bootstrap_limb.txt", "evidence/04_registry_operations.txt"]
+    },
+    {
+      "id": "SC-07", "area": "self_coding_readiness", "severity": "info", "status": "verified",
+      "title": "Schreibpfad des Bootstrap-Limbs ist solide",
+      "detail": "Atomares Schreiben, expect_sha256 als Optimistic-Lock, Backup bei constraints.backup, Hash-Nachweis je Artefakt, dry_run-Modus.",
+      "evidence": ["evidence/03_bootstrap_limb.txt"],
+      "code_refs": ["limbs/bootstrap_limb.py:_write_file"]
+    },
+    {
+      "id": "SC-08", "area": "self_coding_readiness", "severity": "high", "status": "verified",
+      "title": "Git ist im NEU-Kern nicht angebunden",
+      "detail": "Kein Commit-, Revert-, Tag- oder Branch-Mechanismus im Kern. Git taucht nur in drei Stellen auf: Kanban-Worktrees (dispatcher.py), REA-Clone (rea_limb.py), Vault-eigenes Git (vault_limb.py). denied_globs sperrt .git/*, was richtig ist, aber den Kern ohne Git-Operator laesst.",
+      "evidence": ["evidence/05_kanban_worktree.txt", "evidence/18_claim_checks.txt"]
+    },
+    {
+      "id": "SC-09", "area": "self_coding_readiness", "severity": "medium", "status": "open",
+      "title": "Kanban-Runtime 'opencode' committet im Worktree, aber ohne Verifikation und ohne bekannte Git-Identitaet",
+      "detail": "worker_entry.py fordert 'committe sie' und fuehrt 'opencode run' im Worktree aus. Im Repo ist keine git user.name/user.email-Konfiguration fuer Worker gefunden. Ob das Container-Image opencode enthaelt, ist nicht verifiziert (kein Treffer in docker/ oder kanban/config.py).",
+      "evidence": ["evidence/06_kanban_opencode_runtime.txt", "evidence/18_claim_checks.txt"],
+      "open_question": "Existiert das Sandbox-Image mit opencode? Welche Identitaet landet im Commit?"
+    },
+    {
+      "id": "HR-01", "area": "hot_reload", "severity": "high", "status": "verified",
+      "title": "Kein Watchdog, kein Hot-Reload, kein Restart-Supervisor fuer Python-Code",
+      "detail": "Suche nach importlib.reload, watchdog, inotify, watchfiles, os.execv, sys.modules (Python) ergab im NEU-Kern keinen Treffer fuer Selbst-Neustart. Der Kern laeuft als CLI-Prozess pro Auftrag bzw. als Kanban-Service ohne Ueberwachung.",
+      "evidence": ["evidence/09_limb_ffi_usage.txt", "evidence/08_limb_spawn.txt"]
+    },
+    {
+      "id": "HR-02", "area": "hot_reload", "severity": "info", "status": "verified",
+      "title": "Limbs sind isolierte Subprozesse: ein kaputter Limb stuerzt den Orchestrator nicht ab",
+      "detail": "Experiment 19b: SyntaxError in limbs/echo_limb.py. Der Orchestrator-Prozess bleibt lauffaehig (orchestrator status exit 0). Der Auftrag scheitert mit E_LIMB_CRASH.",
+      "evidence": ["evidence/19b_limb_experiment.txt", "evidence/19c_limb_error_visibility.txt", "evidence/08_limb_spawn.txt"]
+    },
+    {
+      "id": "HR-03", "area": "hot_reload", "severity": "critical", "status": "verified",
+      "title": "Kaputter Code im Orchestrator-Kern macht den naechsten Start unbrauchbar",
+      "detail": "Experiment 19 (Abschnitt A und C): SyntaxError in orchestrator/cli.py bzw. core/config.py. 'python3 -m orchestrator status' endet mit Exit 1. Da der Kern beim Start geladen wird, gibt es keinen Fallback. Die Reparatur ist nur durch einen Menschen moeglich, weil die Kern-Dateien human_only sind.",
+      "evidence": ["evidence/19_hot_reload_experiment.txt"],
+      "note": "Abschnitt B derselben Datei ist ungueltig (Setup-Artefakt) und wird durch 19b/19c ersetzt."
+    },
+    {
+      "id": "HR-04", "area": "hot_reload", "severity": "medium", "status": "verified",
+      "title": "Fehlerdiagnose verweist bei Limb-Crash auf die falsche Massnahme",
+      "detail": "Experiment 19c: Die Konsolenausgabe zeigt nur 'E_LIMB_CRASH ... Massnahme: Umfang halbieren'. Der eigentliche SyntaxError steht nur in runtime/archive/.../result.json (stderr). Die vorgeschlagene Massnahme ist fuer einen Code-Fehler wirkungslos, und der Diagnosepfad (param_patch, timer_patch) wiederholt den kaputten Code.",
+      "evidence": ["evidence/19c_limb_error_visibility.txt"],
+      "recommendation": "stderr-Auszug (letzte Zeilen) in die Konsolen-Diagnose aufnehmen; bei SyntaxError/ImportError eine Code-Reparatur statt 'Umfang halbieren' vorschlagen."
+    },
+    {
+      "id": "HR-05", "area": "hot_reload", "severity": "medium", "status": "verified",
+      "title": "Kanban-Service ist langlebig und hat keine Reload-Logik",
+      "detail": "orchestrator/kanban/cli.py startet asyncio.run(_main). Aenderungen am Code wirken erst nach manuellem Neustart.",
+      "evidence": ["evidence/09_limb_ffi_usage.txt"]
+    },
+    {
+      "id": "HR-06", "area": "hot_reload", "severity": "low", "status": "verified",
+      "title": "Rust-.so Hot-Reload existiert, ist aber nicht verdrahtet",
+      "detail": "orchestrator/kanban/limb_ffi.py implementiert atomaren Tausch mit dlclose und Schreibsperre. Nur tests/test_limb_ffi.py importiert das Modul. Die Testsuite prueft es, der Produktivpfad nicht.",
+      "evidence": ["evidence/09_limb_ffi_usage.txt"]
+    },
+    {
+      "id": "HR-07", "area": "rollback", "severity": "critical", "status": "verified",
+      "title": "Kein Git-Revert oder Known-Good-Rollback im Kern",
+      "detail": "Es gibt weder Tags noch Revert noch Reset fuer Code-Aenderungen. Das einzige Rollback ist das Bootstrap-Backup (nur bei constraints.backup), das eine einzelne Datei betrifft und nicht automatisch ausgeloest wird.",
+      "evidence": ["evidence/03_bootstrap_limb.txt", "evidence/05_kanban_worktree.txt", "evidence/18_claim_checks.txt"]
+    },
+    {
+      "id": "HR-08", "area": "rollback", "severity": "high", "status": "verified",
+      "title": "Architect-SelfModificationSafety schreibt keinen Inhalt; Rollback sichert Dateien, die nie geaendert werden",
+      "detail": "apply_modification schreibt nur Backups und prueft Hashes. Der Code selbst markiert die fehlende Umsetzung ('In a full implementation, the actual content patch would be applied here'). Die Klasse gehoert zum Architect-Teilprojekt und ist nicht mit dem NEU-Kern verdrahtet.",
+      "evidence": ["evidence/07_architect_safety.txt"],
+      "code_refs": ["Architect/core/self_modification_safety.py:apply_modification"]
+    },
+    {
+      "id": "HR-09", "area": "rollback", "severity": "medium", "status": "verified",
+      "title": "Backup-Zuordnung nur ueber Dateinamen; Kollisionen moeglich",
+      "detail": "rollback sucht Backups per glob(f'{file_path.name}_*.bak') und nimmt den sortiert letzten. Gleichnamige Dateien aus verschiedenen Verzeichnissen teilen sich denselben Backup-Namensraum. Der Zeitstempel hat Sekundenaufloesung.",
+      "evidence": ["evidence/07_architect_safety.txt"]
+    },
+    {
+      "id": "HR-10", "area": "rollback", "severity": "high", "status": "verified",
+      "title": "Kanban-Worktree wird nach dem Lauf mit --force entfernt, ohne Merge oder Test",
+      "detail": "dispatcher.py entfernt den Worktree mit 'git worktree remove --force'. Der Commit bleibt nur als Branch kanban/<run_id> erhalten. Es gibt keinen Schritt, der diesen Branch prueft, testet oder in den Hauptbranch uebernimmt.",
+      "evidence": ["evidence/05_kanban_worktree.txt"]
+    },
+    {
+      "id": "NO-01", "area": "voice_chain", "severity": "high", "status": "verified",
+      "title": "Voice-Befehle erreichen den NEU-Orchestrator nicht",
+      "detail": "frontend/src/apollo/commands.ts: /spawn und /dispatch arbeiten am Node-Graphen der Apollo-UI, nicht an NEU-Intents. Es gibt keine Abbildung Sprache -> Intent-JSON.",
+      "evidence": ["evidence/11_voice_frontend.txt"]
+    },
+    {
+      "id": "NO-02", "area": "voice_chain", "severity": "info", "status": "verified",
+      "title": "Voice-Notiz -> Vault ist verdrahtet (nur Inbox)",
+      "detail": "/note (commands.ts) -> store.ts:720 callVault(capture) -> /api/apollo/vault -> Operation vault.capture (route.ts:71-74) -> Orchestrator. Schreibt nur nach Inbox/, workers/, tasks/ im Vault, nicht in den Code.",
+      "evidence": ["evidence/11_voice_frontend.txt", "evidence/18_claim_checks.txt"],
+      "code_refs": ["frontend/src/apollo/store.ts:720", "frontend/src/app/api/apollo/vault/route.ts:71-74"]
+    },
+    {
+      "id": "NO-03", "area": "voice_chain", "severity": "high", "status": "verified",
+      "title": "Dauerbetrieb nicht implementiert",
+      "detail": "'loop --watch' gibt '[usage] --watch (Dauerbetrieb) folgt in Phase 4' aus. Nur 'loop --once' existiert.",
+      "evidence": ["evidence/10_loop_watch.txt"],
+      "code_refs": ["orchestrator/cli.py:cmd_loop"]
+    },
+    {
+      "id": "NO-04", "area": "voice_chain", "severity": "medium", "status": "verified",
+      "title": "core.memory_write ist definiert, aber ohne Limb-Implementierung",
+      "detail": "protocol/operations.json (Phase 4, risk=write) hat den Eintrag. Kein Limb in registry.json bietet ihn an, und kein Handler existiert.",
+      "evidence": ["evidence/04_registry_operations.txt", "evidence/12_memory.txt", "evidence/18_claim_checks.txt"]
+    },
+    {
+      "id": "NO-05", "area": "voice_chain", "severity": "medium", "status": "verified",
+      "title": "Kein automatischer Memory-Schreibvorgang nach einem Lauf",
+      "detail": "vault.capture wird nur von der Voice-Notiz und vault_mcp.py aufgerufen. Der Orchestrator schreibt Ergebnisse, Diffs oder Fehler nicht selbst in den Vault.",
+      "evidence": ["evidence/12_memory.txt", "evidence/18_claim_checks.txt"]
+    },
+    {
+      "id": "NO-06", "area": "voice_chain", "severity": "low", "status": "verified",
+      "title": "Code-Generierungs-Limb 'openmanus' ist nur geplant",
+      "detail": "registry.json: openmanus status=planned, phase 6.",
+      "evidence": ["evidence/04_registry_operations.txt"]
+    },
+    {
+      "id": "NO-07", "area": "voice_chain", "severity": "high", "status": "verified",
+      "title": "Freigabe-Route ist aus dem Frontend erreichbar",
+      "detail": "frontend/src/apollo/proxy.ts: POST /api/v1/approvals/issue ist in der 'secure allowlist' enthalten. Ob diese Route durch Voice-Eingaben ausloesbar ist, ist nicht geprueft. Eine Sprachfreigabe fuer human_only-Pfade muss ausgeschlossen werden.",
+      "evidence": ["evidence/18_claim_checks.txt"],
+      "code_refs": ["frontend/src/apollo/proxy.ts:115-117"],
+      "open_question": "Ist approvals/issue an eine menschliche Bestaetigung gebunden (z. B. Tippen statt Sprache)?"
+    },
+    {
+      "id": "BL-01", "area": "baseline", "severity": "medium", "status": "verified",
+      "title": "make test-core: 662 Tests, 1 Importfehler, 20 Skips",
+      "detail": "Importfehler tests.test_ciel_mcp_nodes wegen fehlendem Python-Paket 'mcp'. Das ist ein Umgebungsproblem, kein Codefehler. Das Gate ist in dieser Sandbox trotzdem nicht reproduzierbar gruen.",
+      "evidence": ["evidence/14_make_test_core.txt", "evidence/15_core_unittest_full.txt"]
+    },
+    {
+      "id": "BL-02", "area": "baseline", "severity": "medium", "status": "verified",
+      "title": "Architect-Suite: 218 Tests, 2 Fehler (fehlende Pakete google-genai, numpy)",
+      "detail": "test_genai_client: ModuleNotFoundError 'google'. test_telemetry_feed: Importfehler wegen numpy. Umgebungsproblem.",
+      "evidence": ["evidence/16_architect_unittest.txt"]
+    },
+    {
+      "id": "BL-03", "area": "baseline", "severity": "info", "status": "verified",
+      "title": "Alle Python-Module in orchestrator/, core/, limbs/ kompilieren",
+      "detail": "py_compile ohne Fehler.",
+      "evidence": ["evidence/17_py_compile.txt"]
+    },
+    {
+      "id": "BL-04", "area": "baseline", "severity": "info", "status": "verified",
+      "title": "Korrektur zur Erstanalyse",
+      "detail": "In der ersten Antwort wurde die Testbasis als 'rot' bezeichnet. Belegt ist: Die Fehler stammen aus fehlenden Paketen in der Sandbox, nicht aus dem Code. Die Aussage 'Gate nicht gruen' gilt nur fuer diese Umgebung.",
+      "evidence": ["evidence/14_make_test_core.txt", "evidence/16_architect_unittest.txt"]
+    }
+  ],
+  "open_questions": [
+    "Soll Neo das Frontend/Voice-Interface (SC-04) selbst aendern koennen?",
+    "Existiert das Kanban-Sandbox-Image mit 'opencode', und welche Git-Identitaet wird verwendet (SC-09)?",
+    "Ist die Freigabe-Route approvals/issue gegen Sprachausloesung abgesichert (NO-07)?",
+    "Wie gelangen Ergebnisse von Kanban-Tasks in den NEU-Kern oder den Vault (Ergebnis-Rueckfuehrung)?"
+  ]
+}

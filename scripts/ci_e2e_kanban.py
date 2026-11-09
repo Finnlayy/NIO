@@ -53,6 +53,10 @@ def main() -> int:
         tmp = Path(tmp_dir)
         env = os.environ.copy()
         env["NEU_ROOT"] = str(tmp)
+        # Der Beweis nutzt nur noop-Worker, die SubprocessSandbox ausdruecklich
+        # zulaesst. Ohne diese Zeile greift der Default ``docker`` und der Lauf
+        # haengt am Docker-Daemon des Hosts statt an der Kanban-Logik.
+        env["NIO_KANBAN_SANDBOX"] = "subprocess"
         env["NIO_KANBAN_WORKSPACE"] = str(tmp / "ws")
         env["NIO_OBSIDIAN_VAULT"] = str(tmp / "vault")
 

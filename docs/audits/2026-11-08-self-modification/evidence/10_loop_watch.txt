@@ -1,0 +1,5 @@
+23:    python3 -m orchestrator watch --goal ... --op ... --unlimited --trigger ...
+24:    python3 -m orchestrator watch --job <job_id> --for 60   # nur Scheduler
+207:    watch = outcome.watch
+208:    if watch:
+209:        ende = "finish_job" if watch.get("finish_requested") else ("escalate" if watch.get("needs_human") else "Limb/Ernte")

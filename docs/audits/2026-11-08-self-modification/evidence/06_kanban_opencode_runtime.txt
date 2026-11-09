@@ -1,0 +1,3 @@
+278:        elif runtime == "opencode":
+283:                "Aendere die Dateien wie gewuenscht und committe sie.\n"
+287:            argv = ["opencode", "run", prompt]
