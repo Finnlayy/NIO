@@ -1,0 +1,17 @@
+<<<<<<< SEARCH
+      {/* failover ribbon */}
+      <div
+        className={`relative z-20 overflow-hidden border-b transition-[max-height,border-color,background-color] duration-500 ${
+          failover ? "max-h-12 border-amber-400/25 bg-amber-400/[0.07]" : "max-h-0 border-transparent"
+        }`}
+        aria-live="polite"
+      >
+=======
+      {/* failover ribbon */}
+      <div
+        className={`relative z-20 overflow-hidden border-b transition-[transform,opacity,border-color,background-color] duration-500 origin-top ${
+          failover ? "scale-y-100 opacity-100 border-amber-400/25 bg-amber-400/[0.07]" : "scale-y-0 opacity-0 border-transparent h-0"
+        }`}
+        aria-live="polite"
+      >
+>>>>>>> REPLACE
