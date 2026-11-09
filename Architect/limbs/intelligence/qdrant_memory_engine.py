@@ -1,6 +1,7 @@
-from qdrant_client import QdrantClient
 import logging
 import os
+
+from qdrant_client import QdrantClient
 
 logger = logging.getLogger(__name__)
 

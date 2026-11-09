@@ -1,12 +1,15 @@
-import unittest
-import sys
 import os
+import sys
+import unittest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import tempfile
 import time
 from pathlib import Path
+
 from core.timer import Timer
+
 
 class TestTimer(unittest.TestCase):
     def setUp(self):
@@ -30,6 +33,24 @@ class TestTimer(unittest.TestCase):
         status = timer.tick()
         self.assertIsNone(status["remaining_ms"])
         self.assertGreater(status["elapsed_s"], 4)
+
+    @unittest.skipUnless(hasattr(time, "tzset"), "tzset nur unter POSIX")
+    def test_elapsed_independent_of_local_timezone(self):
+        # Regression: t0 lag frueher um den TZ-Offset daneben (CET: elapsed -3600 s).
+        old_tz = os.environ.get("TZ")
+        os.environ["TZ"] = "Europe/Berlin"
+        time.tzset()
+        try:
+            timer = Timer(mode="unlimited", job_id="timer_tz")
+            self.assertAlmostEqual(timer.t0, time.time(), delta=1.0)
+            self.assertGreaterEqual(timer.tick()["elapsed_s"], 0)
+            self.assertLess(timer.get_state()["elapsed_s"], 1.0)
+        finally:
+            if old_tz is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = old_tz
+            time.tzset()
 
     def test_safety_net_activation(self):
         timer = Timer(mode="deadline", deadline_s=100, safety_net_s=2, job_id="timer_003")

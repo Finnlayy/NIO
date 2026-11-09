@@ -1,0 +1,15 @@
+HINWEIS: Abschnitt B in dieser Datei ist ungueltig (Setup-Artefakt: aktiver Job aus kopiertem runtime/ blockierte den Lauf). Gueltige Ergebnisse siehe 19b und 19c.
+### BASELINE status (intakt)
+exit=0
+### EXPERIMENT A: Syntaxfehler in orchestrator/cli.py
+    def broken(:
+               ^
+SyntaxError: invalid syntax
+exit=1
+### EXPERIMENT B: Syntaxfehler in limbs/echo_limb.py, Intent ueber echo
+[protokoll] [E_POLICY_DENIED] $: Bereits 1 aktive job-Jobs; Profil 'dev' erlaubt max_concurrent_jobs=1.
+exit=1
+### EXPERIMENT C: Syntaxfehler in core/config.py, Limb-Subprozess
+               ^
+SyntaxError: invalid syntax
+exit=1

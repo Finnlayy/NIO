@@ -7,7 +7,7 @@ export const down = "text-rose-400";
 export const upBar = "#2fae87";
 export const downBar = "#e5484d";
 
-/** Small pill showing whether a widget's data is live (tvremix) or simulated. */
+/** Small pill showing whether a widget's data is live (TradingView MCP) or simulated. */
 export function LiveBadge({ source }: { source: DataSource }) {
   if (source === "loading") return null;
   const live = source === "live";
@@ -18,10 +18,10 @@ export function LiveBadge({ source }: { source: DataSource }) {
           ? "text-emerald-300 border-emerald-400/30 bg-emerald-400/10"
           : "text-slate-400 border-white/10 bg-white/[0.04]"
       }`}
-      title={live ? "Live data via tvremix MCP" : "Simulated data (live feed unavailable)"}
+      title={live ? "Live data via the TradingView MCP" : source === "error" ? "Live feed failed — no simulation" : "Explicit design fixture"}
     >
       <span className={`w-1 h-1 rounded-full ${live ? "bg-emerald-400 pulse-dot" : "bg-slate-600"}`} />
-      {live ? "Live" : "Sim"}
+      {live ? "Live" : source === "error" ? "Error" : "Fixture"}
     </span>
   );
 }
@@ -49,7 +49,7 @@ const FEED_BADGE_STYLE: Record<FeedConnectionState, { label: string; className: 
 
 /**
  * Shows the *engine feed* state — deliberately a different badge from
- * `LiveBadge`, which reports the tvremix HTTP proxy. A widget can be
+ * `LiveBadge`, which reports the TradingView MCP proxy. A widget can be
  * `Live` on market data and still `Disconnected` on engine telemetry.
  */
 export function FeedBadge({ connection }: { connection: FeedConnectionState }) {
@@ -127,4 +127,12 @@ export function Sparkline({
       <polyline points={pts} fill="none" stroke={color} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
     </svg>
   );
+}
+
+
+/** Never replace a broken live feed with design fixtures. */
+export function MarketUnavailable({ source }: { source: DataSource }) {
+  return <div role={source === "error" ? "alert" : "status"} className="grid h-full min-h-24 place-items-center p-4 text-center text-xs text-slate-400">
+    {source === "error" ? "Live-Marktdaten nicht erreichbar. Keine Simulation als Ersatz." : "Live-Marktdaten werden geprüft…"}
+  </div>;
 }

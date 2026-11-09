@@ -1,0 +1,13 @@
+[
+  {"id":"freellm","name":"FreeLLMAPI gateway","secret":"FREELLMAPI_KEY","endpoint":"http://127.0.0.1:3001/v1/chat/completions","model":"","modelEnv":"FREELLMAPI_MODEL","protocol":"openai"},
+  {"id":"openrouter","name":"OpenRouter","secret":"OPENROUTER_API_KEY","endpoint":"https://openrouter.ai/api/v1/chat/completions","model":"openai/gpt-4o-mini","modelEnv":"OPENROUTER_MODEL","protocol":"openai"},
+  {"id":"groq","name":"Groq","secret":"GROQ_API_KEY","endpoint":"https://api.groq.com/openai/v1/chat/completions","model":"llama-3.1-8b-instant","modelEnv":"GROQ_MODEL","protocol":"openai"},
+  {"id":"google","name":"Google Gemini","secret":"GOOGLE_API_KEY","aliases":["GEMINI_API_KEY"],"endpoint":"https://generativelanguage.googleapis.com/v1beta/openai/chat/completions","model":"gemini-2.5-flash","modelEnv":"GOOGLE_MODEL","protocol":"openai"},
+  {"id":"mistral","name":"Mistral","secret":"MISTRAL_API_KEY","endpoint":"https://api.mistral.ai/v1/chat/completions","model":"ministral-8b-latest","modelEnv":"MISTRAL_MODEL","protocol":"openai"},
+  {"id":"cerebras","name":"Cerebras","secret":"CEREBRAS_API_KEY","endpoint":"https://api.cerebras.ai/v1/chat/completions","model":"llama3.1-8b","modelEnv":"CEREBRAS_MODEL","protocol":"openai"},
+  {"id":"openai","name":"OpenAI","secret":"OPENAI_API_KEY","endpoint":"https://api.openai.com/v1/chat/completions","model":"gpt-4o-mini","modelEnv":"OPENAI_MODEL","protocol":"openai"},
+  {"id":"nvidia","name":"NVIDIA","secret":"NVIDIA_API_KEY","endpoint":"https://integrate.api.nvidia.com/v1/chat/completions","model":"meta/llama-3.1-8b-instruct","modelEnv":"NVIDIA_MODEL","protocol":"openai"},
+  {"id":"cohere","name":"Cohere","secret":"COHERE_API_KEY","endpoint":"https://api.cohere.com/v2/chat","model":"command-r7b-12-2024","modelEnv":"COHERE_MODEL","protocol":"cohere"},
+  {"id":"huggingface","name":"Hugging Face","secret":"HF_TOKEN","aliases":["HUGGINGFACE_API_KEY"],"endpoint":"https://router.huggingface.co/v1/chat/completions","model":"","modelEnv":"HUGGINGFACE_MODEL","protocol":"openai"},
+  {"id":"anthropic","name":"Anthropic","secret":"ANTHROPIC_API_KEY","endpoint":"https://api.anthropic.com/v1/messages","model":"","modelEnv":"ANTHROPIC_MODEL","protocol":"anthropic"}
+]

@@ -7,7 +7,39 @@ Datumsangaben in UTC.
 
 ## [Unreleased]
 
+### Geändert
+
+- Marktdaten (`/api/market/*`) laufen über den **offiziellen TradingView-MCP**
+  (`mcp.tradingview.com`) statt über das abgeschaltete tvremix. Anmeldung per
+  OAuth 2.1 (Dynamic Client Registration, PKCE, Refresh-Token) über
+  `/api/market/oauth/{start,callback,status}`; Tokens nur lokal in
+  `frontend/.tradingview-oauth.json`. Feste Tool-Zuordnung in
+  `src/server/tradingview/tools.ts`, Adapter für die neuen Antwortformen, der
+  generische Durchreich erreicht nur Lese-Tools. `TVREMIX_*` entfällt.
+
+### Behoben
+
+- Refresh-Buttons der Markt-Widgets luden nur neue Simulationsdaten; jetzt
+  holen sie sofort Live-Daten und umgehen dafür einmal den Server-Cache
+  (`refreshKey` in `useMarketData`, `?fresh=1`).
+- Technik-Gauge zeigte feste Platzhalter-Zählungen (3 Buy / 10 Sell) auch bei
+  „Strong Buy“; die Zählung kommt jetzt aus den echten Indikatoren.
+
 ### Hinzugefügt
+
+- `orchestrator/telegram/` — Telegram-Feeds mit Benutzerkonto lesen, Signale erkennen, Antworten nach Klick senden.
+  - Gather-Loop und Live-Listener mit At-least-once-Zustellung, SQLite-Cache und Dedupe.
+  - Intel-Router: Vorschläge an den gepaarten Bot, starke Signale als Hermes-Tasks in TRIAGE.
+  - Versand nur nach Freigabe, nur an Allowlist-Ziele, mit Rate-Limit und Audit.
+  - API unter `/api/v1/telegram/*` mit SSE, CLI `neu telegram`, Nur-Lese-Tools für Ciel und Worker.
+  - Start über `neu kanban serve`, neues Extra `telegram`, Abnahme via `scripts/ci_e2e_telegram.py` (`make e2e-telegram`).
+  - Oberfläche `/telegram` mit Server-Proxy: das Operator-Token erreicht nie den Browser.
+  - `docs/TELEGRAM.md` mit Einrichtung, Konfiguration, API und Sicherheitsmodell.
+
+- Spracheingabe: Diktat im Apollo-Terminal über lokales speaches, `limbs/speech_limb.py`
+  (`speech.ping`, `speech.transcribe`) und Sprachstatus im Orb. speaches steht fest auf
+  `0.8.3-cpu`. Text wird nie automatisch gesendet, Freigaben gehen nicht per Sprache.
+  Siehe `docs/SPEECH.md`.
 
 - `orchestrator/kanban/` — Hermes-Kanban Task-Management.
   - Implementierung von Architektur-Layer 2 & 3: Dispatcher, Reaper, Event-Bus, Postgres/SQLite Store.
@@ -20,6 +52,11 @@ Datumsangaben in UTC.
   - Umfassende Testabdeckung: 66 neue Tests unter `tests/test_kanban*.py` hinzugefügt.
   - `docs/KANBAN.md` mit detaillierter Architektur, Zustandsmaschine und Konfigurationsübersicht.
 
+- Obsidian-Vault: `limbs/vault_limb.py` (`vault.ping`, `vault.search`, `vault.read`,
+  `vault.capture`) mit SQLite FTS5, Apollo-Befehle `/note` und `/vault`, lesender
+  MCP-Server `scripts/vault_mcp.py`. Schreiben nur nach `Inbox/`, `workers/`, `tasks/`.
+  Siehe `docs/VAULT.md`.
+
 - `apollo/ciel/mcp_nodes.py` + `mcp_config.json` — externe MCP-Nodes als
   Ciel-Skills (u. a. StalkChain `https://data.stalkchain.com/mcp`, via
   `npx mcp-remote` oder direkt per SSE ohne Node). Stdio-JSON-RPC- und
@@ -29,6 +66,11 @@ Datumsangaben in UTC.
   `build_ciel_layer`. 8 neue Offline-Tests in
   `tests/test_ciel_mcp_nodes.py` (Fake-Stdio-Subprozess + Fake-SSE-Server,
   grün mit wie ohne pydantic).
+- `limbs/agent_base.py`: Lauf-Modell `start/status/stop/collect` für lange laufende Agenten
+  (OpenManus, OpenCode, Cua), Zustand unter `runtime/agents/`. Noch ohne Limb, der es nutzt.
+- `limbs/openmanus_limb.py`, `docker/openmanus/`: Lokales OpenManus im abgeschotteten Container,
+  gesperrt (`planned`). Siehe `docs/OPENMANUS.md`.
+
 - `apollo/ciel/telemetry.py` — Modul E: Real-Time Graph-UI Telemetry.
   Typsichere `CielGraphEvent`-Payloads (`CIEL_COLD_STATE_SYNC`,
   `CIEL_NCM_ROUTING` mit `SYSTEM_1_BYPASS`/`SYSTEM_2_JIT`, `CIEL_JIT_RELOAD`,

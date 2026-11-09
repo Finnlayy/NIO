@@ -1,6 +1,5 @@
 import logging
 from pathlib import Path
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +51,7 @@ class AgentAssignment:
         self.assignments_dir = Path("Architect/runtime/assignments")
         self.assignments_dir.mkdir(parents=True, exist_ok=True)
 
-    def map_agent_to_task(self, task_description: str, required_capabilities: list = None) -> str:
+    def map_agent_to_task(self, task_description: str, required_capabilities: list | None = None) -> str:
         """Find the best agent for a given task description and capability list."""
         best_agent = None
         best_score = -1

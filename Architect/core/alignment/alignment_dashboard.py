@@ -6,9 +6,9 @@ tab (`gui/views/alignment_dashboard.py`) is a thin shell over this module.
 Storage: `Architect/runtime/alignment/<plan_id>_<timestamp>.json`
 """
 
+import datetime
 import json
 import logging
-import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class AlignmentDashboard:
         snapshots = []
         for path in sorted(self.alignment_dir.glob(f"{plan_id}_*.json")):
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     snapshots.append(json.load(f))
             except Exception as exc:
                 logger.error("Failed to load alignment snapshot %s: %s", path, exc)

@@ -1,0 +1,19 @@
+93:    def sandbox_root(self, intent: Intent) -> Path:
+97:        Selbstmodifikation mit ``elevation.level='repo_write'``. Die eigentliche
+99:        ``human_only_globs`` pro Pfad.
+110:            raise ProtocolError(ErrorCode.SANDBOX_ESCAPE, "sandbox_root verlaesst das Repository", "$.constraints.sandbox_root")
+115:    def sandbox_root_label(self, intent: Intent) -> str:
+135:        * mit ``elevation.level == "repo_write"``: Basis ist das Repo-Root,
+137:          ``denied_globs`` treffen; ``human_only_globs`` zusaetzlich nur mit
+143:        base = self.config.repo_root if elevation.level == "repo_write" else self.sandbox_root(intent)
+148:            raise ProtocolError(ErrorCode.SANDBOX_ESCAPE, f"Ziel {raw_path!r} liegt ausserhalb des Repositories", where)
+152:        if elevation.level != "repo_write" and not self._is_inside(target, base):
+154:                ErrorCode.SANDBOX_ESCAPE,
+156:                " Fuer Aenderungen am System selbst ist elevation.level='repo_write' noetig.",
+160:        if elevation.level == "repo_write":
+170:            if self._matches_any(rel, self.config.human_only_globs) and (
+462:        if intent.elevation.level == "repo_write" and not self.config.allow_repo_write:
+465:                "Selbstmodifikation ist deaktiviert (allow_repo_write=false in neu.config.json).",
+518:            raise ProtocolError(ErrorCode.SANDBOX_ESCAPE, "Nullbytes im Pfad", where)
+520:            raise ProtocolError(ErrorCode.SANDBOX_ESCAPE, f"absoluter Pfad verboten: {text!r}", where)
+523:            raise ProtocolError(ErrorCode.SANDBOX_ESCAPE, f"'..' im Pfad verboten: {text!r}", where)

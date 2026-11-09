@@ -114,14 +114,14 @@ export const POOL_PROVIDERS = PROVIDERS.length;
 /* Vault seed — masked placeholders, no secrets in the bundle            */
 /* ==================================================================== */
 export const SEED_KEYS: FreeLLMProviderKey[] = [
-  { providerId: "google", name: "Google Gemini", keyMasked: "AIza••••••••7f21", status: "ACTIVE" },
-  { providerId: "groq", name: "Groq", keyMasked: "gsk_••••••••c4e9", status: "ACTIVE" },
-  { providerId: "mistral", name: "Mistral", keyMasked: "mis_••••••••01ab", status: "ACTIVE" },
-  { providerId: "cerebras", name: "Cerebras", keyMasked: "csk_••••••••9d30", status: "STANDBY" },
-  { providerId: "openrouter", name: "OpenRouter", keyMasked: "sk-or-••••••••5b7c", status: "ACTIVE" },
-  { providerId: "nvidia", name: "NVIDIA", keyMasked: "nvapi-••••••••22f0", status: "STANDBY" },
-  { providerId: "cohere", name: "Cohere", keyMasked: "co-••••••••8a11", status: "LIMIT_REACHED" },
-  { providerId: "huggingface", name: "HuggingFace", keyMasked: "hf_••••••••d7b2", status: "STANDBY" },
+  { providerId: "google", name: "Google Gemini", keyMasked: "Nicht geprüft – kein Credential-Nachweis", status: "STANDBY" },
+  { providerId: "groq", name: "Groq", keyMasked: "Nicht geprüft – kein Credential-Nachweis", status: "STANDBY" },
+  { providerId: "mistral", name: "Mistral", keyMasked: "Nicht geprüft – kein Credential-Nachweis", status: "STANDBY" },
+  { providerId: "cerebras", name: "Cerebras", keyMasked: "Nicht geprüft – kein Credential-Nachweis", status: "STANDBY" },
+  { providerId: "openrouter", name: "OpenRouter", keyMasked: "Nicht geprüft – kein Credential-Nachweis", status: "STANDBY" },
+  { providerId: "nvidia", name: "NVIDIA", keyMasked: "Nicht geprüft – kein Credential-Nachweis", status: "STANDBY" },
+  { providerId: "cohere", name: "Cohere", keyMasked: "Nicht geprüft – kein Credential-Nachweis", status: "STANDBY" },
+  { providerId: "huggingface", name: "HuggingFace", keyMasked: "Nicht geprüft – kein Credential-Nachweis", status: "STANDBY" },
 ];
 
 /* ==================================================================== */
@@ -205,7 +205,7 @@ export const PRIMARY_ENGINES = [
 ] as const;
 
 export const MCP_SERVERS = [
-  { id: "tvremix", label: "tvremix", detail: "market data · 12 tools", on: true },
+  { id: "tradingview", label: "TradingView", detail: "official MCP · OAuth", on: true },
   { id: "filesystem", label: "filesystem", detail: "read-only workspace jail", on: true },
   { id: "playwright", label: "playwright", detail: "browser automation", on: false },
   { id: "neu-limb", label: "neu-limb-bridge", detail: "orchestrator limbs", on: true },

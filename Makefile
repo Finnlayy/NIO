@@ -12,7 +12,7 @@ PYTHON ?= python3
 RUNTIME ?= $(CURDIR)/runtime
 
 .DEFAULT_GOAL := help
-.PHONY: help test test-core test-architect test-frontend ui-test test-verbose lint lint-fix types compile e2e check demo clean rea-demo rea-recover rea-status rea-probe rust-test e2e-kanban
+.PHONY: help test test-core test-architect test-frontend ui-test test-verbose lint lint-fix types compile e2e check demo clean rea-demo rea-recover rea-status rea-probe rust-test rust-limb e2e-kanban e2e-telegram prompt-optimizer
 
 help:  ## Diese Uebersicht
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -26,7 +26,7 @@ test-core:  ## NEU-Kern, Orchestrator, Limbs, Protokoll 1.2 (echte Subprozesse u
 	$(PYTHON) -W error::ResourceWarning -m unittest discover -s tests -t . -q
 
 test-architect:  ## Architect-Suite (Core, Learning, Limbs, GUI-Modelle)
-	cd Architect && $(PYTHON) -W error::ResourceWarning -m unittest discover -s tests -t . -q
+	cd Architect && QT_QPA_PLATFORM=offscreen $(PYTHON) -W error::ResourceWarning -m unittest discover -s tests -t . -q
 
 test-frontend: ui-test  ## Alias, damit `make test-*` das Frontend eindeutig einschliesst
 
@@ -68,8 +68,14 @@ ui-test:  ## Frontend-UI-Tests (Zero-Dep-Harness: tsc + node --test, kein DOM)
 		node frontend/scripts/ui-test.mjs; \
 	fi
 
+prompt-optimizer:  ## Prompt-Optimierer: Demo-Lauf beider Modi in workspace/ (Invarianten werden mitgeprüft)
+	$(PYTHON) scripts/prompt_optimizer_demo.py
+
 e2e-kanban:  ## End-to-End-Beweis fuer Kanban (WP-09)
 	$(PYTHON) scripts/ci_e2e_kanban.py
+
+e2e-telegram:  ## End-to-End-Beweis fuer Telegram (FakeTelegramClient, offline)
+	$(PYTHON) scripts/ci_e2e_telegram.py
 
 check: compile lint types test ui-test e2e  ## Das volle Tor (wie in CI)
 	@echo "check: alles gruen"
@@ -86,6 +92,10 @@ demo:  ## Live-Demo: unbegrenzter Auftrag mit Intervall-Kontrolle und finish_job
 rust-test:  ## Rust-Vertraege (Serde) gegen dieselben Fixtures wie Python
 	@if command -v cargo >/dev/null 2>&1; then cargo test --manifest-path rust/nio-contracts/Cargo.toml; \
 	else echo "rust-test: cargo fehlt -- uebersprungen"; fi
+
+rust-limb:  ## Rust-Limb als cdylib bauen (libnio_limb.so, falls Rust-Toolchain vorhanden)
+	@if command -v cargo >/dev/null 2>&1; then cargo build --release --manifest-path rust/nio-limb/Cargo.toml; \
+	else echo "rust-limb: cargo fehlt -- uebersprungen"; fi
 
 clean:  ## Caches entfernen (runtime/ bleibt unangetastet)
 	find . -name '__pycache__' -type d -prune -exec rm -rf {} +

@@ -1,5 +1,5 @@
 import type { RankRow } from "../marketData";
-import { Insight, LiveBadge } from "./bits";
+import { MarketUnavailable, Insight, LiveBadge } from "./bits";
 import { useMarketData } from "../hooks/useMarketData";
 
 export function CompositeRankings({ data }: { data: Record<string, unknown> }) {
@@ -9,7 +9,10 @@ export function CompositeRankings({ data }: { data: Record<string, unknown> }) {
     { market: "crypto", limit: "10" },
     simRows,
     300_000,
+    data.refreshedAt,
   );
+
+  if (source !== "live") return <MarketUnavailable source={source} />;
 
   return (
     <div className="flex flex-col h-full">

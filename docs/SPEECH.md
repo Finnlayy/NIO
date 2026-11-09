@@ -1,0 +1,99 @@
+# Spracheingabe
+
+Der Mikrofon-Button im Terminal nimmt im Browser auf und schreibt den erkannten Text ins Eingabefeld. Abgeschickt wird nichts automatisch, damit ein falsch verstandener Befehl vorher lesbar ist. Freigaben gehen nicht per Sprache: Ein Diktat, das `/approve` oder `/deny` ergeben würde, landet nicht im Feld.
+
+Die Erkennung läuft kostenlos und lokal mit [speaches](https://github.com/speaches-ai/speaches) und faster-whisper. Es braucht keinen Key, und das Audio verlässt den Rechner nicht.
+
+## Einrichten
+
+```bash
+docker run --detach --name speaches --restart unless-stopped \
+  --publish 127.0.0.1:8011:8000 --memory 5g \
+  -e WHISPER__COMPUTE_TYPE=int8 -e WHISPER__CPU_THREADS=6 -e STT_MODEL_TTL=1800 \
+  --volume speaches-hf-cache:/home/ubuntu/.cache/huggingface/hub \
+  ghcr.io/speaches-ai/speaches:0.8.3-cpu@sha256:21e3df06d842fb7802ab470dd77c25f0e8c0d22950e8d8c6ae886e851af53ef8
+```
+
+```bash
+curl -X POST http://127.0.0.1:8011/v1/models/Systran/faster-whisper-small
+```
+
+Die Version ist fest, nie `latest-cpu`. Das ist derselbe Stand, den der laufende Container nutzt, ein Neustart ist also nicht nötig. Das Image belegt rund 3 GB, das Modell rund 460 MB. `WHISPER__CPU_THREADS` gehört auf die Kernzahl des Rechners.
+
+## Ablauf
+
+1. `frontend/src/apollo/dictation.ts` nimmt per `MediaRecorder` auf, höchstens 60 Sekunden.
+2. `POST /api/apollo/transcribe` reicht das Audio an speaches weiter. Der Endpoint kommt nur aus der Server-Umgebung, nie vom Client.
+3. Die Route setzt Sprache, Wortliste und `vad_filter`. Ohne `vad_filter` wiederholt Whisper bei Stille die Wortliste als angeblichen Text.
+
+Läuft speaches nicht, antwortet die Route mit 503, und das Terminal zeigt „speech engine is not running“. Ein Text wird dann nie erfunden.
+
+## Sprachstatus im Orb
+
+`GET /api/apollo/transcribe` fragt `/health` der Engine ab, sobald das Terminal öffnet.
+
+| Zustand | Anzeige |
+|---|---|
+| Aufnahme läuft | Orb wechselt auf `Listening`, sofern er gerade ruht. Ein laufender Turn behält seinen Zustand |
+| Transkription läuft | Zeile `transcribing` unter dem Orb |
+| Engine aus | Zeile `speech engine is not running` unter dem Orb |
+
+## Speech-Limb
+
+`limbs/speech_limb.py` bietet `speech.ping` und `speech.transcribe` für Agenten und Kanban, Spezifikation in `prompts/limbs/speech_limb.md`. Der Limb nutzt dieselben Variablen wie die Route, nimmt aber nur Endpoints auf dem eigenen Rechner an. Er reicht das Audio unverändert weiter, `ffmpeg` ist dafür nicht nötig.
+
+## Einstellungen
+
+| Variable in `frontend/.env.local` | Standard |
+|---|---|
+| `STT_ENDPOINT_URL` | `http://127.0.0.1:8011/v1/audio/transcriptions` |
+| `STT_MODEL` | `Systran/faster-whisper-small` |
+| `STT_LANGUAGE` | `de` |
+
+Neue Eigennamen, die Whisper falsch versteht, gehören in `docs/knowledge/speech/vocabulary.txt`. Route und Limb lesen dieselbe Datei.
+
+## Messwerte
+
+Gemessen am 31.10.2026 auf i5-9600KF, nur CPU, `int8`, mit 10 Sekunden synthetischer deutscher Stimme:
+
+| Modell | Dauer |
+|---|---|
+| `Systran/faster-whisper-small` | gut 5 s |
+| `Systran/faster-whisper-base` | gut 2 s, etwas mehr Fehler |
+
+`deepdml/faster-whisper-large-v3-turbo-ct2` ließ sich mangels Plattenplatz nicht laden und ist deshalb ungetestet.
+
+## Grenzen
+
+- Das Mikrofon verlangt `localhost` oder HTTPS. Über die Netzwerkadresse des Rechners blockiert der Browser die Aufnahme.
+- Der Text erscheint erst nach dem Stoppen, nicht während des Sprechens.
+
+## Browser speech in the remote preview
+
+The terminal now offers **Speech → Browser speech** as an explicit alternative
+when the local engine is not installed. Open **Voice** in the Apollo header,
+select **Use browser speech instead**, choose English or Deutsch, and click
+**Dictate**. Chrome/Edge generally expose the required Web Speech API; support
+and service availability depend on the browser. Unsupported browsers retain
+the local-engine option and typed input.
+
+Unlike the local Whisper path described above, browser speech **may send audio
+to the browser vendor's recognition service**. The UI discloses this before
+recording; it never silently switches a local recording to that service.
+No speech model or API key is required on the NIO server for this mode.
+
+For microphone permissions, open the HTTPS preview in a **new browser tab**
+instead of the embedded preview, then allow microphone access in site settings.
+An embedding page may prohibit microphone access even when the app uses HTTPS;
+the app cannot override its parent's permissions policy.
+
+Both modes put final text into the draft only. Review it and press **Send**.
+Saying “slash help” produces `/help`; “slash router status” produces
+`/router status`. Only explicit spoken slash prefixes followed by a known
+command are normalized. Approvals and denials remain typed-only, including
+spoken German “Schrägstrich approve/deny”. Closing the terminal cancels the
+session and discards late results. Sessions stop after at most 60 seconds.
+
+The preview's **AI demo mode** notice is separate from dictation: browser speech
+does not connect a live LLM, market provider, or agent worker. Those integrations
+still require their own configuration.

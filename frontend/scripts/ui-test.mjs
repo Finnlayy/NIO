@@ -37,14 +37,47 @@ const entries = [
   "ops/hotkeys.ts",
   "ops/hooks/useMarketData.ts",
   "server/telemetryBridge.ts",
+  /* TradingView MCP: pure tool mapping + response adapters (no I/O). */
+  "server/tradingview/tools.ts",
+  "server/tradingview/adapters.ts",
   "data/network.ts",
   /* Apollo core: pure router/layout/command modules + the zustand store. */
   "apollo/catalog.ts",
   "apollo/engine.ts",
   "apollo/routing.ts",
   "apollo/graph.ts",
+  "app/api/ops/route.ts",
+  "app/api/apollo/providers/route.ts",
+  "proxy.ts",
+  "app/api/apollo/route.ts",
+  "app/api/sandbox/route.ts",
+  "app/api/apollo/vault/route.ts",
   "apollo/commands.ts",
   "apollo/store.ts",
+  "apollo/dictation.ts",
+  "app/api/apollo/transcribe/route.ts",
+  "kanban/types.ts",
+  "kanban/seed.ts",
+  "kanban/board-logic.ts",
+  "kanban/validate.ts",
+  "kanban/repository.ts",
+  "kanban/store.ts",
+  "kanban/hotkeys.ts",
+  "kanban/useKanbanStore.ts",
+  "kanban/dragState.ts",
+  "kanban/MoveMenu.tsx",
+  "kanban/TaskCard.tsx",
+  "kanban/KanbanColumn.tsx",
+  "kanban/BoardToolbar.tsx",
+  "kanban/dialogState.ts",
+  "kanban/useFocusTrap.ts",
+  "kanban/ChecklistEditor.tsx",
+  "kanban/TaskDialog.tsx",
+  "kanban/UndoToast.tsx",
+  "kanban/KanbanBoard.tsx",
+  "telegram/state.ts",
+  "telegram/proxy.ts",
+  "telegram/Panels.tsx",
 ].filter((rel) => existsSync(path.join(srcDir, rel)));
 
 function walk(dir, out = []) {
@@ -109,6 +142,7 @@ execFileSync(
     "--target", "es2017",
     "--jsx", "react-jsx",
     "--esModuleInterop",
+    "--resolveJsonModule",
     "--skipLibCheck",
     "--strict",
     "--noEmitOnError",
@@ -120,16 +154,26 @@ execFileSync(
 /* 4. Copy the plain-JS tests and run them. Test files are passed
    explicitly: `node --test <dir>` chokes when the dir holds non-test .js
    files (dev utilities like churn-report.js). */
-const testSrc = path.join(srcDir, "ops", "__tests__");
 const testDest = path.join(buildDir, "__tests__");
 mkdirSync(testDest, { recursive: true });
 const testFiles = [];
-for (const f of readdirSync(testSrc).sort()) {
-  if (!f.endsWith(".js")) continue;
-  cpSync(path.join(testSrc, f), path.join(testDest, f));
-  if (f.endsWith(".test.js")) testFiles.push(path.join(testDest, f));
+
+/* All test dirs share one flat .test-build/__tests__/ (relative requires
+   like "../kanban/store" depend on it), so file names must be unique. */
+const copied = new Map();
+for (const dirName of ["ops", "kanban", "telegram"]) {
+  const testSrc = path.join(srcDir, dirName, "__tests__");
+  if (!existsSync(testSrc)) continue;
+  for (const f of readdirSync(testSrc).sort()) {
+    if (!f.endsWith(".js")) continue;
+    if (copied.has(f)) throw new Error(`test file name clash: ${dirName}/__tests__/${f} vs ${copied.get(f)}/__tests__/${f}`);
+    copied.set(f, dirName);
+    cpSync(path.join(testSrc, f), path.join(testDest, f));
+    if (f.endsWith(".test.js")) testFiles.push(path.join(testDest, f));
+  }
 }
-if (testFiles.length === 0) throw new Error("no *.test.js files found in src/ops/__tests__/");
+
+if (testFiles.length === 0) throw new Error("no *.test.js files found in src/ops/__tests__/, src/kanban/__tests__/ or src/telegram/__tests__/");
 execFileSync(process.execPath, ["--test", "--test-reporter=spec", ...testFiles], {
   cwd: frontendRoot,
   stdio: "inherit",

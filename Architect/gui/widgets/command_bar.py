@@ -1,5 +1,6 @@
-from PyQt6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton
-from PyQt6.QtCore import Qt, QTimer, QDateTime
+from PyQt6.QtCore import QDateTime, QTimer
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
+
 
 class CommandBar(QWidget):
     def __init__(self):

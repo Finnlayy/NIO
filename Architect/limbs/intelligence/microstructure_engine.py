@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class MicrostructureEngine:
     def __init__(self):
         self.bins = 26

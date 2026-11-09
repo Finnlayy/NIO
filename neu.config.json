@@ -47,6 +47,14 @@
     "neu.config.json",
     "core/policy.py",
     "core/config.py",
+    "core/kernel.py",
+    "orchestrator/runner.py",
+    "orchestrator/planner.py",
+    "orchestrator/kanban/sandbox.py",
+    "limbs/container.py",
+    "limbs/registry.json",
+    "protocol/operations.json",
+    "prompts/core/kernel_system.md",
     ".git/*",
     ".github/*"
   ]

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neural-orchestrator.local/schemas/refinement-vault.schema.json",
+  "title": "RefinementVaultEntry",
+  "description": "meta.json neben einem geparkten Limb-Artefakt: FSM-Zustand, Version, Lease und letzter Fehler. Erzeugt von orchestrator/refinement.py (SCHEMA_VERSION = 1).",
+  "type": "object",
+  "required": ["schema_version", "limb_id", "artifact", "state", "version", "attempts", "max_attempts", "created_at", "updated_at"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "limb_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+    "name": { "type": "string" },
+    "artifact": {
+      "type": "object",
+      "required": ["filename", "sha256", "size"],
+      "properties": {
+        "filename": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "size": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "state": {
+      "type": "string",
+      "enum": ["parked_pending_user", "refinement_queued", "healing_in_progress", "ready_for_review", "promoted", "quarantined"]
+    },
+    "version": { "type": "integer", "minimum": 1 },
+    "attempts": { "type": "integer", "minimum": 0 },
+    "max_attempts": { "type": "integer", "minimum": 1 },
+    "heal_steps": { "type": "integer", "minimum": 0 },
+    "test_command": { "type": "array", "items": { "type": "string" } },
+    "source": { "type": "string" },
+    "user_feedback": { "type": "string" },
+    "last_error": { "type": "object" },
+    "last_step": { "type": "string" },
+    "next_attempt_at": { "type": "string" },
+    "lease": {
+      "type": "object",
+      "properties": {
+        "worker": { "type": "string" },
+        "expires_at": { "type": "string" }
+      }
+    },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "history": { "type": "array", "items": { "type": "object" } }
+  }
+}

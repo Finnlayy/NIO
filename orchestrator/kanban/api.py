@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import hmac
 import json
+import os
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.atomic import atomic_write_bytes
+from core.protocol import DEFAULT_TICKET_TTL_S, MAX_TICKET_TTL_S, Intent, Operations, ProtocolError, issue_ticket
 from orchestrator.kanban.models import RustLimb, RustLimbRequest, RustLimbResponse, TaskStatus, TransitionError
 from orchestrator.kanban.runtime import KanbanRuntime
 from orchestrator.kanban.service import ConflictError
@@ -41,6 +43,18 @@ __all__ = [
 ]
 
 _LIMB_TIMEOUT_S = 30.0
+
+
+class TicketIssueIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    intent: dict[str, Any]
+    ttl_seconds: int = Field(default=DEFAULT_TICKET_TTL_S, ge=1, le=MAX_TICKET_TTL_S)
+
+
+class TicketIssueOut(BaseModel):
+    ticket: str
+    expires_at: str
+    intent_hash: str
 
 
 class _Out(BaseModel):
@@ -268,13 +282,17 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
     # -- Tools (Task-Token statt Operator-Token) --
     @router.get("/kanban/tools")
     async def list_tools() -> list[dict[str, Any]]:
-        return list(TOOL_DEFINITIONS)
+        extra = list(runtime.telegram.toolbox.definitions) if runtime.telegram is not None else []
+        return [*TOOL_DEFINITIONS, *extra]
 
     @router.post("/kanban/tools/{name}")
     async def call_tool(name: str, body: ToolCallIn, token: str = Depends(task_token)) -> dict[str, Any]:
         if await runtime.tokens.get(token) is None:
             raise HTTPException(status_code=401, detail="Task-Token ungueltig oder abgelaufen")
         try:
+            if runtime.telegram is not None and runtime.telegram.toolbox.handles(name):
+                telegram_result: dict[str, Any] = await runtime.telegram.toolbox.call(name, body.arguments)
+                return telegram_result
             return await runtime.toolbox.call(name, body.arguments, token)
         except PermissionError as e:
             raise HTTPException(status_code=403, detail=str(e)) from e
@@ -344,6 +362,25 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
         )
         return limb.to_dict()
 
+    @router.post("/approvals/issue", response_model=TicketIssueOut)
+    async def issue_approval(body: TicketIssueIn, actor: str = Depends(operator)) -> dict[str, str]:
+        key = os.environ.get("NIO_APPROVAL_KEY")
+        if not key:
+            raise HTTPException(status_code=503, detail="NIO_APPROVAL_KEY ist nicht gesetzt")
+        try:
+            intent = Intent.from_dict(body.intent, operations=Operations.load())
+            issued = issue_ticket(key, intent, body.ttl_seconds)
+        except ProtocolError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        await runtime.ledger.append(
+            actor=actor,
+            action="approval.issued",
+            category="system",
+            subject=intent.intent_id,
+            payload={"operation": intent.operation, "expires_at": issued["expires_at"]},
+        )
+        return issued
+
     @router.post("/rust-limbs/{name}/invoke", response_model=RustLimbResponseOut)
     async def invoke_rust_limb(name: str, body: RustLimbRequestIn, actor: str = Depends(operator)) -> dict[str, Any]:
         limb = _load_limbs(_limbs_path(runtime)).get(name)
@@ -363,5 +400,25 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"Limb-Aufruf fehlgeschlagen: {type(e).__name__}") from e
 
+    if runtime.telegram is not None:
+        from orchestrator.telegram.api import build_telegram_router
+
+        router.include_router(build_telegram_router(runtime.telegram, operator))
+
+
+    # -- STOP --
+    @router.post("/kanban/stop")
+    async def stop_orchestrator(actor: str = Depends(operator)) -> dict[str, Any]:
+        stop_file = runtime.config.stop_file
+        stop_file.parent.mkdir(parents=True, exist_ok=True)
+        stop_file.touch(exist_ok=True)
+        await runtime.ledger.append(actor=actor, action="kanban.stop", category="system", subject="all", payload={"state": "stopped"})
+        return {"ok": True, "status": "stopped"}
+
+    @router.delete("/kanban/stop")
+    async def clear_stop_orchestrator(actor: str = Depends(operator)) -> dict[str, Any]:
+        runtime.config.stop_file.unlink(missing_ok=True)
+        await runtime.ledger.append(actor=actor, action="kanban.resume", category="system", subject="all", payload={"state": "running"})
+        return {"ok": True, "status": "running"}
     app.include_router(router)
     return app

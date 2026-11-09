@@ -10,10 +10,10 @@ Storage: `Architect/runtime/learning/risk_guards/<guard_id>.json`
 Events:  `risk_guard_failed`, `risk_guard_warning` (whitelisted in events.py)
 """
 
-import json
-import logging
 import datetime
 import hashlib
+import json
+import logging
 from pathlib import Path
 
 from core.learning.error_patterns import DEFAULT_ALERT_THRESHOLD
@@ -30,7 +30,7 @@ class _DefaultRiskLimits:
 
 
 def make_guard_id(plan_id: str, timestamp: str) -> str:
-    return "rg_" + hashlib.sha1(f"{plan_id}|{timestamp}".encode("utf-8")).hexdigest()[:12]
+    return "rg_" + hashlib.sha1(f"{plan_id}|{timestamp}".encode()).hexdigest()[:12]
 
 
 class RiskGuardEngine:
@@ -48,7 +48,7 @@ class RiskGuardEngine:
         self.policy = policy
         self.event_bus = event_bus
 
-    def check(self, plan_or_update: dict, current_state: dict = None) -> dict:
+    def check(self, plan_or_update: dict, current_state: dict | None = None) -> dict:
         """Evaluate a plan/update against all guards; returns a RiskGuardResult dict.
 
         Fields: `passed` (bool), `failed` (list[str]), `warnings` (list[str]),
@@ -166,7 +166,7 @@ class RiskGuardStorage:
         results = []
         for path in sorted(self.guards_dir.glob("*.json")):
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     results.append(json.load(f))
             except Exception as exc:
                 logger.error("Failed to load risk guard %s: %s", path, exc)

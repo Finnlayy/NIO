@@ -39,7 +39,7 @@ export const widgetTemplates: WidgetTemplate[] = [
   {
     id: "TPL_02",
     /* dataFactory is bootstrap/fallback only. At runtime EnvelopeChart layers two
-       live feeds over it: OHLCV via useMarketData (tvremix proxy) and the engine
+       live feeds over it: OHLCV via useMarketData (TradingView MCP proxy) and the engine
        read (V_total, L2 depth, imbalance, confidence, forbidden zone) via
        useEngineTelemetry on the UDS bus. While the bus is STALE/DISCONNECTED the
        engine cells render "—" rather than a frozen number. */
@@ -178,9 +178,16 @@ export const widgetTemplates: WidgetTemplate[] = [
   },
 ];
 
+const byKeyMap = new Map<string, WidgetTemplate>();
+const byIdMap = new Map<WidgetTemplate["id"], WidgetTemplate>();
+
+for (const tpl of widgetTemplates) {
+  byKeyMap.set(tpl.key, tpl);
+  byIdMap.set(tpl.id, tpl);
+}
+
 export const templateByKey = (key: string) =>
-  widgetTemplates.find((t) => t.key === key) ??
-  widgetTemplates.find((t) => t.id === key);
+  byKeyMap.get(key) ?? byIdMap.get(key as WidgetTemplate["id"]);
 
 export const templateById = (id: WidgetTemplate["id"]) =>
-  widgetTemplates.find((t) => t.id === id);
+  byIdMap.get(id);

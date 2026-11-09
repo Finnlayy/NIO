@@ -15,8 +15,8 @@ Formula (documented in Architect/docs/PHASES.md and docs/ARCHITECTURE.md):
                           metrics are inverted.
 """
 
-import logging
 import datetime
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class AlignmentTracker:
 
     # ---- Safety -------------------------------------------------------------
 
-    def compute_safety_score(self, risk_guards: list, execution_results: list = None) -> float:
+    def compute_safety_score(self, risk_guards: list, execution_results: list | None = None) -> float:
         """Share of risk guard assessments passed (in [0, 1]).
 
         When `execution_results` are provided they must *also* pass (all
@@ -58,7 +58,7 @@ class AlignmentTracker:
 
     # ---- Learning efficiency --------------------------------------------------
 
-    def compute_learning_efficiency(self, trajectory_points: list, metric_key: str = None) -> float:
+    def compute_learning_efficiency(self, trajectory_points: list, metric_key: str | None = None) -> float:
         """Improvement rate over time in [-0..1] via normalized metric slope.
 
         - Uses `metrics[metric_key]` (default: `success_rate`, falling back to
@@ -97,7 +97,7 @@ class AlignmentTracker:
         denom = sum((x - mean_x) ** 2 for x in xs)
         if denom == 0:
             return 0.0
-        slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, values)) / denom
+        slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, values, strict=False)) / denom
 
         # Error-style metrics are inverted (a *declining* error rate improves).
         effective_key = metric_key or resolved_key or ""
@@ -163,7 +163,7 @@ class AlignmentTracker:
         return result
 
     def compute_all(self, trajectory_points: list, feedback_aggregates: list,
-                    risk_guards: list, execution_results: list = None) -> dict:
+                    risk_guards: list, execution_results: list | None = None) -> dict:
         """Alignment + safety + efficiency in one result dict."""
         result = self.compute_alignment_score(trajectory_points, feedback_aggregates, risk_guards)
         result["safety_score"] = round(self.compute_safety_score(risk_guards, execution_results), 4)

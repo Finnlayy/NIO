@@ -1,5 +1,5 @@
-import logging
 import fnmatch
+import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -82,9 +82,8 @@ class Policy:
     def constitution_guard(self, action: str, path_str: str, approved_by: str = "system") -> tuple:
         """Check if action requires human-only approval (core changes)."""
         for pattern in HUMAN_ONLY_GLOBS:
-            if fnmatch.fnmatch(path_str, pattern) or fnmatch.fnmatch(Path(path_str).name, pattern):
-                if approved_by != "human":
-                    return (False, f"Human-only action required for core file {path_str}; got approved_by='{approved_by}'.")
+            if (fnmatch.fnmatch(path_str, pattern) or fnmatch.fnmatch(Path(path_str).name, pattern)) and approved_by != "human":
+                return (False, f"Human-only action required for core file {path_str}; got approved_by='{approved_by}'.")
         return (True, f"Action {action} on {path_str} approved by '{approved_by}'.")
 
     def check_path_resolution(self, path_str: str) -> tuple:

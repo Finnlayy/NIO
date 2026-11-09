@@ -21,6 +21,7 @@ Stand: `9598911` (Merge PR #243) · Sprache: Deutsch, Code und Identifier englis
 2. [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md) — Intent/Result 1.2 (normativ)
 3. [`NEU.md`](NEU.md) — Kern, Orchestrator, Limbs im Detail
 4. [`TESTING.md`](TESTING.md) — wie man prüft, dass nichts kaputt ist
+5. [`EVIDENCE-HARNESS.md`](EVIDENCE-HARNESS.md) — wie ein Agent belegen muss, was er behauptet
 
 ### Ich will es betreiben
 
@@ -38,17 +39,29 @@ Stand: `9598911` (Merge PR #243) · Sprache: Deutsch, Code und Identifier englis
 | [`INDEX.md`](INDEX.md) | — | diese Seite | alle |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 212 | zwei Stapel, eine Grenze; Schichten; Prozess- und Zeitmodell | Entwickler |
 | [`KANBAN.md`](KANBAN.md) | ~140 | Hermes-Kanban: Tasks, Worker, Architektur, Konfiguration und CLI | Entwickler, Betrieb |
+| [`TELEGRAM.md`](TELEGRAM.md) | ~110 | Telegram-Feeds: Einrichtung, Konfiguration, API, Sicherheit | Entwickler, Betrieb |
 | [`NEU.md`](NEU.md) | 470 | Core, Orchestrator, Limbs, Lernschleife | Entwickler |
 | [`APOLLO-CORE.md`](APOLLO-CORE.md) | ~240 | Orb, Neuronaler Graph, Router, Deck, Terminal | Nutzer, Frontend |
 | [`OPS-GRID.md`](OPS-GRID.md) | ~180 | 10 Widgets, Drag/Resize, MCP-Konsole | Nutzer, Frontend |
+| [`SPEECH.md`](SPEECH.md) | ~80 | Spracheingabe, speaches lokal einrichten, Speech-Limb, Sprachstatus im Orb | Nutzer, Betrieb |
 | [`DATA-FLOW.md`](DATA-FLOW.md) | ~200 | Marktdaten: MCP → Adapter → Browser; Formate und Messungen | Entwickler, Betrieb |
+| [`VAULT.md`](VAULT.md) | ~65 | Obsidian-Vault: `/note`, `/vault`, Vault-Limb, lesender MCP-Server | Nutzer, Entwickler |
+| [`REFINEMENT-VAULT.md`](REFINEMENT-VAULT.md) | ~110 | Refinement-Vault: FSM geparkter Rust-Limbs, Hintergrund-Heilung, Scheduler/Cron, Ciel-Hook | Nutzer, Entwickler, Betrieb |
 | [`TRADING-LIMB.md`](TRADING-LIMB.md) | ~230 | Sigma als Handels-Knoten; Sparse-Clone, Pin, Lifecycle | Betrieb |
+| [`EVIDENCE-HARNESS.md`](EVIDENCE-HARNESS.md) | ~650 | Masterprompt v2 für recherchende Agenten: Rollenverträge, Claim-Ledger, Fail-Closed-Gate, Ticket, Budget | Entwickler, Konzept |
+| [`helpers/HARNESS_PLAN.md`](helpers/HARNESS_PLAN.md) | ~330 | Harness-Lücken, Phasenplan und Aufteilung auf Claude und Jules | Entwickler, Betrieb |
+| [`helpers/INTEGRATION_PLAN.md`](helpers/INTEGRATION_PLAN.md) | ~330 | ADR und Plan: Sprache, Obsidian, OpenCode und weitere Helfer | Entwickler, Betrieb |
+| [`knowledge/tradingview-mcp/README.md`](knowledge/tradingview-mcp/README.md) | 35 Leafs | TradingView-MCP: Zugang, Regeln, ein Leaf pro Tool | Agenten |
 | [`API.md`](API.md) | ~220 | 4 Next-Routen mit vollständigen Fehlerverträgen | Frontend, Integration |
 | [`TESTING.md`](TESTING.md) | ~180 | 360 Python-Tests, 69 UI-Tests, Audit-Harness | Entwickler |
 | [`OPERATIONS.md`](OPERATIONS.md) | ~200 | Ports, Env, Prozesse, Troubleshooting | Betrieb |
+| [`OPENMANUS.md`](OPENMANUS.md) | ~60 | OpenManus-Limb: Sperre, Einrichtung, Abschottung | Entwickler, Betrieb |
 | [`REA-SUBAGENT.md`](REA-SUBAGENT.md) | 396 | REA-Limb als Subagent mit eigener Sandbox | Entwickler |
 | [`../protocol/PROTOCOL.md`](../protocol/PROTOCOL.md) | ~490 | **normativ**: Intent, Result, Timer, Fehlercodes | Entwickler |
 | [`../prompts/limbs/`](../prompts/limbs/) | 3 Dateien | Rollen-Specs: bootstrap, rea, trading | Entwickler |
+| [`../prompts/agents/evidence_harness_v2.md`](../prompts/agents/evidence_harness_v2.md) | ~266 | Kanonischer Rollenvertrag für recherchende Agenten (H/M-Regeln, Ledger, Gate) | Entwickler |
+| [`PROMPT-OPTIMIZER.md`](PROMPT-OPTIMIZER.md) | ~200 | Ausführbarer Prompt-Optimierer: 4 Stufen, Sperren, Telemetrie, Quellenprüfung | Entwickler, Konzept |
+| [`../prompts/system/prompt_optimizer.md`](../prompts/system/prompt_optimizer.md) | ~230 | Normativtext des Optimierers (Ping-Pong-Architektur, Normalform 1.0) | Entwickler, Konzept |
 
 ### Historische Dokumente
 
@@ -76,8 +89,11 @@ einen Test, der ohne Netz und ohne Handarbeit läuft.
 | `orchestrator/` — Planner, Runner, Scheduler, UDS, Locks | 7 910 | **stabil** | `tests/` |
 | `limbs/echo` (Phase 1) | — | **aktiv** | `test_limbs.py` |
 | `limbs/bootstrap` (Phase 2) | — | **aktiv** | `test_bootstrap.py` |
+| `limbs/vault` (Phase 8) | 290 | **aktiv** | `test_vault_limb.py` (27) |
 | `limbs/rea` (Phase 3) | — | **aktiv** | `test_limbs.py`, `support_rea.py` |
+| `limbs/openmanus` (Phase 6) | 250 | **geplant, gesperrt** | `test_openmanus_limb.py`, `test_agent_base.py` |
 | `limbs/trading` (Phase 5) | 552 | **aktiv** | `test_trading_limb.py` (23) |
+| `limbs/speech` (Phase 7) | 190 | **aktiv** | `test_speech_limb.py` (12) |
 
 **26 Operationen** in `protocol/operations.json`: 4 `echo`, 6 `bootstrap`,
 5 `rea`, 8 `trading`, 3 deklariert-aber-nicht-implementiert (`shell.exec`,
@@ -91,7 +107,7 @@ einen Test, der ohne Netz und ohne Handarbeit läuft.
 | `/ops` | ○ statisch | **stabil** |
 | `POST /api/apollo` | ƒ dynamisch | **stabil**, fail-closed |
 | `POST /api/sandbox` | ƒ dynamisch | **stabil**, Allowlist |
-| `GET /api/market/[tool]` | ƒ dynamisch | **stabil**, braucht `TVREMIX_API_KEY` |
+| `GET /api/market/[tool]` | ƒ dynamisch | **stabil**, braucht OAuth-Login beim TradingView-MCP |
 | `GET /api/telemetry/stream` | ƒ dynamisch | **stabil**, SSE |
 
 **69 UI-Tests** über `node scripts/ui-test.mjs` (kein Framework, siehe
@@ -103,7 +119,7 @@ Diese Punkte sind Absicht oder offen dokumentiert — keine Überraschungen:
 
 | Einschränkung | Warum |
 |---|---|
-| `/api/market/*` liefert **503/502** ohne `TVREMIX_API_KEY` | fail-closed; die Widgets zeigen `SIM`-Badges und synthetische Daten |
+| `/api/market/*` liefert **503/502** ohne TradingView-Login | fail-closed; die Widgets zeigen `SIM`-Badges und synthetische Daten |
 | Telemetrie-Stream meldet `state: "stale"` | Python-Produzent (`runtime/telemetry.sock`) läuft nicht immer |
 | Orb nutzt **Canvas2D** ohne WebGL | Software-Rendering in headless-Umgebungen; im Browser WebGL |
 | Kein Live-Broker | Trading-Limb exponiert keine Kraken-Routen |

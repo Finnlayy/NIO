@@ -54,7 +54,9 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import getpass
 import json
+import os
 import sys
 import time
 from collections.abc import Mapping, Sequence
@@ -68,6 +70,7 @@ if str(_REPO_ROOT) not in sys.path:
 from core.config import ABSOLUTE_MAX_ITERATIONS, SCALE_PROFILES, NeuConfig  # noqa: E402
 from core.job import JOB_KIND_SCHEDULED, JOB_RESOLVED, JobStore, summarize  # noqa: E402
 from core.protocol import (  # noqa: E402
+    DEFAULT_TICKET_TTL_S,
     PROTOCOL_INTENT,
     PROTOCOL_RESULT,
     PROTOCOL_VERSION,
@@ -76,6 +79,8 @@ from core.protocol import (  # noqa: E402
     Operations,
     ProtocolError,
     Result,
+    issue_ticket,
+    utc_now_iso,
 )
 from core.schemacheck import validate as schema_validate  # noqa: E402 - sys.path-Bootstrap oben ist Absicht
 
@@ -518,6 +523,35 @@ def cmd_job_show(args: argparse.Namespace) -> int:
     for event in history[-12:]:
         _say(f"  {event.get('at', '?')}  {event.get('event', '?')}  {json.dumps({k: v for k, v in event.items() if k not in {'event', 'at', 'history', 'outcome'}}, ensure_ascii=False)[:180]}")
     _rule("=")
+    return EXIT_OK
+
+
+def cmd_approve(args: argparse.Namespace) -> int:
+    """Stellt ein Freigabe-Ticket aus. Das ist eine Handlung des Menschen, kein Agent ruft das."""
+    config = _config_from_args(args)
+    key = os.environ.get("NIO_APPROVAL_KEY")
+    if not key:
+        _say("[fehler] NIO_APPROVAL_KEY ist nicht gesetzt")
+        return 1
+    raw = sys.stdin.read() if args.intent == "-" else Path(args.intent).read_text(encoding="utf-8")
+    try:
+        intent = Intent.from_dict(json.loads(raw), operations=Operations.load(config.protocol_dir / "operations.json"))
+        issued = issue_ticket(key, intent, args.ttl_seconds)
+    except (json.JSONDecodeError, ProtocolError) as exc:
+        _say(f"[fehler] Auftrag nicht freigabefaehig: {exc}")
+        return EXIT_USAGE
+    audit = config.runtime_dir / "approvals" / "issued.jsonl"
+    audit.parent.mkdir(parents=True, exist_ok=True)
+    entry = {
+        "at": utc_now_iso(),
+        "actor": getpass.getuser(),
+        "intent_id": intent.intent_id,
+        "operation": intent.operation,
+        "expires_at": issued["expires_at"],
+    }
+    with audit.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    _dump(issued)
     return EXIT_OK
 
 
@@ -1079,6 +1113,144 @@ def cmd_schedule_list(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+# --------------------------------------------------------------------------- #
+# Refinement-Vault (geparkte Limbs, FSM + Hintergrund-Heilung)
+# --------------------------------------------------------------------------- #
+def _refinement_vault(args: argparse.Namespace):
+    from .refinement import RefinementVault
+
+    config = _config_from_args(args)
+    return RefinementVault(config.refinement_vault_dir, bus=build_event_bus(quiet=True))
+
+
+def cmd_refinement_park(args: argparse.Namespace) -> int:
+    vault = _refinement_vault(args)
+    entry = vault.park(
+        args.artifact,
+        limb_id=args.limb_id,
+        name=args.name or "",
+        test_command=tuple(args.test_command.split()) if args.test_command else (),
+        source=args.source or "",
+        max_attempts=args.max_attempts,
+    )
+    if args.json:
+        _dump(entry.to_dict())
+    else:
+        _say(f"[ok] {entry.limb_id} geparkt: {entry.state} (v{entry.version}, sha256={entry.sha256[:12]}...) -- wartet auf Freigabe.")
+    return EXIT_OK
+
+
+def cmd_refinement_list(args: argparse.Namespace) -> int:
+    vault = _refinement_vault(args)
+    entries = vault.list_entries(state=args.state)
+    if args.json:
+        _dump([entry.to_dict() for entry in entries])
+        return EXIT_OK
+    if not entries:
+        _say("(keine Eintraege im Refinement-Vault)")
+        return EXIT_OK
+    for entry in entries:
+        _say(f"{entry.limb_id:<24} {entry.state:<22} v{entry.version}  versuche={entry.attempts}/{entry.max_attempts}  "
+             f"naechster_lauf={entry.next_attempt_at or '-'}  {entry.artifact_filename}")
+    return EXIT_OK
+
+
+def cmd_refinement_show(args: argparse.Namespace) -> int:
+    vault = _refinement_vault(args)
+    entry = vault.get(args.limb_id)
+    if args.json:
+        _dump(entry.to_dict())
+        return EXIT_OK
+    _kv("Limb", f"{entry.limb_id} ({entry.name})")
+    _kv("Zustand", entry.state)
+    _kv("Artefakt", f"{entry.artifact_filename} v{entry.version} sha256={entry.sha256[:16]}... bytes={entry.size}")
+    _kv("Versuche", f"{entry.attempts}/{entry.max_attempts}  heilschritte={entry.heal_steps}  letzter_schritt={entry.last_step or '-'}")
+    if entry.last_error:
+        _kv("Letzter Fehler", f"{entry.last_error.get('kind')}: {entry.last_error.get('message')}")
+    if entry.user_feedback:
+        _kv("User-Feedback", entry.user_feedback)
+    return EXIT_OK
+
+
+def cmd_refinement_approve(args: argparse.Namespace) -> int:
+    vault = _refinement_vault(args)
+    entry = vault.approve(args.limb_id, promote_to=args.promote_to, approved_by="human")
+    if args.json:
+        _dump(entry.to_dict())
+    else:
+        _say(f"[ok] {entry.limb_id} freigegeben: {entry.state}" + (f" -> {args.promote_to}" if args.promote_to else ""))
+    return EXIT_OK
+
+
+def cmd_refinement_reject(args: argparse.Namespace) -> int:
+    vault = _refinement_vault(args)
+    entry = vault.reject(args.limb_id, feedback=args.feedback or "", final=args.final)
+    if args.json:
+        _dump(entry.to_dict())
+    else:
+        _say(f"[ok] {entry.limb_id} abgelehnt: {entry.state}" + (" (final, Quarantaene)" if args.final else " -- Heilung laeuft im Hintergrund."))
+    return EXIT_OK
+
+
+def cmd_refinement_requeue(args: argparse.Namespace) -> int:
+    vault = _refinement_vault(args)
+    entry = vault.requeue(args.limb_id)
+    if args.json:
+        _dump(entry.to_dict())
+    else:
+        _say(f"[ok] {entry.limb_id} zurueck in der Queue: {entry.state}")
+    return EXIT_OK
+
+
+def cmd_refinement_run_once(args: argparse.Namespace) -> int:
+    from .refinement_daemon import RefinementDaemon
+
+    config = _config_from_args(args)
+    vault = _refinement_vault(args)
+    daemon = RefinementDaemon(vault, retry_base_s=args.retry_base_s)
+    daemon.notify = daemon.file_notifier(config.refinement_vault_dir / "notifications.jsonl")
+    reports = daemon.run_cycle(max_items=args.max_items)
+    if args.json:
+        _dump([report.to_dict() for report in reports])
+    else:
+        for report in reports:
+            _say(f"[refinement] {report.limb_id or '-'}: {report.outcome}  schritte={', '.join(report.steps) or '-'}  {report.detail}")
+    return EXIT_OK
+
+
+def cmd_refinement_daemon(args: argparse.Namespace) -> int:
+    import asyncio
+    from datetime import time as day_time
+
+    from .refinement_daemon import RefinementDaemon
+
+    config = _config_from_args(args)
+    vault = _refinement_vault(args)
+    daemon = RefinementDaemon(vault, retry_base_s=args.retry_base_s)
+    daemon.notify = daemon.file_notifier(config.refinement_vault_dir / "notifications.jsonl")
+
+    def _parse_hhmm(raw: str | None) -> day_time | None:
+        if not raw:
+            return None
+        hour, _, minute = raw.partition(":")
+        return day_time(hour=int(hour), minute=int(minute or 0))
+
+    reports = asyncio.run(
+        daemon.run_forever(
+            interval_s=args.interval,
+            active_start=_parse_hhmm(args.active_start),
+            active_end=_parse_hhmm(args.active_end),
+            max_cycles=args.max_cycles,
+            max_items_per_cycle=args.max_items,
+        )
+    )
+    if args.json:
+        _dump([report.to_dict() for report in reports])
+    else:
+        _say(f"[refinement] Daemon beendet: {len(reports)} Laeufe.")
+    return EXIT_OK
+
+
 def cmd_schedule_clear(args: argparse.Namespace) -> int:
     config = _config_from_args(args)
     config.ensure_dirs()
@@ -1257,6 +1429,23 @@ def cmd_loop(args: argparse.Namespace) -> int:
     _say(f"[loop] {len(attempts)} Intent(s) abgearbeitet")
     for attempt in attempts:
         _say(f"  - {attempt.intent.intent_id} {attempt.intent.operation} -> {attempt.result.status}/{attempt.verdict.decision}")
+    return EXIT_OK
+
+
+
+def cmd_stop(args: argparse.Namespace) -> int:
+    config = _config_from_args(args)
+    stop_file = config.runtime_dir / "STOP"
+    stop_file.parent.mkdir(parents=True, exist_ok=True)
+    stop_file.touch()
+    _say("[not-aus] gesetzt: Laufende Limbs enden, neue werden abgelehnt.")
+    return EXIT_OK
+
+
+def cmd_resume(args: argparse.Namespace) -> int:
+    config = _config_from_args(args)
+    (config.runtime_dir / "STOP").unlink(missing_ok=True)
+    _say("[not-aus] aufgehoben.")
     return EXIT_OK
 
 
@@ -1579,6 +1768,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_status = sub.add_parser("status", help="Konfiguration, Queues, Jobs, Limbs, Agent-Slots")
     p_status.set_defaults(func=cmd_status)
 
+    p_approve = sub.add_parser("approve", help="Freigabe-Ticket fuer einen Auftrag ausstellen (Mensch)")
+    p_approve.add_argument("intent", help="Pfad zur Intent-JSON oder - fuer stdin")
+    p_approve.add_argument("--ttl-seconds", type=int, default=DEFAULT_TICKET_TTL_S, help="Gueltigkeit, 1 bis 3600")
+    p_approve.set_defaults(func=cmd_approve)
+
     p_job = sub.add_parser("job", help="Job-Lebenszyklus (run/list/show)")
     job_sub = p_job.add_subparsers(dest="job_command", required=True, parser_class=_NeuArgumentParser)
 
@@ -1692,6 +1886,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_loop.add_argument("--once", action="store_true", default=True, help="Ein Durchlauf (Default)")
     p_loop.add_argument("--watch", action="store_true", help="Dauerbetrieb (ab Phase 4)")
     p_loop.set_defaults(func=cmd_loop)
+    p_stop = sub.add_parser("stop", help="Not-Aus: laufende Limbs beenden, neue ablehnen")
+    p_stop.set_defaults(func=cmd_stop)
+    p_resume = sub.add_parser("resume", help="Not-Aus aufheben")
+    p_resume.set_defaults(func=cmd_resume)
 
     p_subagent = sub.add_parser(
         "subagent",
@@ -1750,8 +1948,52 @@ def build_parser() -> argparse.ArgumentParser:
     p_scale.add_argument("--approved-by", default="core", choices=("core", "human"))
     p_scale.set_defaults(func=cmd_scale)
 
+    p_ref = sub.add_parser("refinement", help="Refinement-Vault: geparkte Limbs parken/freigeben/ablehnen und Hintergrund-Heilung fahren")
+    ref_sub = p_ref.add_subparsers(dest="refinement_cmd", required=True, parser_class=_NeuArgumentParser)
+    p_ref_park = ref_sub.add_parser("park", help="Artefakt im Staging parken (parked_pending_user)")
+    p_ref_park.add_argument("artifact", help="Pfad zum Artefakt (z. B. libnio_limb.so oder Limb.rs)")
+    p_ref_park.add_argument("--limb-id", required=True, dest="limb_id")
+    p_ref_park.add_argument("--name", default="")
+    p_ref_park.add_argument("--test-command", default="", dest="test_command", help="isolierter Test, z. B. 'cargo test' ({artifact} = Candidate-Pfad)")
+    p_ref_park.add_argument("--source", default="")
+    p_ref_park.add_argument("--max-attempts", type=int, default=5, dest="max_attempts")
+    p_ref_park.set_defaults(func=cmd_refinement_park)
+    p_ref_list = ref_sub.add_parser("list", help="Vault-Eintraege auflisten (FIFO, aelteste zuerst)")
+    p_ref_list.add_argument("--state", default=None, choices=("parked_pending_user", "refinement_queued", "healing_in_progress", "ready_for_review", "promoted", "quarantined"))
+    p_ref_list.set_defaults(func=cmd_refinement_list)
+    p_ref_show = ref_sub.add_parser("show", help="Einen Vault-Eintrag inkl. letztem Fehler zeigen")
+    p_ref_show.add_argument("limb_id")
+    p_ref_show.set_defaults(func=cmd_refinement_show)
+    p_ref_approve = ref_sub.add_parser("approve", help="Menschliche Freigabe: promoted (optional in die Baseline kopieren)")
+    p_ref_approve.add_argument("limb_id")
+    p_ref_approve.add_argument("--promote-to", default=None, dest="promote_to", help="Zielpfad in der Baseline")
+    p_ref_approve.set_defaults(func=cmd_refinement_approve)
+    p_ref_reject = ref_sub.add_parser("reject", help="Ablehnen: zurueck in die Heilungs-Queue (--final = Quarantaene)")
+    p_ref_reject.add_argument("limb_id")
+    p_ref_reject.add_argument("--feedback", default="")
+    p_ref_reject.add_argument("--final", action="store_true")
+    p_ref_reject.set_defaults(func=cmd_refinement_reject)
+    p_ref_requeue = ref_sub.add_parser("requeue", help="Eintrag aus der Quarantaene zurueck in die Queue holen (Mensch)")
+    p_ref_requeue.add_argument("limb_id")
+    p_ref_requeue.set_defaults(func=cmd_refinement_requeue)
+    p_ref_once = ref_sub.add_parser("run-once", help="Ein Hintergrund-Heilungszyklus (fuer Cron/systemd-Timer)")
+    p_ref_once.add_argument("--max-items", type=int, default=1, dest="max_items")
+    p_ref_once.add_argument("--retry-base-s", type=float, default=60.0, dest="retry_base_s")
+    p_ref_once.set_defaults(func=cmd_refinement_run_once)
+    p_ref_daemon = ref_sub.add_parser("daemon", help="Scheduler-Loop: periodisch heilen, optional nur im Zeitfenster (z. B. nachts)")
+    p_ref_daemon.add_argument("--interval", type=float, default=300.0)
+    p_ref_daemon.add_argument("--active-start", default=None, dest="active_start", help="HH:MM")
+    p_ref_daemon.add_argument("--active-end", default=None, dest="active_end", help="HH:MM (Fenster darf ueber Mitternacht gehen)")
+    p_ref_daemon.add_argument("--max-cycles", type=int, default=None, dest="max_cycles")
+    p_ref_daemon.add_argument("--max-items", type=int, default=1, dest="max_items")
+    p_ref_daemon.add_argument("--retry-base-s", type=float, default=60.0, dest="retry_base_s")
+    p_ref_daemon.set_defaults(func=cmd_refinement_daemon)
+
     from orchestrator.kanban.cli import add_kanban_parser
     add_kanban_parser(sub, _NeuArgumentParser)
+
+    from orchestrator.telegram.cli import add_telegram_parser
+    add_telegram_parser(sub, _NeuArgumentParser)
 
     return parser
 

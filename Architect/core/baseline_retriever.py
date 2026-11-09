@@ -1,5 +1,5 @@
-import logging
 import json
+import logging
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ class BaselineRetriever:
             logger.warning("Baseline not found for plan %s at %s", plan_id, baseline_path)
             return {}
         try:
-            with open(baseline_path, "r", encoding="utf-8") as f:
+            with open(baseline_path, encoding="utf-8") as f:
                 return json.load(f)
         except Exception as exc:
             logger.error("Failed to load baseline for plan %s: %s", plan_id, exc)
