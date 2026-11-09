@@ -1,17 +1,16 @@
 /* ------------------------------------------------------------------ */
-/* tvremix MCP client — Streamable HTTP transport (server-side only)   */
-/* Talks JSON-RPC to the hosted MCP endpoint. The API key never leaves  */
-/* the server; browsers talk to /api/market/* routes instead.          */
+/* TradingView MCP client — Streamable HTTP transport (server-side)    */
+/* Talks JSON-RPC to the official MCP (mcp.tradingview.com). Auth is   */
+/* an OAuth bearer from ./oauth; the token never leaves the server,    */
+/* browsers talk to /api/market/* routes instead.                      */
 /* ------------------------------------------------------------------ */
 
-import { createHash } from "node:crypto";
-import { secretEnvironment } from "../secretManager";
+import { MCP_URL, clearTokens, getAccessToken, refreshAccessToken } from "./oauth";
 
 let sessionId: string | null = null;
 let initPromise: Promise<void> | null = null;
-let credentialFingerprint = "";
 
-/** Minimal TTL cache so the 20/min · 200/hr · 1500/day limits are respected. */
+/** Minimal TTL cache so upstream rate limits are respected. */
 const cache = new Map<string, { at: number; ttl: number; value: unknown }>();
 
 export function cachedGet<T>(key: string): T | undefined {
@@ -28,22 +27,13 @@ export function cachedSet<T>(key: string, value: T, ttlMs: number) {
   cache.set(key, { at: Date.now(), ttl: ttlMs, value });
 }
 
-/** Rotation/removal invalidates cached results and the authenticated session. */
+/** Fail closed: no OAuth token or a non-HTTPS endpoint never reaches the network. */
 async function credentials() {
-  const env = await secretEnvironment();
-  const key = env.TVREMIX_API_KEY?.trim();
-  const endpoint = env.TVREMIX_MCP_URL || "https://tvremix.xyz/api/mcp/v1";
-  const fingerprint = createHash("sha256").update(`${key ?? ""}\0${endpoint}`).digest("hex");
-  if (fingerprint !== credentialFingerprint) {
-    credentialFingerprint = fingerprint;
-    cache.clear();
-    sessionId = null;
-    initPromise = null;
-  }
-  if (!key) throw new McpError(503, "TVREMIX_API_KEY not configured");
-  const url = new URL(endpoint);
-  if (url.protocol !== "https:" || url.username || url.password) throw new McpError(503, "Invalid TVremix endpoint");
-  return { key, endpoint };
+  const token = await getAccessToken();
+  if (!token) throw new McpError(503, "TradingView not connected — open /api/market/oauth/start");
+  const url = new URL(MCP_URL);
+  if (url.protocol !== "https:" || url.username || url.password) throw new McpError(503, "Invalid TradingView MCP endpoint");
+  return { token, endpoint: MCP_URL };
 }
 
 function parseMcpBody(raw: string): any | null {
@@ -72,17 +62,17 @@ function parseMcpBody(raw: string): any | null {
   }
 }
 
-async function rpc(method: string, params: Record<string, unknown>): Promise<any> {
-  const { key: API_KEY, endpoint: MCP_URL } = await credentials();
+async function rpc(method: string, params: Record<string, unknown>, retried = false): Promise<any> {
+  const { token, endpoint } = await credentials();
 
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${API_KEY}`,
+    Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
     Accept: "application/json, text/event-stream",
   };
   if (sessionId) headers["Mcp-Session-Id"] = sessionId;
 
-  const res = await fetch(MCP_URL, {
+  const res = await fetch(endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify({ jsonrpc: "2.0", id: Math.floor(Math.random() * 1e9), method, params }),
@@ -91,10 +81,22 @@ async function rpc(method: string, params: Record<string, unknown>): Promise<any
     redirect: "error",
   });
 
+  // Expired token: refresh once and replay; a refused refresh means re-login.
+  if (res.status === 401 && !retried) {
+    if (await refreshAccessToken()) return rpc(method, params, true);
+    clearTokens();
+    throw new McpError(401, "TradingView session expired — open /api/market/oauth/start");
+  }
+  // Unknown session (server restarted): drop it so the next call re-initializes.
+  if (res.status === 404 && sessionId) {
+    sessionId = null;
+    initPromise = null;
+  }
+
   const newSession = res.headers.get("mcp-session-id");
   if (newSession) sessionId = newSession;
 
-  const raw = (await res.text()).split(API_KEY).join("[REDACTED]");
+  const raw = (await res.text()).split(token).join("[REDACTED]");
   const payload = parseMcpBody(raw);
 
   if (!res.ok || payload?.error) {
@@ -107,6 +109,24 @@ async function rpc(method: string, params: Record<string, unknown>): Promise<any
   return payload.result;
 }
 
+/** Spec handshake step 2; stateless servers may ignore it, so failures are swallowed. */
+async function notifyInitialized() {
+  const token = await getAccessToken();
+  if (!token) return;
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    Accept: "application/json, text/event-stream",
+  };
+  if (sessionId) headers["Mcp-Session-Id"] = sessionId;
+  await fetch(MCP_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+    cache: "no-store",
+  }).catch(() => undefined);
+}
+
 /** Lazily initialize the MCP session once per server process. */
 async function ensureSession() {
   if (sessionId) return;
@@ -115,11 +135,7 @@ async function ensureSession() {
       protocolVersion: "2025-03-26",
       capabilities: {},
       clientInfo: { name: "nio-ops-grid", version: "1.0.0" },
-    }).then((result) => {
-      if (result?.serverInfo) {
-        // notifications/initialized is optional for stateless servers; ignore failures.
-      }
-    });
+    }).then(() => notifyInitialized());
   }
   try {
     await initPromise;
@@ -146,10 +162,12 @@ export async function callTool(
   name: string,
   args: Record<string, unknown>,
   ttlMs = 60_000,
+  fresh = false,
 ): Promise<unknown> {
   await credentials();
   const cacheKey = `tool:${name}:${JSON.stringify(args)}`;
-  const cached = cachedGet<unknown>(cacheKey);
+  // fresh: a manual widget refresh skips the read but still refills the cache.
+  const cached = fresh ? undefined : cachedGet<unknown>(cacheKey);
   if (cached !== undefined) return cached;
 
   await ensureSession();

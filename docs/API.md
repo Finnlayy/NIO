@@ -8,7 +8,7 @@ Alle Routen liegen unter `frontend/src/app/api/`. Alle Endpunkte nutzen
 | `/api/apollo` | GET, POST | Providerstatus / echte Completion | ja, serverseitig für Completion |
 | `/api/apollo/providers` | GET, POST | Status lesen / explizite Mini-Completion-Probes | ja für Probes |
 | `/api/apollo/transcribe` | GET, POST | Sprachstatus und Diktat über lokales speaches, 503 bei Ausfall ([`SPEECH.md`](SPEECH.md)) | nein |
-| `/api/market/[tool]` | GET | Marktdaten über tvremix MCP | ja, serverseitig |
+| `/api/market/[tool]` | GET | Marktdaten über den offiziellen TradingView-MCP | OAuth, serverseitig |
 | `/api/sandbox` | POST | read-only Shell-Allowlist | nein |
 | `/api/apollo/vault` | POST | Notizen ablegen und suchen über den Vault-Limb ([`VAULT.md`](VAULT.md)) | nein |
 | `/api/telemetry/stream` | GET | SSE der Python-Engine | nein |
@@ -89,15 +89,16 @@ Vollständige Beschreibung der Datenformen: [`DATA-FLOW.md`](DATA-FLOW.md).
 ### Umschlag und Fehler
 
 ```jsonc
-{ "ok": true,  "source": "tvremix", "data": { … } }
+{ "ok": true,  "source": "tradingview", "data": { … } }
 { "ok": false, "source": "error",   "error": "…" }
 ```
 
 | Status | `error` | Ursache |
 |---|---|---|
-| 503 | `TVREMIX_API_KEY not configured` | Key fehlt |
+| 503 | `TradingView not connected — …` | kein OAuth-Login (`/api/market/oauth/start`) |
 | 429 | `Rate limited: …` | MCP-Limit |
-| 401/403 | `Auth failed: …` | Key ungültig |
+| 401 | `TradingView session expired — …` | Refresh abgelehnt, neu anmelden |
+| 403 | `Tool … is not a read-only TradingView tool` | Durchreich auf ein Schreib-Tool |
 | 502 | `Quote shape not recognized` | Adapter fand keinen Preis |
 | 502 | `OHLCV shape not recognized` | < 5 Balken oder kein Close |
 | 502 | `No live quotes returned` | alle Einzelquotes scheiterten |
