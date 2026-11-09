@@ -19,6 +19,7 @@ import { DomainsGrid } from "./dashboard/DomainsGrid";
 import { AgentsTile } from "./dashboard/AgentsTile";
 import { ActivityFeed } from "./dashboard/ActivityFeed";
 import type { FeedEvent, FeedStatus, RunState } from "./dashboard/types";
+import { isTypingTarget } from "@/ops/hotkeys";
 
 const NODE_BY_ID = Object.fromEntries(networkNodes.map((node) => [node.id, node]));
 const ACTIVE_DOMAIN_COUNT = new Set(networkNodes.map((node) => node.domain).filter(Boolean)).size;
@@ -161,6 +162,33 @@ export default function NetworkDashboard() {
       setIsRunning(false);
     }
   }
+
+  const stateRef = useRef({ taskText, isRunning, runTask });
+  useEffect(() => {
+    stateRef.current = { taskText, isRunning, runTask };
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        if (
+          isTypingTarget(document.activeElement) &&
+          document.activeElement?.tagName !== "TEXTAREA"
+        ) {
+          return;
+        }
+
+        e.preventDefault();
+        const { taskText: currentTaskText, isRunning: currentIsRunning, runTask: currentRunTask } = stateRef.current;
+        if (!currentIsRunning && currentTaskText.trim()) {
+          void currentRunTask();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   return (
     <main className="min-h-screen bg-[#090b12]">
