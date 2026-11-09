@@ -12,7 +12,7 @@ PYTHON ?= python3
 RUNTIME ?= $(CURDIR)/runtime
 
 .DEFAULT_GOAL := help
-.PHONY: help test test-core test-architect test-frontend ui-test test-verbose lint lint-fix types compile e2e check demo clean rea-demo rea-recover rea-status rea-probe rust-test rust-limb e2e-kanban prompt-optimizer
+.PHONY: help test test-core test-architect test-frontend ui-test test-verbose lint lint-fix types compile e2e check demo clean rea-demo rea-recover rea-status rea-probe rust-test rust-limb e2e-kanban e2e-telegram prompt-optimizer
 
 help:  ## Diese Uebersicht
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -73,6 +73,9 @@ prompt-optimizer:  ## Prompt-Optimierer: Demo-Lauf beider Modi in workspace/ (In
 
 e2e-kanban:  ## End-to-End-Beweis fuer Kanban (WP-09)
 	$(PYTHON) scripts/ci_e2e_kanban.py
+
+e2e-telegram:  ## End-to-End-Beweis fuer Telegram (FakeTelegramClient, offline)
+	$(PYTHON) scripts/ci_e2e_telegram.py
 
 check: compile lint types test ui-test e2e  ## Das volle Tor (wie in CI)
 	@echo "check: alles gruen"
