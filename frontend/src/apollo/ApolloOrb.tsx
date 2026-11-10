@@ -1,11 +1,18 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { ORB_STATE_STYLE, PALETTE } from "./catalog";
+import { ORB_STATE_STYLE, PALETTE, RECORDING_COLOR } from "./catalog";
 import { hexToRgba } from "./graph";
 import { FRAGMENT_SHADER, VERTEX_SHADER } from "./orbShader";
-import { selectActiveModel, useApolloStore } from "./store";
+import type { SpeechStatus } from "./dictation";
+import { selectShownModel, useApolloStore } from "./store";
 import type { OrbState } from "./types";
+
+const SPEECH_CAPTION: Partial<Record<SpeechStatus, { label: string; color: string }>> = {
+  listening: { label: "recording", color: RECORDING_COLOR },
+  transcribing: { label: "transcribing", color: PALETTE.cyan },
+  offline: { label: "speech engine is not running", color: PALETTE.amber },
+};
 
 /* ==================================================================== */
 /* Per-state rendering targets                                           */
@@ -268,11 +275,12 @@ export function ApolloOrb({ className = "" }: { className?: string }) {
 
   const orbState = useApolloStore((s) => s.orbState);
   const speech = useApolloStore((s) => s.speech);
+  const speechCaption = SPEECH_CAPTION[speech];
   const flare = useApolloStore((s) => s.flare);
   const setDeckOpen = useApolloStore((s) => s.setDeckOpen);
   const snapshot = useApolloStore((s) => s.router);
   const latency = useApolloStore((s) => s.snapshot().latencyMs);
-  const activeModel = useApolloStore(selectActiveModel);
+  const activeModel = useApolloStore(selectShownModel);
   const config = useApolloStore((s) => s.config);
   const failovers = useApolloStore((s) => s.router.failoverCount);
 
@@ -501,7 +509,7 @@ export function ApolloOrb({ className = "" }: { className?: string }) {
           onMouseLeave={() => { hoverRef.current = false; setHovered(false); }}
           onFocus={() => { hoverRef.current = true; setHovered(true); }}
           onBlur={() => { hoverRef.current = false; setHovered(false); }}
-          aria-label={`Apollo orchestrator core — ${style.label}. Open the Apollo control deck.`}
+          aria-label={`Apollo orchestrator core — ${speech === "listening" && orbState === "LISTENING" ? "Recording" : style.label}. Open the Apollo control deck.`}
           className="absolute left-1/2 top-1/2 z-10 h-[58%] w-[58%] -translate-x-1/2 -translate-y-1/2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
           style={{ cursor: "pointer" }}
         >
@@ -514,16 +522,19 @@ export function ApolloOrb({ className = "" }: { className?: string }) {
             <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: style.color, boxShadow: `0 0 10px ${style.color}` }} />
             Apollo Core
           </div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.3em]" style={{ color: style.color }}>
-            {style.label}
-          </div>
-          {speech === "offline" || speech === "transcribing" ? (
+          {/* While dictating, "recording" below is the one word for this state. */}
+          {speech === "listening" && orbState === "LISTENING" ? null : (
+            <div className="font-mono text-[10px] uppercase tracking-[0.3em]" style={{ color: style.color }}>
+              {style.label}
+            </div>
+          )}
+          {speechCaption ? (
             <div
               className="font-mono text-[9px] uppercase tracking-[0.2em]"
-              style={{ color: speech === "offline" ? PALETTE.amber : PALETTE.cyan }}
+              style={{ color: speechCaption.color }}
               data-testid="orb-speech"
             >
-              {speech === "offline" ? "speech engine is not running" : "transcribing"}
+              {speechCaption.label}
             </div>
           ) : null}
         </div>

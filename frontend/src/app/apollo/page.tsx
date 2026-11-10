@@ -20,17 +20,19 @@ import { EmergencyStopButton } from "@/apollo/ApolloRuns";
 import { NeuralGraph } from "@/apollo/NeuralGraph";
 import { HybridTerminal } from "@/apollo/Terminal";
 import { NODE_CATEGORY_STYLE, PALETTE, POOL_ENDPOINTS, POOL_PROVIDERS } from "@/apollo/catalog";
-import { selectActiveModel, useApolloStore } from "@/apollo/store";
+import { selectFailoverModel, selectShownModel, useApolloStore } from "@/apollo/store";
 import { Badge, MiniBar } from "@/apollo/ui";
-import { ORB_STATE_STYLE } from "@/apollo/catalog";
+import { ORB_STATE_STYLE, RECORDING_COLOR } from "@/apollo/catalog";
 
 export default function ApolloStagePage() {
   const orbState = useApolloStore((s) => s.orbState);
+  const recording = useApolloStore((s) => s.speech === "listening");
   const router = useApolloStore((s) => s.router);
   const config = useApolloStore((s) => s.config);
   const task = useApolloStore((s) => s.task);
   const nodes = useApolloStore((s) => s.nodes);
-  const activeModel = useApolloStore(selectActiveModel);
+  const activeModel = useApolloStore(selectShownModel);
+  const failoverModel = useApolloStore(selectFailoverModel);
   const setDeckOpen = useApolloStore((s) => s.setDeckOpen);
   const setTerminalOpen = useApolloStore((s) => s.setTerminalOpen);
   const terminalOpen = useApolloStore((s) => s.terminalOpen);
@@ -180,7 +182,8 @@ export default function ApolloStagePage() {
             <Zap size={11} /> failover active
           </span>
           <span className="text-[11px] text-amber-100/90">
-            {config.primaryModel} · UI-Demo-Failover, kein echter Providerwechsel · Profil <strong className="font-semibold">{activeModel.name}</strong> ({activeModel.provider}).
+            {config.primaryModel} · UI-Demo-Failover, kein echter Providerwechsel · Profil <strong className="font-semibold">{failoverModel.name}</strong>
+            {failoverModel.provider ? ` (${failoverModel.provider})` : ""}.
           </span>
           {router.lastHandoffNote && (
             <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-amber-300/60">
@@ -200,7 +203,14 @@ export default function ApolloStagePage() {
 
         {/* corner telemetry */}
         <div className="apollo-hud pointer-events-none absolute left-3 top-3 z-20 hidden flex-col gap-1.5 sm:flex">
-          <TelemetryChip icon={<Radio size={10} />} label="orb" value={stateStyle.label} accent={stateStyle.color} />
+          {/* The open terminal covers the orb caption; this chip stays in view. */}
+          <TelemetryChip
+            icon={<Radio size={10} />}
+            label="orb"
+            value={recording ? "Recording" : stateStyle.label}
+            accent={recording ? RECORDING_COLOR : stateStyle.color}
+            live={recording}
+          />
           <TelemetryChip icon={<Activity size={10} />} label="latency" value="nicht gemessen" />
           <TelemetryChip
             icon={<Zap size={10} />}
@@ -299,17 +309,24 @@ function TelemetryChip({
   label,
   value,
   accent = "#94a3b8",
+  live = false,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   accent?: string;
+  live?: boolean;
 }) {
   return (
-    <span className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-[#05080f]/70 px-2 py-1 backdrop-blur">
+    <span
+      className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-[#05080f]/70 px-2 py-1 backdrop-blur"
+      style={live ? { borderColor: `${accent}66` } : undefined}
+    >
       <span style={{ color: accent }}>{icon}</span>
       <span className="font-mono text-[8.5px] uppercase tracking-[0.16em] text-slate-400">{label}</span>
-      <span className="font-mono text-[10px] text-slate-300">{value}</span>
+      <span className="font-mono text-[10px] text-slate-300" style={live ? { color: accent } : undefined}>
+        {value}
+      </span>
     </span>
   );
 }

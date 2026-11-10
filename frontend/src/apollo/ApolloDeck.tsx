@@ -19,7 +19,7 @@ import {
 import { LiveProviders } from "./LiveProviders";
 import { MCP_SERVERS, PALETTE, PRIMARY_ENGINES, PROVIDERS } from "./catalog";
 import { normalizeWeights, poolHealth, rankCandidates, type Weights } from "./routing";
-import { selectActiveModel, useApolloStore } from "./store";
+import { selectShownModel, useApolloStore } from "./store";
 import { Badge, EmptyHint, Field, MiniBar, SectionCard, Segmented, Slider, TextInput, Toggle } from "./ui";
 import type { ApolloConfiguration, FreeLLMProviderKey } from "./types";
 
@@ -54,7 +54,7 @@ export function ApolloDeck() {
   const setWeights = useApolloStore((s) => s.setWeights);
   const setQuota = useApolloStore((s) => s.setQuota);
   const router = useApolloStore((s) => s.router);
-  const activeModel = useApolloStore(selectActiveModel);
+  const activeModel = useApolloStore(selectShownModel);
 
   const [tab, setTab] = useState<Tab>("runtime");
   const [draft, setDraft] = useState<ApolloConfiguration>(config);

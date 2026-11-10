@@ -21,17 +21,22 @@ export function Badge({
   tone = "slate",
   children,
   dot = false,
+  quiet = false,
   title,
 }: {
   tone?: Tone;
   children: ReactNode;
   dot?: boolean;
+  /** Present but not asking for attention: a label, not an alert. */
+  quiet?: boolean;
   title?: string;
 }) {
   return (
     <span
       title={title}
-      className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-[0.14em] ${TONES[tone]}`}
+      className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.14em] ${TONES[tone]} ${
+        quiet ? "font-normal opacity-75" : "font-bold"
+      }`}
     >
       {dot && <span className="h-1 w-1 rounded-full bg-current" />}
       {children}
