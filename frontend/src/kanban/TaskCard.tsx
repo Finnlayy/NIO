@@ -12,7 +12,7 @@ interface TaskCardProps {
   currentIndex: number;
   onOpenEditor: (taskId: string | null, status?: TaskStatus) => void;
   // Drag and drop handlers passed from column
-  onDragStart?: (e: React.DragEvent) => void;
+  onDragStart?: (e: React.DragEvent, taskId: string) => void;
   onDragOver?: (e: React.DragEvent) => void;
   onDragEnter?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
@@ -77,7 +77,7 @@ export const TaskCard: React.FC<TaskCardProps> = React.memo(({
         }
       }}
       draggable={!!onDragStart}
-      onDragStart={onDragStart}
+      onDragStart={onDragStart ? (e) => onDragStart(e, task.id) : undefined}
       onDragOver={onDragOver}
       onDragEnter={onDragEnter}
       onDrop={onDrop}

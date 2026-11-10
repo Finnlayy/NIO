@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useMemo, useCallback } from "react";
 import { TaskStatus, KanbanTask, STATUS_LABELS } from "./types";
 import { useKanbanStore } from "./useKanbanStore";
 import { filterTasks, columnCounts, columnTasks, isFilterActive } from "./board-logic";
@@ -32,16 +32,16 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
 }) => {
   const board = useKanbanStore(s => s.board);
   const filter = useKanbanStore(s => s.filter);
-  const counts = columnCounts(board, filter)[status];
-  const isFiltered = isFilterActive(filter);
+  const counts = useMemo(() => columnCounts(board, filter)[status], [board, filter, status]);
+  const isFiltered = useMemo(() => isFilterActive(filter), [filter]);
 
   // Get tasks for this column and sort them by order
-  const visibleTasks = filterTasks(columnTasks(board, status), filter);
-  const visibleIds = visibleTasks.map(t => t.id);
+  const visibleTasks = useMemo(() => filterTasks(columnTasks(board, status), filter), [board, status, filter]);
+  const visibleIds = useMemo(() => visibleTasks.map(t => t.id), [visibleTasks]);
 
   const colRef = useRef<HTMLDivElement>(null);
 
-  const handleDragStart = (e: React.DragEvent, taskId: string) => {
+  const handleDragStart = useCallback((e: React.DragEvent, taskId: string) => {
     // Required for Firefox
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", taskId);
@@ -50,9 +50,9 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
     setTimeout(() => {
       onDragBegin(taskId, status);
     }, 0);
-  };
+  }, [onDragBegin, status]);
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     if (!dragState.taskId) return;
 
@@ -70,12 +70,12 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
     }
 
     onDragOverCol(status, overIndex);
-  };
+  }, [dragState.taskId, visibleTasks.length, onDragOverCol, status]);
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     onDrop();
-  };
+  }, [onDrop]);
 
   const isDragOverColumn = dragState.overStatus === status;
 
@@ -126,7 +126,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
               visibleIds={visibleIds}
               currentIndex={idx}
               onOpenEditor={onOpenEditor}
-              onDragStart={(e) => handleDragStart(e, task.id)}
+              onDragStart={handleDragStart}
             />
           </React.Fragment>
         ))}
