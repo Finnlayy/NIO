@@ -93,7 +93,22 @@ export interface TerminalLogEntry {
   simulated?: boolean;
   detail?: string;
   data?: Record<string, unknown>;
+  /* Additive (UI): the same vault result as fields, for the note cards. The
+     plain `message` keeps the full text for the raw log and copied transcript. */
+  vault?: VaultView;
 }
+
+export interface VaultNoteView {
+  path: string;
+  snippet: string;
+}
+
+/** What a /vault or /note turn produced. Note text is foreign: render it as text. */
+export type VaultView =
+  | { kind: "matches"; query: string; notes: VaultNoteView[] }
+  | { kind: "empty"; query: string }
+  | { kind: "saved"; path: string; committed?: boolean }
+  | { kind: "failed"; action: "search" | "capture"; error: string };
 
 export interface ApolloConfiguration {
   primaryModel: string;

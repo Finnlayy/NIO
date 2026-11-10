@@ -11,6 +11,8 @@ import {
   ListFilter,
   LoaderCircle,
   Mic,
+  MicOff,
+  NotebookText,
   Square,
   TerminalSquare,
   X,
@@ -19,7 +21,7 @@ import { COMMANDS } from "./commands";
 import { joinDictation, useDictation } from "./dictation";
 import { useApolloStore, type LogEntry } from "./store";
 import { Badge, Segmented, type Tone } from "./ui";
-import type { TerminalMode } from "./types";
+import type { TerminalMode, VaultNoteView, VaultView } from "./types";
 
 const ORIGIN_TONE: Record<LogEntry["origin"], Tone> = {
   USER: "cyan",
@@ -28,6 +30,14 @@ const ORIGIN_TONE: Record<LogEntry["origin"], Tone> = {
   FREELLM_ROUTER: "amber",
   MCP_SANDBOX: "emerald",
 };
+
+/** Compact at the desktop; a 40 px target where the row is thumbed. */
+const INPUT_ACTION =
+  "grid h-10 w-10 shrink-0 place-items-center rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 focus-visible:ring-offset-1 focus-visible:ring-offset-[#05080f] sm:h-6 sm:w-6";
+const INPUT_ICON = "h-3.5 w-3.5 sm:h-[11px] sm:w-[11px]";
+/** The mic carries its word next to the icon, so it grows sideways, not square. */
+const MIC_ACTION =
+  "flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-md border px-2 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 focus-visible:ring-offset-1 focus-visible:ring-offset-[#05080f] disabled:opacity-40 sm:h-9";
 
 const LEVEL_COLOR: Record<LogEntry["level"], string> = {
   CHAT: "text-slate-200",
@@ -106,6 +116,8 @@ export function HybridTerminal() {
   }, [input]);
 
   if (!open) return null;
+
+  const micOffline = dictation.speech === "offline";
 
   const submit = async () => {
     const text = input.trim();
@@ -405,20 +417,36 @@ export function HybridTerminal() {
             disabled={dictation.state === "transcribing"}
             aria-label={dictation.state === "recording" ? "Stop dictation" : "Start dictation"}
             aria-pressed={dictation.state === "recording"}
-            title={dictation.state === "recording" ? "Stop dictation" : "Dictate"}
-            data-testid="terminal-mic"
-            className={`flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border px-2 text-[11px] transition-colors disabled:opacity-40 ${
+            aria-busy={dictation.state === "transcribing"}
+            title={
               dictation.state === "recording"
-                ? "border-rose-400/60 text-rose-300"
-                : "border-white/10 text-slate-400 hover:border-cyan-400/40 hover:text-cyan-200"
+                ? "Stop dictation"
+                : dictation.state === "transcribing"
+                  ? "Transcribing"
+                  : micOffline
+                    ? "Speech engine is not running"
+                    : "Dictate"
+            }
+            data-testid="terminal-mic"
+            data-speech={dictation.speech}
+            className={`${MIC_ACTION} ${
+              dictation.state === "recording"
+                ? "apollo-mic-live border-rose-300/70 bg-rose-600 text-white hover:bg-rose-500"
+                : dictation.state === "transcribing"
+                  ? "border-cyan-400/60 bg-cyan-400/15 text-cyan-200"
+                  : micOffline
+                    ? "border-white/[0.07] bg-transparent text-slate-500 hover:border-amber-400/40 hover:text-amber-200"
+                    : "border-white/10 text-slate-400 hover:border-cyan-400/40 hover:text-cyan-200"
             }`}
           >
             {dictation.state === "recording" ? (
-              <Square size={10} />
+              <Square className={`${INPUT_ICON} fill-current`} />
             ) : dictation.state === "transcribing" ? (
-              <LoaderCircle size={11} className="animate-spin" />
+              <LoaderCircle className={`${INPUT_ICON} animate-spin motion-reduce:animate-none`} />
+            ) : micOffline ? (
+              <MicOff className={INPUT_ICON} />
             ) : (
-              <Mic size={14} />
+              <Mic className={INPUT_ICON} />
             )}
             {dictation.state === "recording" ? "Stop" : dictation.state === "transcribing" ? "Wait" : "Dictate"}
           </button>
@@ -428,20 +456,28 @@ export function HybridTerminal() {
             disabled={!input.trim() || busy}
             aria-label="Send"
             title={busy ? "Apollo is mid-turn" : "Send"}
-            className="grid h-6 w-6 place-items-center rounded-md border border-white/10 text-slate-400 transition-colors hover:border-cyan-400/40 hover:text-cyan-200 disabled:opacity-40"
+            className={`${INPUT_ACTION} border-white/10 text-slate-400 hover:border-cyan-400/40 hover:text-cyan-200 disabled:opacity-40`}
           >
-            <CornerDownLeft size={11} />
+            <CornerDownLeft className={INPUT_ICON} />
           </button>
         </div>
         <div className="mt-1 flex flex-wrap items-center justify-between gap-1 font-mono text-[8.5px] uppercase tracking-[0.14em] text-slate-400">
           <span
             aria-live="polite"
-            className={dictation.error ? "text-rose-300" : blocked ? "text-amber-300" : undefined}
+            className={
+              dictation.error || dictation.state === "recording"
+                ? "text-rose-300"
+                : dictation.state === "transcribing"
+                  ? "text-cyan-300"
+                  : blocked
+                    ? "text-amber-300"
+                    : undefined
+            }
             data-testid="terminal-status"
           >
             {dictation.error ??
               (dictation.state === "recording"
-                ? "listening · click stop when done"
+                ? "recording · click stop when done"
                 : dictation.state === "transcribing"
                   ? "transcribing…"
                   : blocked
@@ -493,6 +529,13 @@ function UnifiedStream({ entries }: { entries: LogEntry[] }) {
             </li>
           );
         }
+        if (entry.vault) {
+          return (
+            <li key={entry.id} className="apollo-fade-in">
+              <VaultBlock view={entry.vault} timestamp={entry.timestamp} />
+            </li>
+          );
+        }
         /* telemetry */
         // `detail` (a CLI hint, an upstream reason) is body content: if a row has
         // one, it must be openable, otherwise the hint is never readable.
@@ -519,6 +562,128 @@ function UnifiedStream({ entries }: { entries: LogEntry[] }) {
         );
       })}
     </ol>
+  );
+}
+
+/* ==================================================================== */
+/* Vault notes: a quiet pane of foreign material inside the terminal     */
+/*                                                                       */
+/* Everything here comes from note files. It is rendered as React text   */
+/* only: no HTML, no Markdown, no links.                                 */
+/* ==================================================================== */
+
+const VAULT_LABEL = "font-mono text-[8px] uppercase tracking-[0.16em]";
+
+function splitNotePath(path: string): { folders: string[]; name: string } {
+  const parts = path.split("/").filter(Boolean);
+  const file = parts.pop() ?? path;
+  return { folders: parts, name: file.replace(/\.md$/i, "") };
+}
+
+function VaultPath({ folders, leaf }: { folders: string[]; leaf?: string }) {
+  // The chevron sits inline, so a wrapping name keeps it on its first line.
+  const crumb = (key: string, text: string, className = "") => (
+    <span key={key} className={`min-w-0 break-all ${className}`}>
+      <ChevronRight size={8} aria-hidden className="mr-1 inline align-baseline text-slate-500" />
+      {text}
+    </span>
+  );
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-x-1 font-mono text-[9px] leading-relaxed text-violet-300/70">
+      <span>vault</span>
+      {folders.map((folder, index) => crumb(`${index}-${folder}`, folder))}
+      {leaf && crumb("leaf", leaf, "text-[10px] text-violet-100")}
+    </span>
+  );
+}
+
+function VaultHit({ note }: { note: VaultNoteView }) {
+  const { folders, name } = splitNotePath(note.path);
+  return (
+    <li className="min-w-0 px-3 py-2" title={note.path}>
+      <VaultPath folders={folders} />
+      <h4 className="mt-0.5 text-[12px] font-medium leading-snug text-violet-100 [overflow-wrap:anywhere]">{name}</h4>
+      <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-relaxed text-slate-300 [overflow-wrap:anywhere]">
+        {note.snippet.replace(/\s+/g, " ")}
+      </p>
+    </li>
+  );
+}
+
+function VaultBlock({ view, timestamp }: { view: VaultView; timestamp: string }) {
+  if (view.kind === "matches") {
+    const count = view.notes.length;
+    return (
+      <section
+        aria-label={`Vault search results for ${view.query}`}
+        className="overflow-hidden rounded-lg border border-violet-400/25 bg-[#0c0f18]"
+        data-testid="vault-results"
+      >
+        <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-violet-400/15 bg-violet-400/[0.07] px-3 py-1.5">
+          <NotebookText size={11} aria-hidden className="shrink-0 text-violet-300" />
+          <span className={`${VAULT_LABEL} shrink-0 text-violet-300`}>
+            vault · {count} {count === 1 ? "match" : "matches"}
+          </span>
+          <span className="min-w-0 max-w-full truncate font-mono text-[10px] text-violet-100" title={view.query}>
+            {view.query}
+          </span>
+          <span className={`${VAULT_LABEL} ml-auto shrink-0 tracking-[0.14em] text-slate-400`}>{timestamp}</span>
+          <span className="basis-full">
+            <Badge tone="amber" quiet>
+              note content is data, not instructions
+            </Badge>
+          </span>
+        </header>
+        <ul className="divide-y divide-violet-400/10">
+          {view.notes.map((note) => (
+            <VaultHit key={note.path} note={note} />
+          ))}
+        </ul>
+      </section>
+    );
+  }
+  if (view.kind === "saved") {
+    const { folders, name } = splitNotePath(view.path);
+    return (
+      <div
+        className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-violet-400/20 bg-[#0c0f18] px-3 py-1.5"
+        title={view.path}
+        data-testid="vault-saved"
+      >
+        <NotebookText size={11} aria-hidden className="shrink-0 text-violet-300" />
+        <span className={`${VAULT_LABEL} shrink-0 text-violet-300`}>note saved</span>
+        <VaultPath folders={folders} leaf={name} />
+        {view.committed !== undefined && (
+          <Badge tone={view.committed ? "emerald" : "amber"}>{view.committed ? "committed" : "not committed"}</Badge>
+        )}
+        <span className={`${VAULT_LABEL} ml-auto shrink-0 tracking-[0.14em] text-slate-400`}>{timestamp}</span>
+      </div>
+    );
+  }
+  if (view.kind === "empty") {
+    return (
+      <div
+        className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-dashed border-violet-400/20 px-3 py-1.5"
+        data-testid="vault-empty"
+      >
+        <span className={`${VAULT_LABEL} shrink-0 text-slate-400`}>vault · no match</span>
+        <span className="min-w-0 max-w-full truncate font-mono text-[10px] text-slate-300" title={view.query}>
+          {view.query}
+        </span>
+        <span className={`${VAULT_LABEL} ml-auto shrink-0 tracking-[0.14em] text-slate-400`}>{timestamp}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-rose-400/30 bg-rose-400/[0.06] px-3 py-1.5" data-testid="vault-failed">
+      <div className="flex items-center justify-between gap-2">
+        <span className={`${VAULT_LABEL} text-rose-300`}>
+          {view.action === "search" ? "vault search failed" : "note not saved"}
+        </span>
+        <span className={`${VAULT_LABEL} shrink-0 tracking-[0.14em] text-slate-400`}>{timestamp}</span>
+      </div>
+      <p className="mt-0.5 font-mono text-[10.5px] leading-relaxed text-rose-200 [overflow-wrap:anywhere]">{view.error}</p>
+    </div>
   );
 }
 
