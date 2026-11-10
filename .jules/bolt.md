@@ -32,3 +32,7 @@ Runtime-Persistenz fragen: Was ist durabler Zustand vs. abgeleitete Metrik?
 ## 2026-09-09 - React Render Loop Write-Amplification
 **Learning:** Computing heavy nested filters and object derivations directly inside a React component (like DomainsGrid computing nodes, topics, and links per domain) triggers an expensive O(N*M) execution on every re-render, creating CPU spikes even when underlying static data hasn't changed.
 **Action:** When component properties are derived from static configurations, extract the calculation into a module-level constant instead of keeping it in the render loop or relying on useMemo.
+
+## 2026-09-10 - Kanban Drag and Drop Re-render Cascade
+**Learning:** During drag-and-drop operations, `KanbanBoard` fires a forced re-render on every `dragOver` tick. In `KanbanColumn`, mapping and filtering tasks on every render, and creating new inline `onDragStart` arrow functions caused every `TaskCard` to break `React.memo` and completely re-render on every frame of a drag motion.
+**Action:** Always memoize intermediate arrays (`visibleTasks`, `visibleIds`) and inline callback functions (like `handleDragStart`) using `useMemo` and `useCallback` when they are passed to a memoized child component list. Modify child component props to pass item identifiers back to stable callbacks rather than capturing them in anonymous closures on the parent side.
