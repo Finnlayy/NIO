@@ -21,6 +21,8 @@
  * if it were live.
  */
 import { spawn, type ChildProcessByStdio } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import type { Readable } from "node:stream";
 import { backoffDelayMs } from "../ops/backoff";
 
@@ -109,9 +111,24 @@ export function parseTelemetryLine(line: string): TelemetryRecord | null {
 type Listener = (record: TelemetryRecord) => void;
 
 /**
- * `NIO_REPO_ROOT` is the repository root. Both derived paths are relative to the
- * server's working directory when it is unset, so start the server from the repo
- * root or set it explicitly:
+ * Nearest ancestor of `start` that contains the telemetry producer — that is the
+ * repository root whether Next runs from the repo root or from `frontend/`.
+ * Falls back to `start` itself.
+ */
+export function findRepoRoot(start: string = process.cwd()): string {
+  let dir = resolve(start);
+  for (;;) {
+    if (existsSync(join(dir, "Architect", "limbs", "telemetry_feed.py"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return resolve(start);
+    dir = parent;
+  }
+}
+
+/**
+ * `NIO_REPO_ROOT` is the repository root. When it is unset, the root is found by
+ * walking up from the server's working directory (`findRepoRoot`), so both
+ * `npm --prefix frontend run dev` and `cd frontend && npm run dev` work:
  *
  *   NIO_REPO_ROOT=/path/to/NIO npm --prefix frontend run start
  *
@@ -119,7 +136,7 @@ type Listener = (record: TelemetryRecord) => void;
  * override the individual pieces.
  */
 export function resolvePaths() {
-  const root = (process.env.NIO_REPO_ROOT ?? "").replace(/\/+$/, "");
+  const root = (process.env.NIO_REPO_ROOT || findRepoRoot()).replace(/\/+$/, "");
   return {
     root,
     feed: process.env.NIO_TELEMETRY_FEED ?? `${root}/Architect/limbs/telemetry_feed.py`,

@@ -169,3 +169,24 @@ test("CvdHeatmap renders every engine bin when mounted through the hook", () => 
   assert.match(html, /transition-colors/);
   assert.doesNotMatch(html, /transition-all/);
 });
+
+test("bridge paths: without NIO_REPO_ROOT the repo root is found from cwd, not /", () => {
+  const path = require("node:path");
+  const { findRepoRoot, resolvePaths } = require("../server/telemetryBridge");
+  const repo = path.resolve(__dirname, "../../..");
+  assert.equal(findRepoRoot(path.join(repo, "frontend")), repo);
+  assert.equal(findRepoRoot(repo), repo);
+  const saved = process.env.NIO_REPO_ROOT;
+  delete process.env.NIO_REPO_ROOT;
+  try {
+    const cwd = process.cwd();
+    process.chdir(path.join(repo, "frontend"));
+    try {
+      assert.equal(resolvePaths().socketPath, path.join(repo, "runtime", "telemetry.sock"));
+    } finally {
+      process.chdir(cwd);
+    }
+  } finally {
+    if (saved !== undefined) process.env.NIO_REPO_ROOT = saved;
+  }
+});

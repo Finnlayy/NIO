@@ -36,6 +36,7 @@ const entries = [
   "ops/widgets/NewsSentiment.tsx",
   "ops/hotkeys.ts",
   "ops/hooks/useMarketData.ts",
+  "server/telemetryBridge.ts",
   /* TradingView MCP: pure tool mapping + response adapters (no I/O). */
   "server/tradingview/tools.ts",
   "server/tradingview/adapters.ts",
