@@ -7,7 +7,7 @@ Konfiguration, damit es keine divergierenden Annahmen gibt.
 Ladereihenfolge (spaeter gewinnt):
     1. eingebaute Defaults
     2. ``neu.config.json`` im Repo-Root
-    3. Umgebungsvariable ``NEU_ROOT`` (nur Repo-Root)
+    3. dokumentierte ``NEU_*``-Umgebungsvariablen
     4. explizite Parameter ``NeuConfig.load(repo_root=..., **overrides)``
 
 **Dev-Modus** (``mode="dev"``) deckelt alles auf 1 Iteration / 1 Agent /
@@ -24,6 +24,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 CONFIG_FILENAME = "neu.config.json"
 
@@ -222,6 +223,17 @@ class NeuConfig:
     eval_min_threshold: float = EVAL_MIN_THRESHOLD
     eval_safety_tolerance: float = EVAL_DEFAULT_SAFETY_TOLERANCE
     source_file: Path | None = field(default=None, repr=False)
+    apollo_host: str = "127.0.0.1"
+    apollo_port: int = 4001
+    kanban_host: str = "127.0.0.1"
+    kanban_port: int = 8740
+    speech_url: str = "http://127.0.0.1:8011/v1/audio/transcriptions"
+    speech_required: bool = False
+    kanban_enabled: bool = False
+    speech_timeout_s: float = 30.0
+    speech_max_bytes: int = 20_000_000
+    registry_file: Path = field(default_factory=lambda: Path("limbs/registry.json"))
+    provenance: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         root = Path(self.repo_root).resolve()
@@ -232,12 +244,55 @@ class NeuConfig:
             ("protocol_dir", DEFAULT_PROTOCOL_DIR),
         ):
             raw = getattr(self, key)
+            if raw is not None and not isinstance(raw, (str, Path)):
+                raise ValueError(f"{key} must be a path")
             text = str(raw).strip() if raw is not None else ""
+            if ".." in Path(text).parts:
+                raise ValueError(f"{key} must not contain '..'")
             # ``root / "/abs"`` ergibt "/abs": Ein isoliertes runtime/ ausserhalb
             # des Repos (CLI ``--runtime-dir``) bleibt damit moeglich.
             object.__setattr__(self, key, root / Path(text or default))
+        for key in ("runtime_dir", "workspace_dir"):
+            path = Path(getattr(self, key)).resolve()
+            if (path == root and (root / ".git").exists()) or path == Path(path.anchor) or path == root / ".git" or root / ".git" in path.parents:
+                raise ValueError(f"{key} must not be a checkout root, filesystem root, or .git")
+        for key in ("apollo_host", "kanban_host"):
+            if getattr(self, key) != "127.0.0.1":
+                raise ValueError(f"{key} must be 127.0.0.1 for local-only operation")
+        for key in ("apollo_port", "kanban_port"):
+            value = getattr(self, key)
+            if type(value) is not int or not 1 <= value <= 65535:
+                raise ValueError(f"{key} must be an integer between 1 and 65535")
+        if self.apollo_port == self.kanban_port:
+            raise ValueError("apollo_port and kanban_port must differ")
+        for key in ("speech_required", "kanban_enabled", "allow_shell_ops", "allow_test_ops", "allow_repo_write"):
+            if type(getattr(self, key)) is not bool:
+                raise ValueError(f"{key} must be a boolean")
+        if not isinstance(self.speech_url, str):
+            raise ValueError("speech_url must be a local HTTP URL")
+        try:
+            url = urlsplit(self.speech_url)
+            valid_url = (url.scheme == "http" and url.hostname == "127.0.0.1" and
+                         url.port is not None and 1 <= url.port <= 65535 and url.username is None and url.password is None and
+                         not url.query and not url.fragment)
+        except ValueError:
+            valid_url = False
+        if not valid_url:
+            raise ValueError("speech_url must be an HTTP URL on 127.0.0.1 with an explicit port and no credentials or query")
+        if type(self.speech_timeout_s) not in (int, float) or not 0 < self.speech_timeout_s <= 300:
+            raise ValueError("speech_timeout_s must be in (0, 300]")
+        if type(self.speech_max_bytes) is not int or not 1 <= self.speech_max_bytes <= HARD_MAX_OUTPUT_BYTES:
+            raise ValueError(f"speech_max_bytes must be in [1, {HARD_MAX_OUTPUT_BYTES}]")
+        if type(self.max_output_bytes) is not int or not 1 <= self.max_output_bytes <= HARD_MAX_OUTPUT_BYTES:
+            raise ValueError(f"max_output_bytes must be in [1, {HARD_MAX_OUTPUT_BYTES}]")
+        if not isinstance(self.registry_file, (str, Path)) or '..' in Path(self.registry_file).parts:
+            raise ValueError("registry_file must be a safe repository-relative path")
+        registry = (root / self.registry_file).resolve()
+        if not registry.is_relative_to(root) or registry.is_relative_to(root / '.git'):
+            raise ValueError("registry_file must be inside the repository and outside .git")
+        object.__setattr__(self, 'registry_file', registry)
         if self.mode not in VALID_MODES:
-            raise ValueError(f"mode muss eines von {VALID_MODES} sein (gefunden: {self.mode!r})")
+            raise ValueError("mode must be dev or scale")
         object.__setattr__(self, "limits", Limits.from_dict(self.limits.to_dict() if isinstance(self.limits, Limits) else self.limits, self.mode))
 
     # ---------------------------------------------------------------- Pfade
@@ -291,7 +346,7 @@ class NeuConfig:
 
     @property
     def registry_path(self) -> Path:
-        return self.repo_root / "limbs" / "registry.json"
+        return self.registry_file
 
     @property
     def is_dev(self) -> bool:
@@ -354,6 +409,13 @@ class NeuConfig:
             "source_file": str(self.source_file) if self.source_file else None,
         }
 
+    def diagnostics(self) -> dict[str, Any]:
+        # Deliberate allowlist: no arbitrary environment or credential values.
+        keys = ("mode", "apollo_host", "apollo_port", "kanban_host", "kanban_port",
+                "speech_required", "kanban_enabled", "speech_timeout_s", "speech_max_bytes",
+                "max_output_bytes")
+        return {key: {"value": getattr(self, key), "source": self.provenance.get(key, "default")} for key in keys}
+
     # --------------------------------------------------------------- Laden
     @classmethod
     def load(cls, repo_root: Path | str | None = None, **overrides: Any) -> NeuConfig:
@@ -364,6 +426,7 @@ class NeuConfig:
         ).resolve()
 
         values: dict[str, Any] = {}
+        provenance: dict[str, str] = {}
         config_file = root / CONFIG_FILENAME
         if config_file.is_file():
             try:
@@ -376,14 +439,40 @@ class NeuConfig:
                 if key in {"repo_root", "$comment"}:
                     continue
                 values[key] = value
+                provenance[key] = "file"
             values["source_file"] = config_file
 
+        env_fields = {
+            "NEU_RUNTIME_DIR": ("runtime_dir", str), "NEU_WORKSPACE_DIR": ("workspace_dir", str),
+            "NEU_PROTOCOL_DIR": ("protocol_dir", str), "NEU_REGISTRY_FILE": ("registry_file", str),
+            "NEU_MODE": ("mode", str), "NEU_APOLLO_HOST": ("apollo_host", str),
+            "NEU_APOLLO_PORT": ("apollo_port", int), "NEU_KANBAN_HOST": ("kanban_host", str),
+            "NEU_KANBAN_PORT": ("kanban_port", int), "NEU_SPEECH_URL": ("speech_url", str),
+            "NEU_SPEECH_REQUIRED": ("speech_required", _env_bool),
+            "NEU_KANBAN_ENABLED": ("kanban_enabled", _env_bool),
+            "NEU_SPEECH_TIMEOUT_S": ("speech_timeout_s", float),
+            "NEU_SPEECH_MAX_BYTES": ("speech_max_bytes", int),
+            "NEU_MAX_OUTPUT_BYTES": ("max_output_bytes", int),
+        }
+        for env_name, (key, convert) in env_fields.items():
+            if env_name in os.environ:
+                try:
+                    values[key] = convert(os.environ[env_name])
+                except ValueError as exc:
+                    raise ValueError(f"{env_name} has an invalid value") from exc
+                provenance[key] = "environment"
         values.update({k: v for k, v in overrides.items() if v is not None})
+        provenance.update({k: "cli" for k, v in overrides.items() if v is not None})
+        provenance["repo_root"] = "cli" if repo_root is not None else ("environment" if "NEU_ROOT" in os.environ else "default")
+        values["provenance"] = provenance
 
         # Wird das Profil explizit gewaehlt (CLI/Env/Test), ziehen dessen Limits
         # mit -- sonst wuerde die Konfigurationsdatei das Profil still aushebeln.
-        if "mode" in overrides and overrides["mode"] and "limits" not in overrides:
-            values["limits"] = dict(SCALE_PROFILES[str(values["mode"])])
+        if ("mode" in overrides or "NEU_MODE" in os.environ) and values.get("mode") and "limits" not in overrides:
+            if values["mode"] not in SCALE_PROFILES:
+                raise ValueError("mode must be dev or scale")
+            values["limits"] = dict(SCALE_PROFILES[values["mode"]])
+            provenance["limits"] = provenance["mode"]
 
         for key in ("allowed_repo_globs", "denied_globs", "human_only_globs"):
             if key in values:
@@ -396,8 +485,10 @@ class NeuConfig:
             value = values[key]
             if value is None or (isinstance(value, str) and not value.strip()):
                 values.pop(key)
+            elif not isinstance(value, (str, Path)):
+                raise ValueError(f"{key} must be a path")
             elif not isinstance(value, Path):
-                values[key] = Path(str(value))
+                values[key] = Path(value)
 
         mode = str(values.get("mode", "dev"))
         if "limits" in values and not isinstance(values["limits"], Limits):
@@ -407,7 +498,16 @@ class NeuConfig:
         if "timer" in values and not isinstance(values["timer"], TimerDefaults):
             values["timer"] = TimerDefaults.from_dict(values["timer"])
 
+        for key in cls.__dataclass_fields__:
+            if key not in ("provenance", "source_file"):
+                provenance.setdefault(key, "default")
         return cls(repo_root=root, **values)
+
+
+def _env_bool(value: str) -> bool:
+    if value.lower() not in ("true", "false"):
+        raise ValueError("expected true or false")
+    return value.lower() == "true"
 
 
 def _as_str_tuple(value: Iterable[Any], key: str) -> tuple[str, ...]:

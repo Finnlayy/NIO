@@ -124,6 +124,10 @@ def _config_from_args(args: argparse.Namespace) -> NeuConfig:
     # Experimente), ohne runtime/ des Repo zu beruehren.
     if getattr(args, "runtime_dir", None):
         overrides["runtime_dir"] = Path(args.runtime_dir)
+    for key in ("apollo_port", "kanban_port", "speech_required"):
+        value = getattr(args, key, None)
+        if value is not None:
+            overrides[key] = value
     profile = getattr(args, "mode", None)
     if profile:
         if profile not in SCALE_PROFILES:
@@ -1433,6 +1437,21 @@ def cmd_loop(args: argparse.Namespace) -> int:
 
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    from .lifecycle import preflight, render
+    try:
+        config = _config_from_args(args)
+    except (ValueError, TypeError, OSError):
+        report = {"state": "blocked", "components": [{"name": "configuration", "state": "blocked",
+                  "code": "CONFIG_INVALID", "explanation": "Configuration could not be loaded or validated.",
+                  "remediation": "Check neu.config.json and the documented NEU_* settings; use valid local values."}],
+                  "configuration": {}}
+    else:
+        report = preflight(config)
+    _say(render(report, args.json))
+    return EXIT_PROTOCOL if report["state"] == "blocked" else EXIT_OK
+
+
 def cmd_stop(args: argparse.Namespace) -> int:
     config = _config_from_args(args)
     stop_file = config.runtime_dir / "STOP"
@@ -1758,9 +1777,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runtime-dir", default=None, dest="runtime_dir",
                         help="Laufzeitverzeichnis (Queues, Jobs, Zeitplaene) -- absolut oder relativ zur Repo-Wurzel")
     parser.add_argument("--mode", choices=tuple(SCALE_PROFILES), default=None, help="Profil fuer diesen Aufruf ueberschreiben (dev=1/1/1/1)")
+    parser.add_argument("--apollo-port", type=int, default=None, help="Local Apollo port override")
+    parser.add_argument("--kanban-port", type=int, default=None, help="Local Kanban port override")
+    parser.add_argument("--speech-required", action=argparse.BooleanOptionalAction, default=None,
+                        help="Require local speech in diagnostics")
     parser.add_argument("--json", action="store_true", help="Maschinenlesbare Ausgabe auf stdout")
     parser.add_argument("--quiet", action="store_true", help="Event-Ausgabe auf stderr unterdruecken")
     sub = parser.add_subparsers(dest="command", required=True, parser_class=_NeuArgumentParser)
+
+    p_doctor = sub.add_parser("doctor", help="Read-only local configuration and prerequisite diagnostics")
+    p_doctor.set_defaults(func=cmd_doctor)
 
     p_spec = sub.add_parser("spec", help="Protokoll, Operationen, Timer- und Iterations-Semantik anzeigen")
     p_spec.set_defaults(func=cmd_spec)
