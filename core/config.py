@@ -442,7 +442,8 @@ class NeuConfig:
                 provenance[key] = "file"
             values["source_file"] = config_file
 
-        env_fields = {
+        from collections.abc import Callable
+        env_fields: dict[str, tuple[str, Callable[[str], Any]]] = {
             "NEU_RUNTIME_DIR": ("runtime_dir", str), "NEU_WORKSPACE_DIR": ("workspace_dir", str),
             "NEU_PROTOCOL_DIR": ("protocol_dir", str), "NEU_REGISTRY_FILE": ("registry_file", str),
             "NEU_MODE": ("mode", str), "NEU_APOLLO_HOST": ("apollo_host", str),
