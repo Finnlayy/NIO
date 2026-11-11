@@ -38,6 +38,26 @@ def _atomic_write(path: Path, data: bytes) -> None:
         raise
 
 
+def _secret_values() -> list[str]:
+    """Werte der injizierten Geheimnisse, laengste zuerst."""
+    names = [n for n in os.environ.get("NIO_KANBAN_SECRET_NAMES", "").split(",") if n]
+    values = {os.environ[n] for n in names if os.environ.get(n)}
+    return sorted(values, key=len, reverse=True)
+
+
+def _redact(obj: Any, values: list[str]) -> Any:
+    """Ersetzt injizierte Geheimnisse in Strings, Listen und Dicts."""
+    if isinstance(obj, str):
+        for v in values:
+            obj = obj.replace(v, "[REDACTED]")
+        return obj
+    if isinstance(obj, dict):
+        return {_redact(k, values): _redact(v, values) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_redact(v, values) for v in obj]
+    return obj
+
+
 def utc_now_iso() -> str:
     """Liefert die aktuelle Zeit als ISO 8601 String (Z-Suffix)."""
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -266,6 +286,11 @@ def main() -> int:
             "result_payload": ctx.result_payload,
             "reason": ctx.reason if ctx.status != "completed" else "",
         }
+
+        # Nichts, was der Prozess ausgibt, darf ein injiziertes Geheimnis enthalten.
+        secret_values = _secret_values()
+        experience = _redact(experience, secret_values)
+        res = _redact(res, secret_values)
 
         _atomic_write(ctx.out_dir / "experience.json", json.dumps(experience).encode("utf-8"))
 

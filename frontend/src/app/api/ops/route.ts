@@ -1,6 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { NextResponse } from "next/server";
+import { kanbanToken } from "../../../apollo/proxy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,8 +56,8 @@ async function kanbanList(path: string, token: string): Promise<Array<Record<str
 }
 
 async function readKanban(): Promise<{ tasks: OpsTask[]; workers: OpsWorker[] }> {
-  const token = process.env.NIO_KANBAN_API_TOKEN;
-  if (!token) throw new Error("NIO_KANBAN_API_TOKEN is not set");
+  const token = kanbanToken(process.env);
+  if (!token) throw new Error("NIO_KANBAN_APOLLO_TOKEN is not set");
   const [tasks, workers] = await Promise.all([kanbanList("/api/v1/kanban/tasks", token), kanbanList("/api/v1/workers", token)]);
   return {
     tasks: tasks.map((task) => ({

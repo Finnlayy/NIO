@@ -68,6 +68,7 @@ Das System wird ausschließlich über `NIO_KANBAN_*` Umgebungsvariablen konfigur
 | `NIO_OBSIDIAN_VAULT` | Obsidian Vault Verzeichnis | `workspace/obsidian` |
 | `NIO_KANBAN_SECRET_ALLOWLIST`| Erlaubte Secrets | `""` |
 | `NIO_KANBAN_API_TOKEN` | Bearer Token für API | `""` |
+| `NIO_KANBAN_APOLLO_TOKEN` | Eingeschränktes Token für Apollo (nur UI-Routen) | `""` |
 | `NIO_KANBAN_API_HOST` | Host für FastAPI | `127.0.0.1` |
 | `NIO_KANBAN_API_PORT` | Port für FastAPI | `8740` |
 | `NIO_KANBAN_SANDBOX_API_URL`| API URL (von innen erreichbar) | `http://host.docker.internal:8740` |
@@ -98,7 +99,7 @@ Die "Seele" eines Workers (System Prompt und Anweisungen) liegt in `SOUL.md`. Je
 ## API-Routen
 
 Präfix: `/api/v1`
-Authentifizierung: Operator-Routen verlangen `Authorization: Bearer <NIO_KANBAN_API_TOKEN>` (falsches Token: `401`). Ist auf dem Server kein `NIO_KANBAN_API_TOKEN` gesetzt, antworten sie mit `503`. `POST /kanban/tools/{name}` akzeptiert ausschliesslich das kurzlebige Task-Token des Workers (`403`, wenn der Task nicht zum Token gehoert).
+Authentifizierung: Operator-Routen verlangen `Authorization: Bearer <NIO_KANBAN_API_TOKEN>` (falsches Token: `401`). Ist auf dem Server kein `NIO_KANBAN_API_TOKEN` gesetzt, antworten sie mit `503`. `NIO_KANBAN_APOLLO_TOKEN` gilt nur für `GET/POST /kanban/boards`, `GET/POST /kanban/tasks`, `GET/POST /workers`, `POST/DELETE /kanban/stop` und `POST /approvals/issue`; alle anderen Operator-Routen antworten darauf mit `401`. `POST /kanban/tools/{name}` akzeptiert ausschliesslich das kurzlebige Task-Token des Workers (`403`, wenn der Task nicht zum Token gehoert).
 
 - `GET /kanban/boards`
 - `POST /kanban/boards`

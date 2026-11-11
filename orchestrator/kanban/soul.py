@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-__all__ = ["Soul", "default_soul", "merge_skills", "parse_soul", "render_soul"]
+__all__ = ["Soul", "default_soul", "merge_skills", "parse_soul", "render_soul", "uses_kanban_tools"]
 
 @dataclass
 class Soul:
@@ -21,6 +21,22 @@ class Soul:
     rules: list[str] = field(default_factory=list)
     heartbeat: str = ""
     extra: str = ""
+
+# Runtimes, die den MCP-Shim und damit das Task-Token brauchen.
+_KANBAN_TOOL_RUNTIMES = frozenset({"opencode"})
+
+
+def uses_kanban_tools(soul_md: str) -> bool:
+    """True, wenn der Worker die Kanban-Tools aufruft und ein Task-Token braucht.
+
+    Agenten-Runtimes nutzen den MCP-Shim; andere Runtimes muessen es im
+    Frontmatter ausdruecklich mit ``kanban_tools: true`` anfordern.
+    """
+    fm = parse_soul(soul_md).frontmatter
+    if fm.get("runtime", "noop").strip().lower() in _KANBAN_TOOL_RUNTIMES:
+        return True
+    return fm.get("kanban_tools", "").strip().lower() in {"true", "yes", "1"}
+
 
 def parse_soul(text: str) -> Soul:
     """Parst einen SOUL.md-Text in ein Soul-Objekt."""

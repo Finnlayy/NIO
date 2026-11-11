@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 const frontendRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
+  // Dauerbetrieb baut jede Version in einen eigenen Ordner (deploy/release_apollo.sh)
+  // und schaltet nur den Zeiger um. Ohne die Variable bleibt alles bei .next.
+  distDir: process.env.NIO_NEXT_DIST_DIR || ".next",
   turbopack: {
     root: frontendRoot,
   },

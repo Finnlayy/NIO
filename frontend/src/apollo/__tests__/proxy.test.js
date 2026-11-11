@@ -1,6 +1,6 @@
 const { test, mock } = require("node:test");
 const assert = require("node:assert");
-const { handleGenericProxy, handleSecureProxy } = require("../proxy");
+const { handleGenericProxy, handleSecureProxy, kanbanToken } = require("../proxy");
 
 test("proxy tests", async (t) => {
     // Mock global.fetch
@@ -69,6 +69,16 @@ test("proxy tests", async (t) => {
         assert.equal(res.status, 200);
         assert.ok(res.rawText.includes("***REDACTED***"));
         assert.ok(!res.rawText.includes("test_token_123"));
+    });
+
+    await t.test("apollo token wins over the operator token", async () => {
+        assert.equal(kanbanToken({ NIO_KANBAN_APOLLO_TOKEN: "apollo", NIO_KANBAN_API_TOKEN: "operator" }), "apollo");
+        assert.equal(kanbanToken({ NIO_KANBAN_API_TOKEN: "operator" }), "operator");
+        assert.equal(kanbanToken({}), undefined);
+        const res = await handleGenericProxy("/api/v1/kanban/tasks", "GET", {}, { NIO_KANBAN_APOLLO_TOKEN: "apollo" });
+        assert.equal(res.status, 200);
+        const sent = global.fetch.mock.calls.at(-1).arguments[1].headers.Authorization;
+        assert.equal(sent, "Bearer apollo");
     });
 
     global.fetch = originalFetch;

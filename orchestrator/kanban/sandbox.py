@@ -20,6 +20,7 @@ from typing import Protocol
 
 from orchestrator.kanban.config import KanbanConfig
 from orchestrator.kanban.models import KanbanTask, Worker
+from orchestrator.kanban.redact import redact_text
 
 __all__ = [
     "DockerSandbox",
@@ -168,7 +169,7 @@ class _ProcessSandbox:
         full_stderr = b"".join(stderr_q)
         if len(full_stderr) > 16384:
             full_stderr = b"..." + full_stderr[-16381:]
-        stderr_tail = full_stderr.decode("utf-8", errors="replace")
+        stderr_tail = redact_text(full_stderr.decode("utf-8", errors="replace"), spec.secrets.values())
 
         return SandboxResult(
             exit_code=proc.returncode,
@@ -228,6 +229,7 @@ class SubprocessSandbox(_ProcessSandbox):
         }
         env.update(spec.env)
         env.update(spec.secrets)
+        env["NIO_KANBAN_SECRET_NAMES"] = ",".join(spec.secrets)
 
         return argv, env, str(work_dir)
 
@@ -330,6 +332,7 @@ class DockerSandbox(_ProcessSandbox):
         # Secrets nur mit Namen (Wert kommt aus env des Subprozesses)
         for k in spec.secrets:
             argv.extend(["-e", k])
+        argv.extend(["-e", f"NIO_KANBAN_SECRET_NAMES={','.join(spec.secrets)}"])
 
         argv.extend(
             [

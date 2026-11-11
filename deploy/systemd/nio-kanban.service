@@ -5,7 +5,7 @@ StartLimitBurst=5
 
 [Service]
 WorkingDirectory=@ROOT@
-EnvironmentFile=%h/.config/nio/nio.env
+EnvironmentFile=%h/.config/nio/kanban.env
 ExecStart=@ROOT@/.venv/bin/python -m orchestrator kanban serve
 Restart=on-failure
 RestartSec=5

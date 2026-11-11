@@ -7,6 +7,27 @@ Datumsangaben in UTC.
 
 ## [Unreleased]
 
+### Sicherheit
+
+- Kanban: Werte injizierter Geheimnisse werden aus Worker-Ausgaben geschwärzt
+  (result.json, experience.json, SOUL-Vorschlag, stderr, Fehlertexte), bevor sie
+  Store, API, Vault oder Log erreichen. Das Task-Token bekommen nur Worker, die
+  die Kanban-Tools nutzen.
+- Trading-Limb: Sigma gilt nur als gesund, wenn Startnachweis, Nonce, Socket und
+  Version passen. `trading.stop` signalisiert nur nach Prüfung von PID,
+  Startzeit, argv und Nonce, sonst fail-closed.
+- Deploy: Apollo und Kanban lesen getrennte Umgebungsdateien (`apollo.env`,
+  `kanban.env`, erzeugt von `deploy/write_env.sh`). Apollo nutzt ein eigenes,
+  auf UI-Routen beschränktes `NIO_KANBAN_APOLLO_TOKEN` und sieht weder
+  Operator-Token noch Freigabeschlüssel.
+
+### Geändert
+
+- Deploy: Apollo wird in `frontend/.releases/<id>` gebaut, nach Rauchtest
+  atomar aktiviert und kann per `deploy/release_apollo.sh … --rollback`
+  zurückgesetzt werden. `install.sh` rollt automatisch zurück, wenn Apollo
+  nach dem Neustart nicht antwortet.
+
 ### Hinzugefügt
 
 - Spracheingabe: Diktat im Apollo-Terminal über lokales speaches, `limbs/speech_limb.py`

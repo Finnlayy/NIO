@@ -75,6 +75,8 @@ class KanbanConfig:
     # Geheimnisse / API
     secret_allowlist: tuple[str, ...] = field(default_factory=tuple)
     api_token: str = ""
+    # Eigenes Token fuer Apollo: nur die Routen, die die UI braucht.
+    apollo_token: str = ""
     api_host: str = "127.0.0.1"
     api_port: int = 8740
     sandbox_api_url: str = "http://host.docker.internal:8740"
@@ -115,6 +117,7 @@ class KanbanConfig:
             vault_dir=_path(e, "NIO_OBSIDIAN_VAULT", root, "workspace/obsidian"),
             secret_allowlist=_csv(e, "NIO_KANBAN_SECRET_ALLOWLIST"),
             api_token=e.get("NIO_KANBAN_API_TOKEN", ""),
+            apollo_token=e.get("NIO_KANBAN_APOLLO_TOKEN", ""),
             api_host=e.get("NIO_KANBAN_API_HOST", "127.0.0.1"),
             api_port=_int(e, "NIO_KANBAN_API_PORT", 8740),
             sandbox_api_url=e.get("NIO_KANBAN_SANDBOX_API_URL", "http://host.docker.internal:8740"),

@@ -15,7 +15,9 @@ from .bus import HeartbeatStore, LockManager, TokenStore
 from .config import KanbanConfig
 from .decomposer import Decomposer
 from .models import KanbanEvent, KanbanTask, TaskStatus, Worker, WorkerStatus, new_id
+from .redact import redact_text
 from .sandbox import SandboxRunner, SandboxSpec
+from .soul import uses_kanban_tools
 from .store import KanbanStore
 from .sync import sync_back
 from .vault import ObsidianVault
@@ -213,6 +215,7 @@ class Dispatcher:
         # Vor dem ``try`` gebunden: das ``finally`` raeumt auch nach einem fruehen
         # Fehler auf, ohne an einer ungebundenen Variable zu scheitern.
         token: str | None = None
+        injected: tuple[str, ...] = ()
 
         try:
             in_dir = run_dir / "in"
@@ -253,14 +256,16 @@ class Dispatcher:
                     await self.breaker.record_failure(task.id, worker.uid, "git worktree setup failed")
                     return
 
-            # Tokens
-            token = secrets.token_urlsafe(32)
-            await self.tokens.put(token, {"task_id": task.id, "worker_uid": worker.uid}, self.config.task_deadline_s + 60)
-
-            secrets_env = {"NIO_KANBAN_TASK_TOKEN": token}
+            # Das Task-Token bekommt nur, wer die Kanban-Tools wirklich nutzt.
+            secrets_env: dict[str, str] = {}
+            if uses_kanban_tools(worker.soul_md):
+                token = secrets.token_urlsafe(32)
+                await self.tokens.put(token, {"task_id": task.id, "worker_uid": worker.uid}, self.config.task_deadline_s + 60)
+                secrets_env["NIO_KANBAN_TASK_TOKEN"] = token
             for n in self.config.secret_allowlist:
                 if n in os.environ:
                     secrets_env[n] = os.environ[n]
+            injected = tuple(secrets_env.values())
 
             # Use specific log function logic here to only log names of secrets
             await self.service.ledger.append(
@@ -291,7 +296,8 @@ class Dispatcher:
                 workspace_dir=self.config.workspace_dir,
                 task=task,
                 worker=worker,
-                result=result
+                result=result,
+                secrets=injected,
             )
 
             # Check if status has been updated externally
@@ -315,8 +321,9 @@ class Dispatcher:
                     self.log.warning(f"Vault-Notiz fuer {task.id} nicht aktualisiert: {e}")
 
         except Exception as e:
-            self.log.exception(f"Error in _run_worker for {task.id}: {e}")
-            await self.breaker.record_failure(task.id, worker.uid, f"Internal error: {e}")
+            msg = redact_text(str(e), injected)
+            self.log.error(f"Error in _run_worker for {task.id}: {msg}")
+            await self.breaker.record_failure(task.id, worker.uid, f"Internal error: {msg}")
         finally:
             if token is not None:
                 await self.tokens.revoke(token)

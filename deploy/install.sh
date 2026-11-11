@@ -9,12 +9,9 @@ SERVICES=1
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG="$HOME/.config/nio"
-ENV_FILE="$CONFIG/nio.env"
+ENV_FILE="$CONFIG/kanban.env"
 UNITS="$HOME/.config/systemd/user"
 VAULT="${NIO_OBSIDIAN_VAULT:-$ROOT/workspace/obsidian}"
-
-secret() { python3 -c "import secrets; print(secrets.token_urlsafe(32))"; }
-pin() { python3 -c "import secrets; print(''.join(secrets.choice('0123456789') for _ in range(8)))"; }
 
 mkdir -p "$CONFIG" "$UNITS"
 chmod 700 "$CONFIG"
@@ -23,33 +20,16 @@ echo "[1/6] Python-Umgebung"
 python3 -m venv "$ROOT/.venv"
 "$ROOT/.venv/bin/python" -m pip install -q "fastapi>=0.110" "uvicorn>=0.29" "pydantic>=2"
 
-echo "[2/6] Apollo bauen"
-npm --prefix "$ROOT/frontend" ci --silent
-npm --prefix "$ROOT/frontend" run build --silent
+echo "[2/6] Apollo bauen (eigener Release-Ordner, der laufende Build bleibt unberuehrt)"
+RELEASE="$(bash "$ROOT/deploy/release_apollo.sh" "$ROOT" "$CONFIG" | tail -n 1)"
+echo "      Release $RELEASE"
 
 echo "[3/6] Worker-Image und Agentennetz"
 docker build -q -t nio-worker:1 "$ROOT/docker/kanban-worker"
 bash "$ROOT/scripts/agents_network.sh"
 
 echo "[4/6] Konfiguration"
-if [ ! -e "$ENV_FILE" ]; then
-  (
-    umask 077
-    sed -e "s|^NIO_KANBAN_API_TOKEN=.*|NIO_KANBAN_API_TOKEN=$(secret)|" \
-        -e "s|^NIO_APPROVAL_KEY=.*|NIO_APPROVAL_KEY=$(secret)|" \
-        -e "s|^NIO_APOLLO_APPROVAL_PIN=.*|NIO_APOLLO_APPROVAL_PIN=$(pin)|" \
-        -e "s|^NEU_ROOT=.*|NEU_ROOT=$ROOT|" \
-        -e "s|^NIO_REPO_ROOT=.*|NIO_REPO_ROOT=$ROOT|" \
-        -e "s|^NIO_PYTHON=.*|NIO_PYTHON=$ROOT/.venv/bin/python|" \
-        -e "s|^NIO_OBSIDIAN_VAULT=.*|NIO_OBSIDIAN_VAULT=$VAULT|" \
-        "$ROOT/deploy/env.example" > "$ENV_FILE"
-  )
-else
-  sed -i -e "s|^NEU_ROOT=.*|NEU_ROOT=$ROOT|" \
-         -e "s|^NIO_REPO_ROOT=.*|NIO_REPO_ROOT=$ROOT|" \
-         -e "s|^NIO_PYTHON=.*|NIO_PYTHON=$ROOT/.venv/bin/python|" "$ENV_FILE"
-fi
-chmod 600 "$ENV_FILE"
+bash "$ROOT/deploy/write_env.sh" "$ROOT" "$CONFIG" "$VAULT"
 
 if [ "$SERVICES" = 1 ]; then
   echo "[5/6] Dienste"
@@ -61,6 +41,22 @@ if [ "$SERVICES" = 1 ]; then
   systemctl --user enable -q nio-kanban nio-apollo
   systemctl --user restart nio-kanban
   systemctl --user restart nio-apollo
+
+  # Rauchtest: antwortet Apollo nicht, geht es automatisch auf das vorige Release zurueck.
+  apollo_up() {
+    for _ in $(seq 1 30); do
+      [[ "$(curl -s -m 2 -o /dev/null -w '%{http_code}' http://127.0.0.1:4001/apollo)" =~ ^2[0-9][0-9]$ ]] && return 0
+      sleep 1
+    done
+    return 1
+  }
+  if ! apollo_up; then
+    echo "Apollo antwortet nicht mit Release $RELEASE -- Rollback" >&2
+    if bash "$ROOT/deploy/release_apollo.sh" "$ROOT" "$CONFIG" --rollback; then
+      systemctl --user restart nio-apollo
+    fi
+    exit 1
+  fi
 else
   echo "[5/6] Dienste uebersprungen"
 fi
