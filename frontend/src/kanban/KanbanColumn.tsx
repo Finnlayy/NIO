@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useMemo } from "react";
 import { TaskStatus, KanbanTask, STATUS_LABELS } from "./types";
 import { useKanbanStore } from "./useKanbanStore";
 import { filterTasks, columnCounts, columnTasks, isFilterActive } from "./board-logic";
@@ -35,22 +35,39 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   const counts = columnCounts(board, filter)[status];
   const isFiltered = isFilterActive(filter);
 
-  // Get tasks for this column and sort them by order
-  const visibleTasks = filterTasks(columnTasks(board, status), filter);
-  const visibleIds = visibleTasks.map(t => t.id);
+  // ⚡ Bolt: Memoize filtered arrays to avoid O(N) recreations and layout thrashing during parent re-renders.
+  // Impact: Prevents continuous re-computation and maintains stable array references during high-frequency drag events.
+  const visibleTasks = useMemo(() =>
+    filterTasks(columnTasks(board, status), filter),
+    [board, status, filter]
+  );
+
+  const visibleIds = useMemo(() =>
+    visibleTasks.map(t => t.id),
+    [visibleTasks]
+  );
 
   const colRef = useRef<HTMLDivElement>(null);
 
-  const handleDragStart = (e: React.DragEvent, taskId: string) => {
-    // Required for Firefox
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", taskId);
+  // ⚡ Bolt: Pre-generate a map of stable event handlers using useMemo.
+  // Impact: Stops inline closure allocation `<TaskCard onDragStart={(e) => ...} />` which previously broke
+  // TaskCard's React.memo wrapper, causing all task cards to O(N) re-render on every drag mouse move.
+  const dragStartHandlers = useMemo(() => {
+    const handlers: Record<string, (e: React.DragEvent) => void> = {};
+    visibleTasks.forEach(task => {
+      handlers[task.id] = (e: React.DragEvent) => {
+        // Required for Firefox
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", task.id);
 
-    // We add a small timeout to let the browser snapshot the drag image before we update state
-    setTimeout(() => {
-      onDragBegin(taskId, status);
-    }, 0);
-  };
+        // We add a small timeout to let the browser snapshot the drag image before we update state
+        setTimeout(() => {
+          onDragBegin(task.id, status);
+        }, 0);
+      };
+    });
+    return handlers;
+  }, [visibleTasks, onDragBegin, status]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -126,7 +143,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
               visibleIds={visibleIds}
               currentIndex={idx}
               onOpenEditor={onOpenEditor}
-              onDragStart={(e) => handleDragStart(e, task.id)}
+              onDragStart={dragStartHandlers[task.id]}
             />
           </React.Fragment>
         ))}
