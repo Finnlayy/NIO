@@ -104,18 +104,20 @@ export const MoveMenu: React.FC<MoveMenuProps> = ({ taskId, currentStatus, curre
       <button
         role="menuitem"
         tabIndex={-1}
-        className="w-full text-left px-3 py-1.5 hover:bg-white/[0.04] focus:bg-white/[0.04] focus:outline-none disabled:opacity-50"
+        className="w-full text-left px-3 py-1.5 hover:bg-white/[0.04] focus:bg-white/[0.04] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
         onClick={() => handleMoveWithinColumn('up')}
         disabled={currentIndex === 0}
+        title={currentIndex === 0 ? "Bereits ganz oben" : undefined}
       >
         Nach oben
       </button>
       <button
         role="menuitem"
         tabIndex={-1}
-        className="w-full text-left px-3 py-1.5 hover:bg-white/[0.04] focus:bg-white/[0.04] focus:outline-none disabled:opacity-50"
+        className="w-full text-left px-3 py-1.5 hover:bg-white/[0.04] focus:bg-white/[0.04] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
         onClick={() => handleMoveWithinColumn('down')}
         disabled={currentIndex === visibleIds.length - 1}
+        title={currentIndex === visibleIds.length - 1 ? "Bereits ganz unten" : undefined}
       >
         Nach unten
       </button>
