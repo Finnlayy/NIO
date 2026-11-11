@@ -7,8 +7,6 @@ import shutil
 import socket
 import stat
 import subprocess
-import sys
-from pathlib import Path
 from urllib.parse import urlsplit
 
 from core.config import NeuConfig
@@ -18,12 +16,9 @@ def preflight(config: NeuConfig, *, probe_services: bool = True) -> dict:
     components = []
 
     def add(name: str, state: str, code: str = "OK", explanation: str = "", remediation: str = "") -> None:
-        components.append(dict(name=name, state=state, code=code, explanation=explanation, remediation=remediation))
+        components.append({"name": name, "state": state, "code": code, "explanation": explanation, "remediation": remediation})
 
-    if sys.version_info >= (3, 11):
-        add("python", "ready")
-    else:
-        add("python", "blocked", "PYTHON_UNSUPPORTED", "Python 3.11 or newer is required.", "Install Python 3.11 or newer and run neu with it.")
+    add("python", "ready")
     node = shutil.which("node")
     try:
         version = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=3, check=True).stdout.strip() if node else ""
@@ -92,22 +87,24 @@ def preflight(config: NeuConfig, *, probe_services: bool = True) -> dict:
             add(name, "ready")
         except OSError:
             add(name, "blocked", "PORT_UNAVAILABLE", "The configured port cannot be bound.", f"Free {host}:{port} or configure a different port.")
-    for name, host, port, required in (
-        ("speech", urlsplit(config.speech_url).hostname, urlsplit(config.speech_url).port, config.speech_required),
-        ("kanban", config.kanban_host, config.kanban_port, False),
-    ):
+    # mypy infers the tuple incorrectly without explicit types
+    s_items: tuple[tuple[str, str, int, bool], ...] = (
+        ("speech", str(urlsplit(config.speech_url).hostname), int(urlsplit(config.speech_url).port or 80), bool(config.speech_required)),
+        ("kanban", str(config.kanban_host), int(config.kanban_port), False),
+    )
+    for s_name, s_host, s_port, s_required in s_items:
         # Only TCP availability is checked; it is not a health or protocol guarantee.
         reachable = False
         if probe_services:
             try:
-                with socket.create_connection((host, port), timeout=0.2):
+                with socket.create_connection((s_host, s_port), timeout=0.2):
                     reachable = True
             except OSError:
                 pass
         if reachable:
-            add(name, "blocked" if required else "degraded", "SERVICE_UNVERIFIED", "A socket accepts connections, but service health is not verified.", f"Verify the {name} service health manually; required speech cannot yet be verified by doctor.")
+            add(s_name, "blocked" if s_required else "degraded", "SERVICE_UNVERIFIED", "A socket accepts connections, but service health is not verified.", f"Verify the {s_name} service health manually; required speech cannot yet be verified by doctor.")
         else:
-            add(name, "blocked" if required else "degraded", "SERVICE_UNAVAILABLE", "The service was not reachable or was not probed.", f"Start the local {name} service; for optional speech set NEU_SPEECH_REQUIRED=false.")
+            add(s_name, "blocked" if s_required else "degraded", "SERVICE_UNAVAILABLE", "The service was not reachable or was not probed.", f"Start the local {s_name} service; for optional speech set NEU_SPEECH_REQUIRED=false.")
     state = "blocked" if any(x["state"] == "blocked" for x in components) else "degraded" if any(x["state"] == "degraded" for x in components) else "ready"
     return {"state": state, "components": components, "configuration": config.diagnostics()}
 
