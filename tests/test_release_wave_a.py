@@ -98,9 +98,10 @@ class DoctorTests(unittest.TestCase):
             self.assertEqual(components['speech']['state'], 'blocked')
 
     def test_invalid_config_cli_redacts_input(self):
-        from orchestrator.cli import main
         import contextlib
         import io
+
+        from orchestrator.cli import main
         output = io.StringIO()
         with patch.dict(os.environ, {'NEU_APOLLO_PORT': 'secret-input'}, clear=True), contextlib.redirect_stdout(output):
             code = main(['--json', 'doctor'])
@@ -142,9 +143,10 @@ class DoctorTests(unittest.TestCase):
             self.assertEqual(components['registry']['code'], 'REGISTRY_INVALID')
 
     def test_cli_doctor_json(self):
-        from orchestrator.cli import main
         import contextlib
         import io
+
+        from orchestrator.cli import main
         with tempfile.TemporaryDirectory() as d, patch('socket.create_connection', side_effect=OSError('offline')):
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
