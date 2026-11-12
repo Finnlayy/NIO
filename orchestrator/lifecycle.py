@@ -8,7 +8,6 @@ import socket
 import stat
 import subprocess
 import sys
-from pathlib import Path
 from urllib.parse import urlsplit
 
 from core.config import NeuConfig
@@ -18,9 +17,10 @@ def preflight(config: NeuConfig, *, probe_services: bool = True) -> dict:
     components = []
 
     def add(name: str, state: str, code: str = "OK", explanation: str = "", remediation: str = "") -> None:
-        components.append(dict(name=name, state=state, code=code, explanation=explanation, remediation=remediation))
+        components.append({"name": name, "state": state, "code": code, "explanation": explanation, "remediation": remediation})
 
-    if sys.version_info >= (3, 11):
+    # Bewusst behalten: Diagnose fuer Aufrufe mit zu altem Interpreter.
+    if sys.version_info >= (3, 11):  # noqa: UP036
         add("python", "ready")
     else:
         add("python", "blocked", "PYTHON_UNSUPPORTED", "Python 3.11 or newer is required.", "Install Python 3.11 or newer and run neu with it.")
@@ -92,7 +92,7 @@ def preflight(config: NeuConfig, *, probe_services: bool = True) -> dict:
             add(name, "ready")
         except OSError:
             add(name, "blocked", "PORT_UNAVAILABLE", "The configured port cannot be bound.", f"Free {host}:{port} or configure a different port.")
-    for name, host, port, required in (
+    for service, service_host, service_port, service_required in (
         ("speech", urlsplit(config.speech_url).hostname, urlsplit(config.speech_url).port, config.speech_required),
         ("kanban", config.kanban_host, config.kanban_port, False),
     ):
@@ -100,14 +100,14 @@ def preflight(config: NeuConfig, *, probe_services: bool = True) -> dict:
         reachable = False
         if probe_services:
             try:
-                with socket.create_connection((host, port), timeout=0.2):
+                with socket.create_connection((service_host, service_port), timeout=0.2):
                     reachable = True
             except OSError:
                 pass
         if reachable:
-            add(name, "blocked" if required else "degraded", "SERVICE_UNVERIFIED", "A socket accepts connections, but service health is not verified.", f"Verify the {name} service health manually; required speech cannot yet be verified by doctor.")
+            add(service, "blocked" if service_required else "degraded", "SERVICE_UNVERIFIED", "A socket accepts connections, but service health is not verified.", f"Verify the {service} service health manually; required speech cannot yet be verified by doctor.")
         else:
-            add(name, "blocked" if required else "degraded", "SERVICE_UNAVAILABLE", "The service was not reachable or was not probed.", f"Start the local {name} service; for optional speech set NEU_SPEECH_REQUIRED=false.")
+            add(service, "blocked" if service_required else "degraded", "SERVICE_UNAVAILABLE", "The service was not reachable or was not probed.", f"Start the local {service} service; for optional speech set NEU_SPEECH_REQUIRED=false.")
     state = "blocked" if any(x["state"] == "blocked" for x in components) else "degraded" if any(x["state"] == "degraded" for x in components) else "ready"
     return {"state": state, "components": components, "configuration": config.diagnostics()}
 
