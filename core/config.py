@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -442,7 +442,7 @@ class NeuConfig:
                 provenance[key] = "file"
             values["source_file"] = config_file
 
-        env_fields = {
+        env_fields: dict[str, tuple[str, Callable[[str], Any]]] = {
             "NEU_RUNTIME_DIR": ("runtime_dir", str), "NEU_WORKSPACE_DIR": ("workspace_dir", str),
             "NEU_PROTOCOL_DIR": ("protocol_dir", str), "NEU_REGISTRY_FILE": ("registry_file", str),
             "NEU_MODE": ("mode", str), "NEU_APOLLO_HOST": ("apollo_host", str),
