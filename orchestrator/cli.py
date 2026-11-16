@@ -68,6 +68,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from core.config import ABSOLUTE_MAX_ITERATIONS, SCALE_PROFILES, NeuConfig  # noqa: E402
+from core.envfile import load_env_file  # noqa: E402
 from core.job import JOB_KIND_SCHEDULED, JOB_RESOLVED, JobStore, summarize  # noqa: E402
 from core.protocol import (  # noqa: E402
     DEFAULT_TICKET_TTL_S,
@@ -2025,6 +2026,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    if argv is None:
+        # Echter Start (neu / python -m orchestrator): Betreiber-Datei laden.
+        load_env_file()
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
