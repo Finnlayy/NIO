@@ -13,6 +13,16 @@ import { COMMANDS } from "./commands";
 
 export const MAX_RECORDING_MS = 60_000;
 
+/** Push-to-talk: hold this key while the terminal is open, release to transcribe. */
+export const PUSH_TO_TALK_KEY = "F2";
+
+type KeyLike = { key: string; repeat?: boolean; ctrlKey?: boolean; altKey?: boolean; metaKey?: boolean; shiftKey?: boolean };
+
+/** True only for the bare push-to-talk key; auto-repeat and chords are ignored. */
+export function isPushToTalkKey(event: KeyLike): boolean {
+  return event.key === PUSH_TO_TALK_KEY && !event.repeat && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
+}
+
 const RECORDER_MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
 
 const ENGINE_OFFLINE = "speech engine is not running";
@@ -213,6 +223,22 @@ export function useDictation(onText: (text: string) => void) {
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
   }, []);
 
+  /* Push-to-talk. A press starts only from idle; a release stops what that
+     press started. Released before the microphone is open: nothing is kept. */
+  const holdingRef = useRef(false);
+  const press = useCallback(() => {
+    if (holdingRef.current || state !== "idle") return;
+    holdingRef.current = true;
+    void start();
+  }, [start, state]);
+  const release = useCallback(() => {
+    if (!holdingRef.current) return;
+    holdingRef.current = false;
+    if (browserSessionRef.current) browserSessionRef.current.stop();
+    else if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+    else if (startingRef.current) cancel();
+  }, [cancel]);
+
   const probe = useCallback(async () => setEngine(await probeEngine()), []);
   const clearError = useCallback(() => setError(null), []);
 
@@ -221,6 +247,6 @@ export function useDictation(onText: (text: string) => void) {
   return {
     state, error, engine, mode, setMode, language, setLanguage, browserSupported,
     speech: speechStatus(state, mode === "browser" ? "ready" : engine),
-    toggle, cancel, probe, clearError, reject: setError,
+    toggle, press, release, cancel, probe, clearError, reject: setError,
   };
 }

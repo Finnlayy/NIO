@@ -2,8 +2,10 @@
   "name": "neural-orchestrator-ui",
   "private": true,
   "scripts": {
+    "predev": "node scripts/ensure-speech.mjs",
     "dev": "next dev -H 127.0.0.1 -p 4001",
     "build": "next build",
+    "prestart": "node scripts/ensure-speech.mjs",
     "start": "next start -H 127.0.0.1 -p 4001",
     "typecheck": "tsc --noEmit"
   },

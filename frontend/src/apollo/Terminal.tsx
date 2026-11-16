@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { COMMANDS } from "./commands";
-import { joinDictation, useDictation } from "./dictation";
+import { isPushToTalkKey, joinDictation, PUSH_TO_TALK_KEY, useDictation } from "./dictation";
 import { useApolloStore, type LogEntry } from "./store";
 import { Badge, Segmented, type Tone } from "./ui";
 import type { TerminalMode } from "./types";
@@ -65,7 +65,26 @@ export function HybridTerminal() {
     else setInput(joined);
     inputRef.current?.focus({ preventScroll: true });
   });
-  const { cancel: cancelDictation, probe: probeDictation, speech } = dictation;
+  const { cancel: cancelDictation, probe: probeDictation, speech, press: pressToTalk, release: releaseToTalk } = dictation;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (event: KeyboardEvent) => {
+      if (event.key === PUSH_TO_TALK_KEY) event.preventDefault();
+      if (isPushToTalkKey(event)) pressToTalk();
+    };
+    const onUp = (event: KeyboardEvent) => {
+      if (event.key === PUSH_TO_TALK_KEY) releaseToTalk();
+    };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    window.addEventListener("blur", releaseToTalk);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+      window.removeEventListener("blur", releaseToTalk);
+    };
+  }, [open, pressToTalk, releaseToTalk]);
 
   useEffect(() => {
     if (open) void probeDictation();
@@ -405,7 +424,7 @@ export function HybridTerminal() {
             disabled={dictation.state === "transcribing"}
             aria-label={dictation.state === "recording" ? "Stop dictation" : "Start dictation"}
             aria-pressed={dictation.state === "recording"}
-            title={dictation.state === "recording" ? "Stop dictation" : "Dictate"}
+            title={dictation.state === "recording" ? "Stop dictation" : `Dictate (or hold ${PUSH_TO_TALK_KEY} to talk)`}
             data-testid="terminal-mic"
             className={`flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border px-2 text-[11px] transition-colors disabled:opacity-40 ${
               dictation.state === "recording"
@@ -421,6 +440,7 @@ export function HybridTerminal() {
               <Mic size={14} />
             )}
             {dictation.state === "recording" ? "Stop" : dictation.state === "transcribing" ? "Wait" : "Dictate"}
+            <kbd className="rounded border border-white/15 px-1 font-mono text-[9px] text-slate-400" data-testid="terminal-ptt-key">{PUSH_TO_TALK_KEY}</kbd>
           </button>
           <button
             type="button"
