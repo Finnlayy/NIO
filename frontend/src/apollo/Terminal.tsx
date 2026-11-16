@@ -67,11 +67,14 @@ export function HybridTerminal() {
   });
   const { cancel: cancelDictation, probe: probeDictation, speech, press: pressToTalk, release: releaseToTalk } = dictation;
 
+  /* Push-to-talk works on the whole Apollo page: with the terminal closed, the
+     press opens it and starts recording, so the text has somewhere to land. */
   useEffect(() => {
-    if (!open) return;
     const onDown = (event: KeyboardEvent) => {
       if (event.key === PUSH_TO_TALK_KEY) event.preventDefault();
-      if (isPushToTalkKey(event)) pressToTalk();
+      if (!isPushToTalkKey(event)) return;
+      if (!useApolloStore.getState().terminalOpen) setOpen(true);
+      pressToTalk();
     };
     const onUp = (event: KeyboardEvent) => {
       if (event.key === PUSH_TO_TALK_KEY) releaseToTalk();
@@ -84,7 +87,7 @@ export function HybridTerminal() {
       window.removeEventListener("keyup", onUp);
       window.removeEventListener("blur", releaseToTalk);
     };
-  }, [open, pressToTalk, releaseToTalk]);
+  }, [setOpen, pressToTalk, releaseToTalk]);
 
   useEffect(() => {
     if (open) void probeDictation();
@@ -461,7 +464,7 @@ export function HybridTerminal() {
           >
             {dictation.error ??
               (dictation.state === "recording"
-                ? "listening · click stop when done"
+                ? `listening · release ${PUSH_TO_TALK_KEY} or click stop`
                 : dictation.state === "transcribing"
                   ? "transcribing…"
                   : blocked
