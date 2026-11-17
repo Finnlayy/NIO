@@ -411,6 +411,27 @@ body {
   box-shadow: 0 0 10px var(--range-accent);
 }
 
+/* Recording halo on the terminal mic. A pseudo-element, so it costs no layout
+   and leaves the button's own box-shadow to the focus ring. */
+.apollo-mic-live {
+  position: relative;
+}
+
+.apollo-mic-live::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid rgb(251 113 133 / 0.8);
+  pointer-events: none;
+  animation: apollo-mic-pulse 1.8s ease-out infinite;
+}
+
+@keyframes apollo-mic-pulse {
+  0% { opacity: 0.85; transform: scale(1); }
+  70%, 100% { opacity: 0; transform: scale(1.4); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .apollo-ring-spin,
   .apollo-ring-spin-slow {
@@ -426,6 +447,12 @@ body {
 
   .pulse-dot {
     animation: none;
+  }
+
+  .apollo-mic-live::after {
+    animation: none;
+    opacity: 0.6;
+    transform: scale(1.12);
   }
 }
 

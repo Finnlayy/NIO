@@ -20,6 +20,9 @@ export const PALETTE = {
   ink: "#050810",
 } as const;
 
+/** Dictation running: rose, the stop/error family, kept apart from the orb palette. */
+export const RECORDING_COLOR = "#fb7185";
+
 export const ORB_STATE_STYLE: Record<OrbState, { label: string; color: string; note: string }> = {
   IDLE: { label: "Harmonic idle", color: PALETTE.cyan, note: "breathing at 0.11 Hz" },
   LISTENING: { label: "Listening", color: "#38bdf8", note: "input channel open" },
