@@ -139,6 +139,26 @@ class PostgresKanbanStore:
             await conn.execute(sql, *[data[k] for k in cols])
         return task
 
+    async def create_task_idempotent(self, task: KanbanTask, key: str) -> tuple[KanbanTask, bool]:
+        """Wie ``SqliteKanbanStore.create_task_idempotent``; der Advisory-Lock auf den
+        Schluessel serialisiert gleichzeitige Requests, bevor die Zeile existiert."""
+        data = _to_db(task.to_dict(), _TASK_JSON)
+        cols = list(data.keys())
+        marks = [f"${i+1}" for i in range(len(cols))]
+        sql = f"INSERT INTO kanban_tasks ({', '.join(cols)}) VALUES ({', '.join(marks)})"
+
+        async with self._pool.acquire() as conn, conn.transaction():
+            await conn.execute("SELECT pg_advisory_xact_lock(hashtext($1))", key)
+            row = await conn.fetchrow(
+                "SELECT t.* FROM kanban_idempotency i JOIN kanban_tasks t ON t.id = i.task_id WHERE i.key = $1",
+                key,
+            )
+            if row is not None:
+                return _task(row), False
+            await conn.execute(sql, *[data[k] for k in cols])
+            await conn.execute("INSERT INTO kanban_idempotency (key, task_id) VALUES ($1, $2)", key, task.id)
+        return task, True
+
     async def get_task(self, task_id: str) -> KanbanTask | None:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow("SELECT * FROM kanban_tasks WHERE id = $1", task_id)

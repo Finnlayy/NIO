@@ -151,6 +151,8 @@ class TaskCreate(_Out):
     priority: int = 0
     status: TaskStatus = TaskStatus.TRIAGE
     workspace_repo: str | None = None
+    #: Vom Client pro Befehl erzeugt; ein Retry mit demselben Schluessel legt keinen zweiten Task an.
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class TransitionIn(_Out):
@@ -252,8 +254,11 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
                 priority=body.priority,
                 status=body.status,
                 workspace_repo=body.workspace_repo,
+                idempotency_key=body.idempotency_key,
                 actor=actor,
             )
+        except ConflictError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
         return task.to_dict()

@@ -67,8 +67,12 @@ class KanbanService:
         priority: int = 0,
         status: TaskStatus = TaskStatus.TRIAGE,
         workspace_repo: str | None = None,
+        idempotency_key: str | None = None,
         actor: str,
     ) -> KanbanTask:
+        """Legt einen Task an. Mit ``idempotency_key`` liefert eine Wiederholung den
+        schon angelegten Task (ohne Ledger-Eintrag und Event); derselbe Schluessel mit
+        anderem Board/Titel ist ein ``ConflictError``."""
         if not (1 <= len(title) <= 200):
             raise ValueError("Der Titel muss zwischen 1 und 200 Zeichen lang sein")
 
@@ -101,7 +105,14 @@ class KanbanService:
             status=status,
             workspace_repo=workspace_repo,
         )
-        await self._store.create_task(task)
+        if idempotency_key is not None:
+            stored, created = await self._store.create_task_idempotent(task, idempotency_key)
+            if not created:
+                if (stored.board_id, stored.title) != (board_id, title):
+                    raise ConflictError(f"Idempotency-Key {idempotency_key} gehört zu einem anderen Task ({stored.id})")
+                return stored
+        else:
+            await self._store.create_task(task)
         await self._ledger.append(
             actor=actor,
             action="create_task",
