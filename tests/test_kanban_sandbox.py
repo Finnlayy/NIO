@@ -99,6 +99,50 @@ class TestKanbanSandbox(unittest.TestCase):
         argv_str = " ".join(argv)
         self.assertNotIn("sk-geheim", argv_str)
 
+    def test_llm_transport_routes_only_llm_workers_over_http(self) -> None:
+        from dataclasses import replace
+
+        from orchestrator.kanban.sandbox import LLMRoutingSandbox, build_sandbox
+
+        docker = replace(self.config, sandbox="docker")
+        self.assertIsInstance(build_sandbox(docker), DockerSandbox)
+        routed = build_sandbox(replace(docker, llm_transport="http"))
+        self.assertIsInstance(routed, LLMRoutingSandbox)
+        with self.assertRaises(ValueError):
+            build_sandbox(replace(docker, llm_transport="shell"))
+
+        calls: list[str] = []
+
+        class Fake:
+            def __init__(self, name: str) -> None:
+                self.name = name
+
+            async def run(self, spec: SandboxSpec, *, on_heartbeat: object) -> str:
+                calls.append(self.name)
+                return self.name
+
+            async def cancel(self, run_id: str) -> None:
+                calls.append(f"cancel-{self.name}")
+
+        router = LLMRoutingSandbox(Fake("docker"), Fake("llm"))  # type: ignore[arg-type]
+        llm_worker = replace(self.worker, soul_md="---\nruntime: llm\n---\n")
+        cmd_worker = replace(self.worker, soul_md="---\nruntime: command\ncommand: [\"true\"]\n---\n")
+
+        async def noop() -> None:
+            return None
+
+        asyncio.run(router.run(replace(self.spec, worker=llm_worker), on_heartbeat=noop))
+        asyncio.run(router.run(replace(self.spec, worker=cmd_worker), on_heartbeat=noop))
+        asyncio.run(router.cancel("unknown"))
+        self.assertEqual(calls, ["llm", "docker", "cancel-docker"])
+
+    def test_docker_no_new_privileges_is_default_and_switchable(self) -> None:
+        from dataclasses import replace
+
+        self.assertIn("no-new-privileges", DockerSandbox.build_argv(self.spec, self.config))
+        off = replace(self.config, docker_no_new_privileges=False)
+        self.assertNotIn("no-new-privileges", DockerSandbox.build_argv(self.spec, off))
+
     def test_subprocess_noop(self) -> None:
         self._write_soul("noop")
         runner = build_sandbox(self.config)

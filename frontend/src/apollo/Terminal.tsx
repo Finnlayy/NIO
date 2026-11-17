@@ -59,10 +59,17 @@ export function HybridTerminal() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const dictation = useDictation((text) => {
+  /* Latest submit for the dictation callback; set on every open render below. */
+  const submitRef = useRef<(text?: string) => Promise<void>>(async () => {});
+
+  const dictation = useDictation((text, meta) => {
     const joined = joinDictation(inputRef.current?.value ?? "", text);
     if (joined === null) dictation.reject("approvals are typed, not dictated");
-    else setInput(joined);
+    else {
+      setInput(joined);
+      /* Push-to-talk sends on release; click dictation leaves the text for review. */
+      if (meta.pushToTalk) void submitRef.current(joined);
+    }
     inputRef.current?.focus({ preventScroll: true });
   });
   const { cancel: cancelDictation, probe: probeDictation, speech, press: pressToTalk, release: releaseToTalk } = dictation;
@@ -129,8 +136,8 @@ export function HybridTerminal() {
 
   if (!open) return null;
 
-  const submit = async () => {
-    const text = input.trim();
+  const submit = async (override?: string) => {
+    const text = (override ?? input).trim();
     if (!text) return;
     /* One turn at a time. A prompt in flight owns the router, the task rail and
        the transcript; letting /clear or /spawn run underneath it interleaves two
@@ -147,6 +154,7 @@ export function HybridTerminal() {
     setPinned(true);
     await runCommand(text);
   };
+  submitRef.current = submit;
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -464,7 +472,7 @@ export function HybridTerminal() {
           >
             {dictation.error ??
               (dictation.state === "recording"
-                ? `listening · release ${PUSH_TO_TALK_KEY} or click stop`
+                ? `listening · release ${PUSH_TO_TALK_KEY} to send, or click stop`
                 : dictation.state === "transcribing"
                   ? "transcribing…"
                   : blocked
