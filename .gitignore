@@ -41,3 +41,6 @@ frontend/.tradingview-oauth.json
 # und persoenliche Daten). Gehoert nicht ins Repo -- wurde 2026-09-08 entfernt,
 # siehe docs/AUDIT-2026-09-08-BLUEPRINT-V4-VS-CODE.md, Abschnitt 5.
 applet_access_history.json
+
+# Obsidian-Exporte (tools/sync/nio_artifact_exporter.py) sind generiert
+obsidian_vault/exports/
