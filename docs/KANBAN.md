@@ -64,6 +64,8 @@ Das System wird ausschließlich über `NIO_KANBAN_*` Umgebungsvariablen konfigur
 | `NIO_KANBAN_MAX_CONCURRENT` | Max parallele Worker | `1` |
 | `NIO_KANBAN_BREAKER_THRESHOLD`| Failures vor Circuit Break | `3` |
 | `NIO_KANBAN_BREAKER_COOLDOWN_S`| Cooldown nach Break | `600.0` |
+| `NIO_KANBAN_GATE_SCRIPT` | Sandbox-Gate vor dem Merge eines Worker-Branches (fehlt es: kein Merge) | `tools/selfcode/sandbox_gate.py` |
+| `NIO_KANBAN_GATE_TIMEOUT_S` | Hartes Timeout des Gates (Ablauf: kein Merge) | `120.0` |
 | `NIO_KANBAN_WORKSPACE` | Workspace Verzeichnis | `workspace/kanban` |
 | `NIO_OBSIDIAN_VAULT` | Obsidian Vault Verzeichnis | `workspace/obsidian` |
 | `NIO_KANBAN_SECRET_ALLOWLIST`| Erlaubte Secrets | `""` |
