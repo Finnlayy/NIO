@@ -184,6 +184,44 @@ export async function createApolloTask(title: string, description: string): Prom
   });
 }
 
+/** Skill of the chat worker (`deploy/workers/apollo.soul.md`); other workers never pick chat tasks. */
+export const CHAT_SKILL = "apollo";
+const CHAT_TITLE_MAX = 120;
+
+export interface ChatTask {
+  id: string;
+  board_id: string;
+  status: string;
+  block_reason?: string;
+  result_payload?: { text?: string; provider?: string; model?: string } | null;
+}
+
+/** Title is the first line (clipped); the full text goes to the description only when it adds something. */
+export function chatTaskFields(text: string): { title: string; description: string } {
+  const clean = text.trim();
+  const firstLine = clean.split(/\r?\n/, 1)[0];
+  const title = firstLine.length > CHAT_TITLE_MAX ? `${firstLine.slice(0, CHAT_TITLE_MAX - 1)}…` : firstLine;
+  return { title, description: title === clean ? "" : clean };
+}
+
+export async function createChatTask(text: string): Promise<KanbanResult<ChatTask>> {
+  const board = await apolloBoardId();
+  if (!board.ok) return { ok: false, error: board.error };
+  return kanbanRequest<ChatTask>("/api/v1/kanban/tasks", "POST", {
+    board_id: board.data,
+    ...chatTaskFields(text),
+    dependencies: [],
+    required_skills: [CHAT_SKILL],
+  });
+}
+
+export async function fetchChatTask(boardId: string, taskId: string): Promise<KanbanResult<ChatTask>> {
+  const tasks = await kanbanRequest<ChatTask[]>(`/api/v1/kanban/tasks?board_id=${encodeURIComponent(boardId)}`, "GET");
+  if (!tasks.ok) return { ok: false, error: tasks.error };
+  const task = tasks.data?.find((candidate) => candidate.id === taskId);
+  return task ? { ok: true, data: task } : { ok: false, error: "task_not_found" };
+}
+
 export interface OpsRun {
   run_id: string;
   agent: string;

@@ -8,6 +8,7 @@ import {
   taskPresets,
   type DomainId,
 } from "@/data/network";
+import { opsHotkey, isTypingTarget } from "@/ops/hotkeys";
 
 import { Header } from "./dashboard/Header";
 import { FilterBar } from "./dashboard/FilterBar";
@@ -70,6 +71,34 @@ export default function NetworkDashboard() {
       status: "info",
     });
   }, [log]);
+
+  const stateRef = useRef({ taskText, isRunning, runTask });
+  useEffect(() => {
+    stateRef.current = { taskText, isRunning, runTask };
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const command = opsHotkey(e);
+      if (command === "execute-task") {
+        if (
+          isTypingTarget(document.activeElement) &&
+          document.activeElement?.id !== "task-console-input"
+        ) {
+          return;
+        }
+
+        e.preventDefault();
+        const { taskText: currentTaskText, isRunning: currentIsRunning, runTask: currentRunTask } = stateRef.current;
+        if (!currentIsRunning && currentTaskText.trim()) {
+          void currentRunTask();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const selectedNode = NODE_BY_ID[selectedId] ?? NODE_BY_ID["neural-core"];
   const selectedPreset = taskPresets[selectedId];

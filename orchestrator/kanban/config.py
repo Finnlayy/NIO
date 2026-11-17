@@ -48,6 +48,9 @@ class KanbanConfig:
     bus: str = "memory"  # memory | redis
     redis_url: str = "redis://127.0.0.1:6379/0"
     sandbox: str = "docker"  # subprocess | docker
+    # "http": Worker mit runtime: llm laufen ueber LLMRequestSandbox (nur HTTP, llm-only),
+    # weil Docker-Worker ohne Netz laufen. Leer: alle Worker ueber ``sandbox``.
+    llm_transport: str = ""
     # Docker-JIT-Sandbox
     image: str = "python:3.12-slim"
     cpus: str = "1.0"
@@ -55,6 +58,8 @@ class KanbanConfig:
     pids_limit: int = 256
     network: str = "none"
     docker_bin: str = "docker"
+    # Nur abschalten, wenn das Image keine Setuid-Dateien hat: Snap-Docker bricht damit schon ``exec`` ab.
+    docker_no_new_privileges: bool = True
     # Takt und Fristen
     tick_s: float = 2.0
     heartbeat_s: float = 5.0
@@ -94,12 +99,14 @@ class KanbanConfig:
             bus=e.get("NIO_KANBAN_BUS", "memory").strip() or "memory",
             redis_url=e.get("NIO_KANBAN_REDIS_URL", "redis://127.0.0.1:6379/0"),
             sandbox=e.get("NIO_KANBAN_SANDBOX", "docker").strip() or "docker",
+            llm_transport=e.get("NIO_KANBAN_LLM_TRANSPORT", "").strip().lower(),
             image=e.get("NIO_KANBAN_IMAGE", "python:3.12-slim"),
             cpus=e.get("NIO_KANBAN_CPUS", "1.0"),
             memory=e.get("NIO_KANBAN_MEMORY", "512m"),
             pids_limit=_int(e, "NIO_KANBAN_PIDS", 256),
             network=e.get("NIO_KANBAN_NETWORK", "none"),
             docker_bin=e.get("NIO_KANBAN_DOCKER_BIN", "docker"),
+            docker_no_new_privileges=e.get("NIO_KANBAN_DOCKER_NO_NEW_PRIVILEGES", "1").strip() != "0",
             tick_s=_float(e, "NIO_KANBAN_TICK_S", 2.0),
             heartbeat_s=_float(e, "NIO_KANBAN_HEARTBEAT_S", 5.0),
             heartbeat_ttl_s=_float(e, "NIO_KANBAN_HEARTBEAT_TTL_S", 20.0),

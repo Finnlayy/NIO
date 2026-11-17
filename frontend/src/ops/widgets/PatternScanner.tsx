@@ -1,17 +1,15 @@
 import type { PatternSetup } from "../marketData";
-import { Insight, upBar, downBar } from "./bits";
+import { Insight } from "./bits";
 
 function FlagIcon({ bullish }: { bullish: boolean }) {
   return (
     <span
-      className="w-9 h-7 rounded-md grid place-items-center shrink-0"
-      style={{ background: bullish ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)" }}
+      className={`w-9 h-7 rounded-md grid place-items-center shrink-0 ${bullish ? "bg-emerald-400/12" : "bg-rose-400/12"}`}
     >
-      <svg viewBox="0 0 24 16" className="w-6 h-4">
+      <svg viewBox="0 0 24 16" className={`w-6 h-4 ${bullish ? "stroke-emerald-400" : "stroke-rose-400"}`}>
         <path
           d={bullish ? "M2 14 L6 6 L12 9 L18 3 L20 5 L13 11 L7 8 Z" : "M2 2 L6 10 L12 7 L18 13 L20 11 L13 5 L7 8 Z"}
           fill="none"
-          stroke={bullish ? upBar : downBar}
           strokeWidth="1.6"
           strokeLinejoin="round"
         />
@@ -36,16 +34,16 @@ export function PatternScanner({ data }: { data: Record<string, unknown> }) {
 
       {/* bull/bear progress */}
       <div className="flex h-1.5 rounded-full overflow-hidden mt-2.5">
-        <div style={{ width: "100%", background: upBar, transform: `scaleX(${bullish / total})`, transformOrigin: "left" }} />
-        <div style={{ width: "100%", background: downBar, transform: `scaleX(${bearish / total})`, transformOrigin: "left" }} />
+        <div className="bg-emerald-400" style={{ width: "100%", transform: `scaleX(${bullish / total})`, transformOrigin: "left" }} />
+        <div className="bg-rose-400" style={{ width: "100%", transform: `scaleX(${bearish / total})`, transformOrigin: "left" }} />
       </div>
       <p className="flex items-center gap-3 mt-1.5 text-[10px]">
-        <span className="flex items-center gap-1 text-slate-400">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: upBar }} />
+        <span className="flex items-center gap-1 text-slate-400 font-mono tabular-nums">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
           Bullish {bullish}
         </span>
-        <span className="flex items-center gap-1 text-slate-400">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: downBar }} />
+        <span className="flex items-center gap-1 text-slate-400 font-mono tabular-nums">
+          <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
           Bearish {bearish}
         </span>
       </p>

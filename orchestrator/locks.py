@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
+from core.atomic import atomic_write_bytes
 from core.config import NeuConfig
 from core.protocol import format_timestamp, parse_timestamp, utc_now
 
@@ -166,7 +167,7 @@ class AgentPool:
             except FileExistsError:
                 continue
             with os.fdopen(handle, "w", encoding="utf-8") as stream:
-                json.dump(slot.to_dict(), stream, ensure_ascii=False, indent=2)
+                json.dump(slot.to_dict(), stream, ensure_ascii=False, separators=(",", ":"))
             return slot
         limit_name = "max_scheduled_jobs" if kind == KIND_SCHEDULED else "max_agents"
         raise NoSlotAvailable(
@@ -200,8 +201,9 @@ class AgentPool:
             expires_at=format_timestamp(utc_now() + _ttl(ttl_s)),
             kind=slot.kind,
         )
+        payload = json.dumps(renewed.to_dict(), ensure_ascii=False, separators=(",", ":"))
         try:
-            renewed.path.write_text(json.dumps(renewed.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+            atomic_write_bytes(renewed.path, payload.encode("utf-8"), dir_mode=False)
         except OSError:
             return slot
         return renewed

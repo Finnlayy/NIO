@@ -1,8 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, Play, Terminal } from "lucide-react";
 import { ModuleHeader, StatusDot, Tile } from "./shared";
 import type { RunState } from "./types";
-import { isTypingTarget } from "@/ops/hotkeys";
 
 export function TaskConsole({
   taskText,
@@ -27,33 +26,6 @@ export function TaskConsole({
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const stateRef = useRef({ taskText, isRunning, onRun });
-  useEffect(() => {
-    stateRef.current = { taskText, isRunning, onRun };
-  });
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-        if (
-          isTypingTarget(document.activeElement) &&
-          document.activeElement !== textareaRef.current
-        ) {
-          return;
-        }
-
-        e.preventDefault();
-        const { taskText: currentTaskText, isRunning: currentIsRunning, onRun: currentOnRun } = stateRef.current;
-        if (!currentIsRunning && currentTaskText.trim()) {
-          currentOnRun();
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-
   return (
     <Tile className="p-4 h-full flex flex-col">
       <ModuleHeader
@@ -74,6 +46,7 @@ export function TaskConsole({
       />
 
       <textarea
+        id="task-console-input"
         ref={textareaRef}
         value={taskText}
         onChange={(event) => onTaskText(event.target.value)}
@@ -88,7 +61,7 @@ export function TaskConsole({
           type="checkbox"
           checked={isComplex}
           onChange={(event) => onComplex(event.target.checked)}
-          className="accent-cyan-400"
+          className="accent-cyan-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 rounded-sm"
         />
         Complex workflow <span className="text-slate-400">(urgency wrapping)</span>
       </label>
@@ -96,7 +69,8 @@ export function TaskConsole({
       <button
         onClick={onRun}
         disabled={isRunning || !taskText.trim()}
-        className="primary-button w-full mt-3 flex items-center justify-center gap-2"
+        title={!taskText.trim() ? "Enter a task description to dispatch" : undefined}
+        className="primary-button w-full mt-3 flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
       >
         {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
         {isRunning ? "Routing through core …" : (
@@ -132,16 +106,21 @@ export function TaskConsole({
               <CheckCircle2 className="w-3 h-3 text-emerald-400" />
               <span className="text-emerald-300">Response · Ok</span>
             </>
+          ) : isRunning ? (
+            <>
+              <Loader2 className="w-3 h-3 text-amber-400 animate-spin" />
+              <span className="text-amber-300">Response · Routing</span>
+            </>
           ) : (
             <span className="text-cyan-300">Response</span>
           )}
         </p>
         <p
           className={`text-[12px] mt-1.5 break-words leading-relaxed ${
-            runState === "error" ? "text-rose-200" : "text-slate-300"
+            runState === "error" ? "text-rose-200" : isRunning ? "text-amber-200/70" : "text-slate-300"
           }`}
         >
-          {result}
+          {isRunning ? "Awaiting neural core synthesis…" : result}
         </p>
       </div>
 

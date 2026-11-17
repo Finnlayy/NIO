@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import time
 import unittest
 from dataclasses import replace
 from datetime import timedelta
@@ -403,6 +404,29 @@ class TestJobStore(unittest.TestCase):
         path.write_text(json.dumps({"job_id": "job_tot", "pid": 999999, "acquired_at": "2020-01-01T00:00:00.000Z", "expires_at": "2020-01-01T00:01:00.000Z"}), encoding="utf-8")
         self.assertEqual(pool.reclaim_stale(), 1)
         self.assertFalse(path.exists())
+
+    def test_renew_is_atomic_and_compact(self):
+        dev_config = NeuConfig.load(REPO_ROOT, mode="dev", runtime_dir=Path(self._tmp.name) / "runtime-renew")
+        dev_config.ensure_dirs()
+        pool = AgentPool(dev_config)
+        slot = pool.acquire(job_id="job_z", ttl_s=30)
+        original_expires_at = slot.expires_at
+
+        # Test renew
+        time.sleep(0.1) # Ensure time passes so expires_at changes
+        renewed_slot = pool.renew(slot, ttl_s=60)
+
+        # 1. verify it works without error and expires_at moved forward
+        self.assertNotEqual(original_expires_at, renewed_slot.expires_at)
+
+        # 2. verify no .tmp file exists
+        tmp_files = list(dev_config.locks_dir.glob("*.tmp"))
+        self.assertEqual(len(tmp_files), 0, "tmp file should not exist after renew")
+
+        # 3. verify compactness
+        content = renewed_slot.path.read_bytes()
+        self.assertNotIn(b"\n  ", content, "kompakt geschrieben statt indent=2")
+        self.assertEqual(json.loads(content), renewed_slot.to_dict(), "Inhalt muss valide und korrekt sein")
 
 
 if __name__ == "__main__":
