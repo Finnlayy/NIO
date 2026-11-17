@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { COMMANDS } from "./commands";
-import { joinDictation, useDictation } from "./dictation";
+import { isPushToTalkKey, joinDictation, PUSH_TO_TALK_KEY, useDictation } from "./dictation";
 import { useApolloStore, type LogEntry } from "./store";
 import { Badge, Segmented, type Tone } from "./ui";
 import type { TerminalMode } from "./types";
@@ -59,13 +59,42 @@ export function HybridTerminal() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const dictation = useDictation((text) => {
+  /* Latest submit for the dictation callback; set on every open render below. */
+  const submitRef = useRef<(text?: string) => Promise<void>>(async () => {});
+
+  const dictation = useDictation((text, meta) => {
     const joined = joinDictation(inputRef.current?.value ?? "", text);
     if (joined === null) dictation.reject("approvals are typed, not dictated");
-    else setInput(joined);
+    else {
+      setInput(joined);
+      /* Push-to-talk sends on release; click dictation leaves the text for review. */
+      if (meta.pushToTalk) void submitRef.current(joined);
+    }
     inputRef.current?.focus({ preventScroll: true });
   });
-  const { cancel: cancelDictation, probe: probeDictation, speech } = dictation;
+  const { cancel: cancelDictation, probe: probeDictation, speech, press: pressToTalk, release: releaseToTalk } = dictation;
+
+  /* Push-to-talk works on the whole Apollo page: with the terminal closed, the
+     press opens it and starts recording, so the text has somewhere to land. */
+  useEffect(() => {
+    const onDown = (event: KeyboardEvent) => {
+      if (event.key === PUSH_TO_TALK_KEY) event.preventDefault();
+      if (!isPushToTalkKey(event)) return;
+      if (!useApolloStore.getState().terminalOpen) setOpen(true);
+      pressToTalk();
+    };
+    const onUp = (event: KeyboardEvent) => {
+      if (event.key === PUSH_TO_TALK_KEY) releaseToTalk();
+    };
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    window.addEventListener("blur", releaseToTalk);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+      window.removeEventListener("blur", releaseToTalk);
+    };
+  }, [setOpen, pressToTalk, releaseToTalk]);
 
   useEffect(() => {
     if (open) void probeDictation();
@@ -107,8 +136,8 @@ export function HybridTerminal() {
 
   if (!open) return null;
 
-  const submit = async () => {
-    const text = input.trim();
+  const submit = async (override?: string) => {
+    const text = (override ?? input).trim();
     if (!text) return;
     /* One turn at a time. A prompt in flight owns the router, the task rail and
        the transcript; letting /clear or /spawn run underneath it interleaves two
@@ -125,6 +154,7 @@ export function HybridTerminal() {
     setPinned(true);
     await runCommand(text);
   };
+  submitRef.current = submit;
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -405,7 +435,7 @@ export function HybridTerminal() {
             disabled={dictation.state === "transcribing"}
             aria-label={dictation.state === "recording" ? "Stop dictation" : "Start dictation"}
             aria-pressed={dictation.state === "recording"}
-            title={dictation.state === "recording" ? "Stop dictation" : "Dictate"}
+            title={dictation.state === "recording" ? "Stop dictation" : `Dictate (or hold ${PUSH_TO_TALK_KEY} to talk)`}
             data-testid="terminal-mic"
             className={`flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md border px-2 text-[11px] transition-colors disabled:opacity-40 ${
               dictation.state === "recording"
@@ -421,6 +451,7 @@ export function HybridTerminal() {
               <Mic size={14} />
             )}
             {dictation.state === "recording" ? "Stop" : dictation.state === "transcribing" ? "Wait" : "Dictate"}
+            <kbd className="rounded border border-white/15 px-1 font-mono text-[9px] text-slate-400" data-testid="terminal-ptt-key">{PUSH_TO_TALK_KEY}</kbd>
           </button>
           <button
             type="button"
@@ -441,7 +472,7 @@ export function HybridTerminal() {
           >
             {dictation.error ??
               (dictation.state === "recording"
-                ? "listening · click stop when done"
+                ? `listening · release ${PUSH_TO_TALK_KEY} to send, or click stop`
                 : dictation.state === "transcribing"
                   ? "transcribing…"
                   : blocked

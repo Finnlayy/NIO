@@ -11,10 +11,12 @@ import {
 } from "./catalog";
 import {
   callVault,
+  type ChatTask,
   createApolloTask,
+  createChatTask,
+  fetchChatTask,
   fetchRuns,
   kanbanRequest,
-  requestSynthesis,
   runSandboxCommand,
   secureKanbanRequest,
 } from "./client";
@@ -146,6 +148,10 @@ function later(ms: number, fn: () => void): void {
     }
   }
 }
+
+/** Chat answers come from the Kanban worker; poll its task, never longer than this. */
+const CHAT_POLL_MS = 1500;
+const CHAT_TASK_TIMEOUT_MS = 180_000;
 
 const stamp = () => new Date().toISOString().slice(11, 23);
 let counter = 0;
@@ -569,30 +575,39 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
     prompt: async (text) => {
       const promptText = text.trim();
       if (!promptText || get().busy) return;
-      const state = get();
       push({ origin: "USER", level: "CHAT", message: promptText });
       const task: ActiveTask = {
         id: id("task"), label: promptText.slice(0, 72), prompt: promptText,
         startedAt: Date.now(), completed: [], pending: [],
-        steps: [{ id: "live", label: "Serverseitige Live-Anfrage", status: "RUNNING" }],
+        steps: [{ id: "kanban", label: "Kanban-Aufgabe für den Apollo-Worker", status: "RUNNING" }],
       };
       set({ busy: true, task });
       setOrb("THINKING");
       try {
-        const result = await requestSynthesis({
-          endpointUrl: state.config.freeLLMRouting.endpointUrl,
-          providerId: state.config.freeLLMRouting.providerId,
-          model: "",
-          messages: [{ role: "system", content: state.config.systemDirective }, { role: "user", content: promptText }],
-          temperature: state.config.temperature, maxTokens: Math.min(2000, state.config.maxTokens),
-        });
-        if (!result.ok || !result.text.trim()) throw new Error(result.error ?? "empty_upstream_response");
-        push({ origin: "APOLLO", level: "CHAT", message: result.text.trim(), activeModel: result.model,
-          data: { provider: result.provider, latencyMs: result.latencyMs } });
-        set({ task: { ...task, steps: [{ ...task.steps[0], status: "DONE" }], completed: ["Live-Antwort empfangen"] } });
+        /* Chat runs as a Kanban task: the dispatcher hands it to the worker with
+           the `apollo` skill, and its real result (or block reason) comes back here. */
+        const created = await createChatTask(promptText);
+        if (!created.ok || !created.data) throw new Error(created.error ?? "task_not_created");
+        const { id: taskId, board_id: boardId } = created.data;
+        push({ origin: "NIO_CORE", level: "INFO", message: `Kanban-Aufgabe ${taskId} angelegt, wartet auf den Apollo-Worker.` });
+        const deadline = Date.now() + CHAT_TASK_TIMEOUT_MS;
+        let done: ChatTask | undefined;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, CHAT_POLL_MS));
+          const polled = await fetchChatTask(boardId, taskId);
+          if (!polled.ok || !polled.data) throw new Error(polled.error ?? "task_lost");
+          if (polled.data.status === "completed" || polled.data.status === "blocked") { done = polled.data; break; }
+        }
+        if (!done) throw new Error(`Aufgabe ${taskId} nach ${CHAT_TASK_TIMEOUT_MS / 1000} s nicht fertig. Läuft der Apollo-Worker? Status mit /tasks`);
+        if (done.status === "blocked") throw new Error(`Aufgabe ${taskId} blockiert: ${done.block_reason || "ohne Grund"}`);
+        const text = done.result_payload?.text?.trim();
+        if (!text) throw new Error(`Aufgabe ${taskId} ohne Antworttext abgeschlossen`);
+        push({ origin: "APOLLO", level: "CHAT", message: text, activeModel: done.result_payload?.model,
+          data: { provider: done.result_payload?.provider, taskId } });
+        set({ task: { ...task, steps: [{ ...task.steps[0], status: "DONE" }], completed: [`Aufgabe ${taskId} erledigt`] } });
         setOrb("SYNTHESIZING", 1100);
       } catch (error) {
-        push({ origin: "APOLLO", level: "ERROR", message: `Live-Anfrage fehlgeschlagen: ${error instanceof Error ? error.message : "network_error"}. Kein Simulationsersatz.` });
+        push({ origin: "APOLLO", level: "ERROR", message: `Chat-Aufgabe fehlgeschlagen: ${error instanceof Error ? error.message : "network_error"}. Kein Simulationsersatz.` });
         set({ task: { ...task, steps: [{ ...task.steps[0], status: "FAILED" }] } });
         setOrb("ERROR");
       } finally { set({ busy: false }); }

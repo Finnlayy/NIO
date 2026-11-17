@@ -7,6 +7,8 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
   appendTranscript,
+  isPushToTalkKey,
+  PUSH_TO_TALK_KEY,
   joinDictation,
   microphoneError,
   normalizeDictation,
@@ -163,4 +165,15 @@ test("spoken slash commands become reviewable CLI drafts", () => {
   assert.equal(normalizeDictation("slash unrecognized word"), "slash unrecognized word");
   assert.equal(normalizeDictation("a slash in prose"), "a slash in prose");
   assert.equal(joinDictation("", "Schrägstrich approve"), null);
+});
+
+test("push-to-talk reacts only to the bare key, not repeats or chords", () => {
+  assert.equal(PUSH_TO_TALK_KEY, "F2");
+  assert.equal(isPushToTalkKey({ key: "F2" }), true);
+  assert.equal(isPushToTalkKey({ key: "F2", repeat: true }), false);
+  assert.equal(isPushToTalkKey({ key: "F2", ctrlKey: true }), false);
+  assert.equal(isPushToTalkKey({ key: "F2", altKey: true }), false);
+  assert.equal(isPushToTalkKey({ key: "F2", shiftKey: true }), false);
+  assert.equal(isPushToTalkKey({ key: "F2", metaKey: true }), false);
+  assert.equal(isPushToTalkKey({ key: " " }), false);
 });

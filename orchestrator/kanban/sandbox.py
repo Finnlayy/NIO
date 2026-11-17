@@ -303,13 +303,14 @@ class DockerSandbox(_ProcessSandbox):
             "/tmp:rw,size=64m",
             "--cap-drop",
             "ALL",
-            "--security-opt",
-            "no-new-privileges",
             "--user",
             "1000:1000",
             "--network",
             config.network,
         ]
+
+        if config.docker_no_new_privileges:
+            argv.extend(["--security-opt", "no-new-privileges"])
 
         if config.network != "none":
             argv.extend(["--add-host", "host.docker.internal:host-gateway"])
@@ -406,8 +407,41 @@ class DockerSandbox(_ProcessSandbox):
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
 
 
+class LLMRoutingSandbox:
+    """Leitet Worker mit ``runtime: llm`` an den HTTP-Transport, alle anderen an ``main``.
+
+    Der LLM-Pfad fuehrt keine Befehle aus: Kind und Transport erzwingen llm-only.
+    """
+
+    def __init__(self, main: SandboxRunner, llm: SandboxRunner) -> None:
+        self._main = main
+        self._llm = llm
+        self._owner: dict[str, SandboxRunner] = {}
+
+    @staticmethod
+    def is_llm(worker: Worker) -> bool:
+        from orchestrator.kanban.soul import parse_soul
+
+        return str(parse_soul(worker.soul_md).frontmatter.get("runtime", "")).strip().lower() == "llm"
+
+    async def run(self, spec: SandboxSpec, *, on_heartbeat: Callable[[], Awaitable[None]]) -> SandboxResult:
+        runner = self._llm if self.is_llm(spec.worker) else self._main
+        self._owner[spec.run_id] = runner
+        try:
+            return await runner.run(spec, on_heartbeat=on_heartbeat)
+        finally:
+            self._owner.pop(spec.run_id, None)
+
+    async def cancel(self, run_id: str) -> None:
+        await self._owner.get(run_id, self._main).cancel(run_id)
+
+
 def build_sandbox(config: KanbanConfig) -> SandboxRunner:
+    if config.llm_transport not in ("", "http"):
+        raise ValueError("unknown llm transport")
     if config.sandbox == "docker":
+        if config.llm_transport == "http":
+            return LLMRoutingSandbox(DockerSandbox(config), LLMRequestSandbox(config))
         return DockerSandbox(config)
     if config.sandbox == "llm-http":
         return LLMRequestSandbox(config)
