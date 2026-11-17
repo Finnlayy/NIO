@@ -63,7 +63,7 @@ export const TaskCard: React.FC<TaskCardProps> = React.memo(({
 
   return (
     <article
-      className="group relative flex flex-col gap-2 p-3 bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.06] rounded-lg transition-colors cursor-grab active:cursor-grabbing"
+      className="group relative flex flex-col gap-2 p-3 bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.06] rounded-lg transition-colors cursor-grab active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
       tabIndex={0}
       role="button"
       aria-label={`${task.title}, Status: ${STATUS_LABELS[task.status]}`}
@@ -90,7 +90,7 @@ export const TaskCard: React.FC<TaskCardProps> = React.memo(({
         <div className="relative" onClick={e => e.stopPropagation()}>
           <button
             ref={moveBtnRef}
-            className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-white/10 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity motion-reduce:transition-none"
+            className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-white/10 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 transition-opacity motion-reduce:transition-none"
             aria-label="Verschieben nach …"
             aria-haspopup="menu"
             aria-expanded={menuOpen}

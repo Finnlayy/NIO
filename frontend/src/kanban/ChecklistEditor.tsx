@@ -97,6 +97,7 @@ export const ChecklistEditor: React.FC<ChecklistEditorProps> = ({ items, onChang
         <Plus className="w-4 h-4 text-slate-500" />
         <input
           type="text"
+          aria-label="Neuen Checklistenpunkt hinzufügen"
           value={newItemTitle}
           onChange={(e) => setNewItemTitle(e.target.value)}
           onKeyDown={handleKeyDown}
