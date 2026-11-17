@@ -157,36 +157,38 @@ export default function ApolloStagePage() {
         </div>
       </header>
 
-      <div className="relative z-20 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/[0.06] bg-[#0b1020] px-3 py-2 text-[11px] text-slate-400">
-        <span className={config.freeLLMRouting.endpointUrl.trim() ? "text-emerald-300" : "text-amber-200"}>
-          Live-Modus · Providerstatus im Control Deck · kein Simulations-Fallback
-        </span>
-        <span>Controls: configure AI & permissions. Voice: dictate into the terminal. Kanban: manage tasks.</span>
-        <button type="button" className="text-cyan-300 underline underline-offset-2" onClick={() => {
-          setTerminalOpen(true);
-          void runCommand("/help");
-        }}>Command guide</button>
-      </div>
+      <div className="relative z-20 flex shrink-0 flex-col">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-white/[0.06] bg-[#0b1020] px-3 py-2 text-[11px] text-slate-400">
+          <span className={config.freeLLMRouting.endpointUrl.trim() ? "text-emerald-300" : "text-amber-200"}>
+            Live-Modus · Providerstatus im Control Deck · kein Simulations-Fallback
+          </span>
+          <span>Controls: configure AI & permissions. Voice: dictate into the terminal. Kanban: manage tasks.</span>
+          <button type="button" className="text-cyan-300 underline underline-offset-2" onClick={() => {
+            setTerminalOpen(true);
+            void runCommand("/help");
+          }}>Command guide</button>
+        </div>
 
-      {/* failover ribbon */}
-      <div
-        className={`relative z-20 overflow-hidden border-b transition-all duration-500 ${
-          failover ? "max-h-12 border-amber-400/25 bg-amber-400/[0.07]" : "max-h-0 border-transparent"
-        }`}
-        aria-live="polite"
-      >
-        <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 sm:px-4">
-          <span className="flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-amber-300">
-            <Zap size={11} /> failover active
-          </span>
-          <span className="text-[11px] text-amber-100/90">
-            {config.primaryModel} · UI-Demo-Failover, kein echter Providerwechsel · Profil <strong className="font-semibold">{activeModel.name}</strong> ({activeModel.provider}).
-          </span>
-          {router.lastHandoffNote && (
-            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-amber-300/60">
-              · context handoff attached ({router.lastHandoffNote.length} chars)
+        {/* failover ribbon */}
+        <div
+          className={`absolute left-0 right-0 top-full z-20 overflow-hidden border-b origin-top transition duration-500 ${
+            failover ? "scale-y-100 border-amber-400/25 bg-amber-400/[0.07]" : "scale-y-0 border-transparent pointer-events-none"
+          }`}
+          aria-live="polite"
+        >
+          <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 sm:px-4">
+            <span className="flex items-center gap-1.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-amber-300">
+              <Zap size={11} /> failover active
             </span>
-          )}
+            <span className="text-[11px] text-amber-100/90">
+              {config.primaryModel} · UI-Demo-Failover, kein echter Providerwechsel · Profil <strong className="font-semibold">{activeModel.name}</strong> ({activeModel.provider}).
+            </span>
+            {router.lastHandoffNote && (
+              <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-amber-300/60">
+                · context handoff attached ({router.lastHandoffNote.length} chars)
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
