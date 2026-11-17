@@ -12,6 +12,12 @@ from limbs.container import ConfigError, ContainerConfig, build_docker_run_args 
 
 class TestContainer(unittest.TestCase):
     def setUp(self):
+        # Die Regeln hier haengen nicht vom Host-User ab; als root (CI-Container) wuerde
+        # sonst schon die root-Sperre greifen und die eigentliche Pruefung verdecken.
+        for name in ("getuid", "getgid"):
+            patcher = patch(f"os.{name}", return_value=1000)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.run_dir = _REPO_ROOT / "runtime" / "agents" / "test_run_123"
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.valid_mount = self.run_dir / "workspace"

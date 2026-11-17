@@ -21,8 +21,17 @@ from limbs.openmanus_limb import IMAGE, NETWORK, OpenManusLimb, container_args
 from . import REPO_ROOT
 
 
+def _als_normaler_user(test: unittest.TestCase) -> None:
+    """Der Limb verweigert root (id 0); die Tests sollen auch unter root (CI-Container) laufen."""
+    for name in ("getuid", "getgid"):
+        patcher = mock.patch(f"os.{name}", return_value=1000)
+        patcher.start()
+        test.addCleanup(patcher.stop)
+
+
 class ContainerArgsTest(unittest.TestCase):
     def setUp(self) -> None:
+        _als_normaler_user(self)
         self.job = REPO_ROOT / "runtime" / "agents" / "run_x" / "job"
         self.args, self.env = container_args("run_x", self.job, 60, 5)
 
@@ -97,6 +106,7 @@ class LimbTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.docker = FakeDocker()
+        _als_normaler_user(self)
         patches = [
             mock.patch.object(openmanus_limb, "docker", self.docker),
             mock.patch.object(container, "_REPO_ROOT", Path(self.tmp.name)),
