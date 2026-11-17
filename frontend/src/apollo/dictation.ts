@@ -13,6 +13,16 @@ import { COMMANDS } from "./commands";
 
 export const MAX_RECORDING_MS = 60_000;
 
+/** Push-to-talk: hold this key while the terminal is open, release to transcribe. */
+export const PUSH_TO_TALK_KEY = "F2";
+
+type KeyLike = { key: string; repeat?: boolean; ctrlKey?: boolean; altKey?: boolean; metaKey?: boolean; shiftKey?: boolean };
+
+/** True only for the bare push-to-talk key; auto-repeat and chords are ignored. */
+export function isPushToTalkKey(event: KeyLike): boolean {
+  return event.key === PUSH_TO_TALK_KEY && !event.repeat && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
+}
+
 const RECORDER_MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
 
 const ENGINE_OFFLINE = "speech engine is not running";
@@ -81,7 +91,10 @@ export async function probeEngine(): Promise<EngineState> {
   }
 }
 
-export function useDictation(onText: (text: string) => void) {
+/** `pushToTalk` is true when the text came from a held push-to-talk key: the caller sends it on release. */
+export type DictationMeta = { pushToTalk: boolean };
+
+export function useDictation(onText: (text: string, meta: DictationMeta) => void) {
   const [state, setState] = useState<DictationState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [engine, setEngine] = useState<EngineState>("unknown");
@@ -96,6 +109,8 @@ export function useDictation(onText: (text: string) => void) {
   const startingRef = useRef(false);
   const discardRef = useRef(false);
   const onTextRef = useRef(onText);
+  /* Set by press() before start(): the session it starts was push-to-talk. */
+  const holdingRef = useRef(false);
   useEffect(() => {
     onTextRef.current = onText;
   }, [onText]);
@@ -104,6 +119,7 @@ export function useDictation(onText: (text: string) => void) {
     if (startingRef.current) return;
     setError(null);
     const session = ++sessionRef.current;
+    const meta: DictationMeta = { pushToTalk: holdingRef.current };
     if (mode === "browser") {
       const Recognition = browserRecognition();
       if (!Recognition) {
@@ -113,7 +129,7 @@ export function useDictation(onText: (text: string) => void) {
       setState("recording");
       try {
         browserSessionRef.current = startBrowserDictation(Recognition, language, {
-          onText: (text) => { if (session === sessionRef.current) onTextRef.current(text); },
+          onText: (text) => { if (session === sessionRef.current) onTextRef.current(text, meta); },
           onError: (message) => { if (session === sessionRef.current) setError(message); },
           onEnd: () => {
             if (session !== sessionRef.current) return;
@@ -181,7 +197,7 @@ export function useDictation(onText: (text: string) => void) {
         const text = await transcribeAudio(new Blob(chunks, { type: recorder.mimeType }));
         if (discardRef.current || session !== sessionRef.current) return;
         setEngine("ready");
-        if (text) onTextRef.current(text);
+        if (text) onTextRef.current(text, meta);
         else setError("no speech recognized");
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "transcription failed";
@@ -213,6 +229,21 @@ export function useDictation(onText: (text: string) => void) {
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
   }, []);
 
+  /* Push-to-talk. A press starts only from idle; a release stops what that
+     press started. Released before the microphone is open: nothing is kept. */
+  const press = useCallback(() => {
+    if (holdingRef.current || state !== "idle") return;
+    holdingRef.current = true;
+    void start();
+  }, [start, state]);
+  const release = useCallback(() => {
+    if (!holdingRef.current) return;
+    holdingRef.current = false;
+    if (browserSessionRef.current) browserSessionRef.current.stop();
+    else if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+    else if (startingRef.current) cancel();
+  }, [cancel]);
+
   const probe = useCallback(async () => setEngine(await probeEngine()), []);
   const clearError = useCallback(() => setError(null), []);
 
@@ -221,6 +252,6 @@ export function useDictation(onText: (text: string) => void) {
   return {
     state, error, engine, mode, setMode, language, setLanguage, browserSupported,
     speech: speechStatus(state, mode === "browser" ? "ready" : engine),
-    toggle, cancel, probe, clearError, reject: setError,
+    toggle, press, release, cancel, probe, clearError, reject: setError,
   };
 }

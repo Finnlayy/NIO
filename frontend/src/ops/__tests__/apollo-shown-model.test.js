@@ -30,12 +30,23 @@ async function turn(prompt) {
 
 const catalogName = () => selectActiveModel(store.getState()).name;
 
+/** Fake Kanban proxy: one board, one chat task that finishes as `finished`. */
+function kanban(finished) {
+  return async (url, init) => {
+    if (url !== "/api/apollo/kanban") return realFetch(url, init);
+    const { path, method } = JSON.parse(init.body);
+    if (path === "/api/v1/kanban/boards") return Response.json(method === "GET" ? [] : { id: "b1" });
+    if (method === "POST") return Response.json({ id: "t1", board_id: "b1", status: "pending" });
+    return Response.json([{ id: "t1", board_id: "b1", ...finished }]);
+  };
+}
+
 test("a live answer puts the reported model in the HUD, not in the router", async () => {
   withEndpoint("http://localhost:9/v1");
-  globalThis.fetch = async (url, init) => {
-    if (url !== "/api/apollo") return realFetch(url, init);
-    return Response.json({ ok: true, text: "antwort", model: "gemma-live", provider: "pool.local" });
-  };
+  globalThis.fetch = kanban({
+    status: "completed",
+    result_payload: { text: "antwort", model: "gemma-live", provider: "pool.local" },
+  });
   const routed = catalogName();
   await turn("hallo");
   const shown = selectShownModel(store.getState());
@@ -58,7 +69,7 @@ test("before any answer the catalog name stands", () => {
 test("an answer without a reported model names nothing it does not know", async () => {
   withEndpoint("http://localhost:9/v1");
   store.setState({ answered: { id: "answered", name: "old", provider: "", failoverCount: 0 } });
-  globalThis.fetch = async () => Response.json({ ok: true, text: "antwort" });
+  globalThis.fetch = kanban({ status: "completed", result_payload: { text: "antwort" } });
   await turn("hallo");
   assert.equal(store.getState().answered, null);
   assert.equal(selectShownModel(store.getState()).name, catalogName());
@@ -67,7 +78,7 @@ test("an answer without a reported model names nothing it does not know", async 
 test("a failed live turn clears the last live model", async () => {
   withEndpoint("http://localhost:9/v1");
   store.setState({ answered: { id: "answered", name: "old", provider: "", failoverCount: 0 } });
-  globalThis.fetch = async () => Response.json({ ok: false, error: "down" }, { status: 502 });
+  globalThis.fetch = kanban({ status: "blocked", block_reason: "down" });
   await turn("hallo");
   assert.equal(store.getState().answered, null);
   assert.equal(selectShownModel(store.getState()).name, catalogName());

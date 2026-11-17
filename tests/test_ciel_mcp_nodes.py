@@ -471,11 +471,14 @@ while True: time.sleep(1)
         transport = StdioMCPTransport("group", sys.executable, ["-c", script, str(pidfile)], timeout_sec=0.3)
         await transport.start()
         parent = transport._proc.pid
-        for _ in range(100):
-            if pidfile.exists():
+        # Die Datei existiert schon nach open(), die PID steht erst nach write()
+        # darin; daher auf Inhalt warten, nicht nur auf die Datei.
+        written = ""
+        for _ in range(500):
+            if pidfile.exists() and (written := pidfile.read_text().strip()):
                 break
             await asyncio.sleep(0.01)
-        child = int(pidfile.read_text())
+        child = int(written)
         if timeout:
             with pytest.raises(MCPTransportError, match="Timeout"):
                 await transport.request("hang")

@@ -127,7 +127,15 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def _live_completion(soul: str, task: dict[str, Any]) -> dict[str, Any]:
+def _max_tokens(raw: str | None) -> int:
+    """Antwortlaenge aus ``max_tokens`` im Frontmatter, begrenzt auf 16..4000; Default 64."""
+    try:
+        return max(16, min(4000, int(str(raw).strip()))) if raw else 64
+    except ValueError:
+        return 64
+
+
+def _live_completion(soul: str, task: dict[str, Any], max_tokens: int = 64) -> dict[str, Any]:
     """Exactly one bounded provider request; no tools, retries or simulated answer."""
     if os.environ.get("NIO_LLM_ERROR"):
         raise ValueError(os.environ["NIO_LLM_ERROR"])
@@ -147,7 +155,7 @@ def _live_completion(soul: str, task: dict[str, Any]) -> dict[str, Any]:
     protocol = os.environ.get("NIO_LLM_PROTOCOL", "openai")
     messages = [{"role": "system", "content": soul[:12_000]}, {"role": "user", "content": str(task.get("title", "")) + "\n" + str(task.get("description", ""))[:12_000]}]
     headers = {"Content-Type": "application/json"}
-    body: dict[str, Any] = {"model": model, "messages": messages, "max_tokens": 64, "temperature": 0, "stream": False}
+    body: dict[str, Any] = {"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": 0, "stream": False}
     if protocol == "anthropic":
         headers.update({"x-api-key": key, "anthropic-version": "2023-06-01"})
         body["system"] = soul[:12_000]
@@ -231,7 +239,7 @@ def main() -> int:
             ctx.experience_summary = f"Noop: {task_data.get('title', '')}"
 
         elif runtime == "llm":
-            ctx.result_payload = _live_completion(ctx.soul_md, task_data)
+            ctx.result_payload = _live_completion(ctx.soul_md, task_data, _max_tokens(frontmatter.get("max_tokens")))
             ctx.status = "completed"
             ctx.experience_summary = "Live provider completion received"
 

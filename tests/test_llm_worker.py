@@ -105,3 +105,15 @@ class LLMWorkerTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(f"HTTP {http_status}", result["reason"])
             self.assertEqual(len(requests), 1)
             self.assertNotIn("worker-fixture-credential", json.dumps(result))
+
+
+class MaxTokensTests(unittest.TestCase):
+    def test_frontmatter_value_is_clamped_and_defaults_to_64(self) -> None:
+        from orchestrator.kanban.worker_entry import _max_tokens
+
+        self.assertEqual(_max_tokens(None), 64)
+        self.assertEqual(_max_tokens(""), 64)
+        self.assertEqual(_max_tokens("abc"), 64)
+        self.assertEqual(_max_tokens("1500"), 1500)
+        self.assertEqual(_max_tokens("1"), 16)
+        self.assertEqual(_max_tokens("999999"), 4000)
