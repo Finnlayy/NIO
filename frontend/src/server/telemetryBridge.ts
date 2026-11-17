@@ -299,7 +299,7 @@ class TelemetryHub {
 
   private scheduleRespawn(): void {
     if (this.stopping || this.respawnTimer) return;
-    const delay = Math.min(1000 * Math.pow(2, this.respawnAttempts), 30000);
+    const delay = backoffDelayMs(this.respawnAttempts);
     this.respawnAttempts++;
     this.respawnTimer = setTimeout(() => {
       this.respawnTimer = null;
