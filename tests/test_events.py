@@ -1,4 +1,5 @@
 import json
+import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -26,6 +27,7 @@ class TestEvents(unittest.TestCase):
             sink.write(record)
             self.assertTrue(log_path.with_name("system.log.2").exists())
 
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root ignoriert Dateirechte; schreibgeschuetzt laesst sich nicht nachstellen")
     def test_filesink_unwritable_path(self):
         with TemporaryDirectory() as tmpdir:
             log_path = Path(tmpdir) / "system.log"

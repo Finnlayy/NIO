@@ -19,6 +19,15 @@ class DummyConfig:
     LM_STUDIO_API_KEY = "not-needed"
     LM_STUDIO_TIMEOUT = 30.0
 
+def _genai_installiert() -> bool:
+    try:
+        from google import genai  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+@unittest.skipUnless(_genai_installiert(), "google-genai nicht installiert (optional)")
 class TestGenAIClient(unittest.TestCase):
     @patch("google.genai.Client")
     def test_automatic_function_calling_disabled(self, MockClient):

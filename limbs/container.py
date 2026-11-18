@@ -26,7 +26,8 @@ class ContainerConfig:
     memory_swap: str = "3g"
     pids_limit: int = 256
     network: str = "nio-agents"
-    user: str = f"{os.getuid()}:{os.getgid()}"
+    # Erst beim Erzeugen lesen, nicht beim Import: sonst friert der Import-Zeitpunkt die UID ein.
+    user: str = field(default_factory=lambda: f"{os.getuid()}:{os.getgid()}")
     mounts: dict[Path, str] = field(default_factory=dict)
     read_only_mounts: dict[Path, str] = field(default_factory=dict)
     env: dict[str, str] = field(default_factory=dict)

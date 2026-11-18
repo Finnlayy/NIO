@@ -1,4 +1,5 @@
 import asyncio
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -224,6 +225,7 @@ class TestSyncBack(unittest.TestCase):
 
         asyncio.run(run())
 
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root ignoriert Dateirechte; schreibgeschuetzt laesst sich nicht nachstellen")
     def test_sync_back_readonly_vault(self):
         (self.out_dir / "result.json").write_text('{"status": "completed"}')
         self.vault_dir.chmod(0o555) # read-only
