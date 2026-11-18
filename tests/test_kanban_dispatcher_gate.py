@@ -44,7 +44,14 @@ class CommittingSandbox(FakeSandbox):
 
 
 GATE_GREEN = "import sys; sys.exit(0)\n"
-GATE_RED = "import sys, json; print(json.dumps({'passed': False})); sys.exit(1)\n"
+def gate_report(exit_code, **report):
+    return f"import sys, json; print(json.dumps({report!r})); sys.exit({exit_code})\n"
+
+
+GATE_RED = gate_report(1, passed=False, failed_stage="unittest", error=None)
+GATE_POLICY = gate_report(1, passed=False, failed_stage="policy", error=None)
+GATE_PREP_ERROR = gate_report(1, passed=False, failed_stage=None, error="git archive failed")
+GATE_USAGE = gate_report(2, passed=False, failed_stage=None, error="Live-Repo nicht gefunden")
 GATE_SLOW = "import time; time.sleep(30)\n"
 
 
@@ -92,10 +99,19 @@ class TestDispatcherGate(unittest.IsolatedAsyncioTestCase):
         await self.dispatcher.tick(wait=True)
         return await self.store.get_task("1")
 
-    def assert_cleaned_up(self):
-        self.assertEqual(git(self.repo, "branch", "--list", "kanban/*").strip(), "")
+    def assert_cleaned_up(self, kept=False):
+        """Worktree weg; Branch geloescht (gemerged) oder als kanban/rejected/<run_id> behalten."""
+        branches = git(self.repo, "branch", "--list", "kanban/*", "--format=%(refname:short)").split()
+        self.assertEqual(branches, ["kanban/rejected/1-a0"] if kept else [])
+        if kept:  # die Arbeit des Workers ist noch da
+            self.assertIn("worker change", git(self.repo, "log", "-1", "--format=%s", "kanban/rejected/1-a0"))
         self.assertEqual(len(git(self.repo, "worktree", "list", "--porcelain").split("worktree ")), 2)
         self.assertEqual(self.locks.locks, {})
+
+    async def assert_parked(self, task, fragment):
+        self.assertEqual(task.status, TaskStatus.BLOCKED)
+        self.assertEqual(task.attempts, 0)  # kein Retry-Versuch verbraucht
+        self.assertIn(fragment, task.block_reason)
 
     def assert_not_merged(self):
         self.assertFalse((self.repo / "feature.txt").exists())
@@ -118,29 +134,29 @@ class TestDispatcherGate(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(task.status, TaskStatus.READY)  # Breaker -> Retry
         self.assertEqual(task.attempts, 1)
         self.assert_not_merged()
-        self.assert_cleaned_up()
+        self.assert_cleaned_up(kept=True)
 
     async def test_missing_gate_fails_closed(self):
         self.gate.unlink()
         task = await self._run_task()
-        self.assertEqual(task.status, TaskStatus.READY)
+        await self.assert_parked(task, "sandbox gate missing")
         self.assert_not_merged()
-        self.assert_cleaned_up()
+        self.assert_cleaned_up(kept=True)
 
     async def test_gate_timeout_fails_closed(self):
         self.gate.write_text(GATE_SLOW)
         task = await self._run_task()
-        self.assertEqual(task.status, TaskStatus.READY)
+        await self.assert_parked(task, "timeout")
         self.assert_not_merged()
-        self.assert_cleaned_up()
+        self.assert_cleaned_up(kept=True)
 
     async def test_dirty_target_checkout_blocks_merge(self):
         (self.repo / "README").write_text("lokale aenderung\n")
         task = await self._run_task()
-        self.assertEqual(task.status, TaskStatus.READY)
+        await self.assert_parked(task, "not clean")
         self.assertFalse((self.repo / "feature.txt").exists())
         self.assertEqual((self.repo / "README").read_text(), "lokale aenderung\n")
-        self.assert_cleaned_up()
+        self.assert_cleaned_up(kept=True)
 
     async def test_merge_conflict_is_aborted(self):
         (self.repo / "feature.txt").write_text("schon im main\n")
@@ -152,14 +168,15 @@ class TestDispatcherGate(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(task.status, TaskStatus.READY)
         self.assertEqual(git(self.repo, "status", "--porcelain").strip(), "")
         self.assertFalse((self.repo / ".git" / "MERGE_HEAD").exists())
-        self.assert_cleaned_up()
+        self.assert_cleaned_up(kept=True)
 
     async def test_uncommitted_worktree_changes_are_rejected(self):
         self.dispatcher.sandbox = ModifyTrackedSandbox()
         task = await self._run_task()
         self.assertEqual(task.status, TaskStatus.READY)
         self.assertEqual((self.repo / "README").read_text(), "base\n")
-        self.assert_cleaned_up()
+        self.assertEqual(git(self.repo, "branch", "--list", "kanban/rejected/1-a0").strip(), "kanban/rejected/1-a0")
+        self.assertEqual(self.locks.locks, {})
 
     async def test_gate_receives_contract_arguments(self):
         seen = Path(self.tmp.name) / "argv.txt"
@@ -168,7 +185,34 @@ class TestDispatcherGate(unittest.IsolatedAsyncioTestCase):
         argv = seen.read_text().split()
         self.assertEqual(argv[0], "--worktree")
         self.assertTrue(argv[1].endswith("runs/1-a0/work"))
-        self.assertEqual(argv[2:], ["--run-id", "1-a0"])
+        self.assertEqual(argv[2:], ["--run-id", "1-a0", "--live-repo", str(self.repo)])
+
+    async def test_policy_red_is_parked_not_retried(self):
+        self.gate.write_text(GATE_POLICY)
+        task = await self._run_task()
+        await self.assert_parked(task, "exit 1")
+        self.assert_not_merged()
+        self.assert_cleaned_up(kept=True)
+
+    async def test_gate_usage_error_is_parked(self):
+        self.gate.write_text(GATE_USAGE)
+        task = await self._run_task()
+        await self.assert_parked(task, "exit 2")
+        self.assert_not_merged()
+        self.assert_cleaned_up(kept=True)
+
+    async def test_gate_preparation_error_is_parked(self):
+        self.gate.write_text(GATE_PREP_ERROR)
+        task = await self._run_task()
+        await self.assert_parked(task, "git archive failed")
+        self.assert_not_merged()
+        self.assert_cleaned_up(kept=True)
+
+    async def test_gate_crash_without_report_is_parked(self):
+        self.gate.write_text("raise SystemExit(1)\n")
+        task = await self._run_task()
+        await self.assert_parked(task, "exit 1")
+        self.assert_not_merged()
 
 
 class ConflictingSandbox(CommittingSandbox):
