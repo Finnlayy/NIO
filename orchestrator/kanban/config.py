@@ -71,6 +71,9 @@ class KanbanConfig:
     # Circuit-Breaker
     breaker_threshold: int = 3
     breaker_cooldown_s: float = 600.0
+    # Sandbox-Gate (fail-closed): ohne gruenes Gate kein Merge des Worker-Branches
+    gate_script: Path = _REPO_ROOT / "tools" / "selfcode" / "sandbox_gate.py"
+    gate_timeout_s: float = 120.0
     # Dateisystem
     workspace_dir: Path = _REPO_ROOT / "workspace" / "kanban"
     vault_dir: Path = _REPO_ROOT / "workspace" / "obsidian"
@@ -116,6 +119,8 @@ class KanbanConfig:
             max_concurrent=max(1, _int(e, "NIO_KANBAN_MAX_CONCURRENT", 1)),
             breaker_threshold=max(1, _int(e, "NIO_KANBAN_BREAKER_THRESHOLD", 3)),
             breaker_cooldown_s=_float(e, "NIO_KANBAN_BREAKER_COOLDOWN_S", 600.0),
+            gate_script=_path(e, "NIO_KANBAN_GATE_SCRIPT", root, "tools/selfcode/sandbox_gate.py"),
+            gate_timeout_s=_float(e, "NIO_KANBAN_GATE_TIMEOUT_S", 120.0),
             workspace_dir=_path(e, "NIO_KANBAN_WORKSPACE", root, "workspace/kanban"),
             vault_dir=_path(e, "NIO_OBSIDIAN_VAULT", root, "workspace/obsidian"),
             secret_allowlist=_csv(e, "NIO_KANBAN_SECRET_ALLOWLIST"),
