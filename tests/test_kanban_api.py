@@ -75,6 +75,21 @@ class KanbanApiTest(unittest.IsolatedAsyncioTestCase):
             dc_fields = set(dataclass_model.__dataclass_fields__.keys())
             self.assertEqual(py_fields, dc_fields, f"Mismatch in {pydantic_model.__name__} vs {dataclass_model.__name__}")
 
+    def test_task_create_is_idempotent(self) -> None:
+        headers = {"Authorization": f"Bearer {self.api_token}"}
+        body = {"board_id": self.board.id, "title": "Sprachbefehl", "idempotency_key": "voice-0001"}
+        first = self.client.post("/api/v1/kanban/tasks", json=body, headers=headers)
+        again = self.client.post("/api/v1/kanban/tasks", json=body, headers=headers)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(again.status_code, 200)
+        self.assertEqual(first.json()["id"], again.json()["id"])
+        listed = self.client.get(f"/api/v1/kanban/tasks?board_id={self.board.id}", headers=headers).json()
+        self.assertEqual(len(listed), 1)
+        other = self.client.post("/api/v1/kanban/tasks", json={**body, "title": "Anderer"}, headers=headers)
+        self.assertEqual(other.status_code, 409)
+        bad = self.client.post("/api/v1/kanban/tasks", json={**body, "idempotency_key": "x"}, headers=headers)
+        self.assertEqual(bad.status_code, 422)
+
     def test_auth_missing(self) -> None:
         resp = self.client.get("/api/v1/kanban/boards")
         self.assertEqual(resp.status_code, 401)

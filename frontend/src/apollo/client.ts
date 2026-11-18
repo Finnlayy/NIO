@@ -126,6 +126,8 @@ export interface KanbanResult<T = unknown> {
   ok: boolean;
   data?: T;
   error?: string;
+  /** Set when no answer arrived (network error/timeout): the server may or may not have acted. */
+  transport?: boolean;
 }
 
 export async function kanbanRequest<T = unknown>(
@@ -155,8 +157,26 @@ export async function kanbanRequest<T = unknown>(
 
     return { ok: true, data: data as T };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "network error" };
+    return { ok: false, transport: true, error: error instanceof Error ? error.message : "network error" };
   }
+}
+
+/** One key per user command; `crypto.randomUUID` is missing on plain-HTTP LAN origins. */
+export function newIdempotencyKey(): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === "function") return cryptoApi.randomUUID();
+  const bytes = new Uint8Array(16);
+  cryptoApi.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/* A lost answer is retried once with the same key: the backend returns the task
+   it already created instead of a second one. Answered errors are not retried. */
+async function postTaskIdempotent<T>(payload: Record<string, unknown>, key: string): Promise<KanbanResult<T>> {
+  const body = { ...payload, idempotency_key: key };
+  const first = await kanbanRequest<T>("/api/v1/kanban/tasks", "POST", body);
+  if (first.ok || !first.transport) return first;
+  return kanbanRequest<T>("/api/v1/kanban/tasks", "POST", body);
 }
 
 const APOLLO_BOARD_NAME = "Apollo";
@@ -172,16 +192,20 @@ export async function apolloBoardId(): Promise<KanbanResult<string>> {
   return { ok: true, data: created.data.id };
 }
 
-export async function createApolloTask(title: string, description: string): Promise<KanbanResult<{ id: string }>> {
+export async function createApolloTask(
+  title: string,
+  description: string,
+  idempotencyKey: string = newIdempotencyKey(),
+): Promise<KanbanResult<{ id: string }>> {
   const board = await apolloBoardId();
   if (!board.ok) return { ok: false, error: board.error };
-  return kanbanRequest<{ id: string }>("/api/v1/kanban/tasks", "POST", {
+  return postTaskIdempotent<{ id: string }>({
     board_id: board.data,
     title,
     description,
     dependencies: [],
     required_skills: [],
-  });
+  }, idempotencyKey);
 }
 
 /** Skill of the chat worker (`deploy/workers/apollo.soul.md`); other workers never pick chat tasks. */
@@ -204,15 +228,18 @@ export function chatTaskFields(text: string): { title: string; description: stri
   return { title, description: title === clean ? "" : clean };
 }
 
-export async function createChatTask(text: string): Promise<KanbanResult<ChatTask>> {
+export async function createChatTask(
+  text: string,
+  idempotencyKey: string = newIdempotencyKey(),
+): Promise<KanbanResult<ChatTask>> {
   const board = await apolloBoardId();
   if (!board.ok) return { ok: false, error: board.error };
-  return kanbanRequest<ChatTask>("/api/v1/kanban/tasks", "POST", {
+  return postTaskIdempotent<ChatTask>({
     board_id: board.data,
     ...chatTaskFields(text),
     dependencies: [],
     required_skills: [CHAT_SKILL],
-  });
+  }, idempotencyKey);
 }
 
 export async function fetchChatTask(boardId: string, taskId: string): Promise<KanbanResult<ChatTask>> {

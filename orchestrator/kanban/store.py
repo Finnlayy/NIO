@@ -103,6 +103,7 @@ class KanbanStore(Protocol):
     async def list_boards(self) -> list[KanbanBoard]: ...
 
     async def create_task(self, task: KanbanTask) -> KanbanTask: ...
+    async def create_task_idempotent(self, task: KanbanTask, key: str) -> tuple[KanbanTask, bool]: ...
     async def get_task(self, task_id: str) -> KanbanTask | None: ...
     async def list_tasks(
         self,
@@ -289,6 +290,31 @@ class SqliteKanbanStore:
     async def create_task(self, task: KanbanTask) -> KanbanTask:
         await self._run(self._insert_task, task)
         return task
+
+    async def create_task_idempotent(self, task: KanbanTask, key: str) -> tuple[KanbanTask, bool]:
+        """Legt ``task`` an, ausser ``key`` ist schon vergeben -- dann den vorhandenen Task.
+
+        Rueckgabe ``(task, created)``. Schluesselpruefung und Insert laufen in einer
+        ``BEGIN IMMEDIATE``-Transaktion, zwei gleichzeitige Requests ergeben genau einen Task.
+        """
+
+        def _do(conn: sqlite3.Connection) -> tuple[KanbanTask, bool]:
+            with self._tx(conn):
+                row = conn.execute(
+                    "SELECT t.* FROM kanban_idempotency i JOIN kanban_tasks t ON t.id = i.task_id WHERE i.key = ?",
+                    (key,),
+                ).fetchone()
+                if row is not None:
+                    return _task(row), False
+                self._insert_task(conn, task)
+                conn.execute(
+                    "INSERT INTO kanban_idempotency (key, task_id, created_at) VALUES (?, ?, ?)",
+                    (key, task.id, utc_now_iso()),
+                )
+                return task, True
+
+        result: tuple[KanbanTask, bool] = await self._run(_do)
+        return result
 
     async def get_task(self, task_id: str) -> KanbanTask | None:
         def _do(conn: sqlite3.Connection) -> KanbanTask | None:

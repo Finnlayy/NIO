@@ -83,3 +83,40 @@ test("/runs reports an unreadable store instead of no runs", async () => {
   assert.equal(result.ok, false);
   assert.match(result.entries.at(-1).message, /Run list failed/);
 });
+
+test("task posts carry an idempotency key, a lost answer is retried once with the same key", async () => {
+  fakeKanban();
+  const answered = globalThis.fetch;
+  let dropped = false;
+  globalThis.fetch = async (url, init = {}) => {
+    const body = init.body ? JSON.parse(init.body) : undefined;
+    if (!dropped && body?.path === "/api/v1/kanban/tasks") {
+      dropped = true;
+      calls.push({ url, body });
+      throw new TypeError("network error");
+    }
+    return answered(url, init);
+  };
+  const result = await useApolloStore.getState().runCommand("/spawn inference retry-probe");
+  assert.equal(result.ok, true);
+  const posts = taskPosts();
+  assert.equal(posts.length, 2);
+  assert.match(posts[0].body.payload.idempotency_key, /^[A-Za-z0-9_-]{8,128}$/);
+  assert.equal(posts[1].body.payload.idempotency_key, posts[0].body.payload.idempotency_key);
+});
+
+test("an answered Kanban error is not retried", async () => {
+  fakeKanban();
+  const answered = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    const body = init.body ? JSON.parse(init.body) : undefined;
+    if (body?.path === "/api/v1/kanban/tasks") {
+      calls.push({ url, body });
+      return Response.json({ detail: "Idempotency-Key gehört zu einem anderen Task" }, { status: 409 });
+    }
+    return answered(url, init);
+  };
+  const result = await useApolloStore.getState().runCommand("/spawn inference no-retry");
+  assert.equal(result.ok, false);
+  assert.equal(taskPosts().length, 1);
+});
