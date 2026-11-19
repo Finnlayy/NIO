@@ -480,7 +480,14 @@ Verifikation: python3 -m pytest -q tests/test_ciel_*.py
 
 ## 4. Offene Entscheidungen
 
-1. Phase 5: Option A oder B (siehe oben).
+1. Phase 5: Option A oder B (siehe oben). — OFFEN (Operator-Entscheidung steht aus).
 2. Sigma: Sollen Approval-Tickets aus Phase 0 später auf die Ciel-Policy-Engine (Phase 1) migriert
    werden, oder bleibt Sigma bewusst eigenständig (eigener Prozess, synchroner Executor)?
+   — ENT SCHIEDEN (Operator, 2026-11-19): **Architect migrieren statt Sigma**, solange Sigma
+   noch nicht eingebunden ist. Sigma bleibt vorerst eigenständig (Phase-0-Gate ist fertig);
+   die Ciel-Policy-Engine wird auf Architect (`Architect/core/learning/risk_guards.py`,
+   RiskGuardEngine) ausgeweitet, nicht auf Sigma.
 3. Phase 4: Reicht Polling für Pending-Approvals, oder soll der Kanban-Bus per SSE ins Frontend?
+   — ENT SCHIEDEN (Operator, 2026-11-19): **SSE über den Kanban-Bus** für Pending-Approvals
+   ins Frontend, kein Polling. Phase-4-Prompt entsprechend anpassen (Bus-SSE-Kanal statt
+   5-s-Polling in `store.ts`).
