@@ -50,6 +50,8 @@ elif MODE == "sleep":
 elif MODE == "exit3":
     sys.stderr.write("fehler\\n")
     sys.exit(3)
+elif MODE == "hollow":
+    print(json.dumps({{"type": "text", "part": {{"type": "text", "text": "pip install pytest"}}}}), flush=True)
 """
 
 
@@ -87,10 +89,13 @@ class TestRunOpencode(unittest.TestCase):
         self.patch.stop()
         self.tmp_obj.cleanup()
 
-    def _run(self, mode: str | None, workdir: Path | None = None) -> tuple[str, str, dict]:
+    def _run(self, mode: str | None, workdir: Path | None = None, task_extra: dict | None = None) -> tuple[str, str, dict]:
         if mode is not None:
             os.environ["NIO_KANBAN_OPENCODE_BIN"] = str(_fake_opencode(self.tmp, mode))
-        return _run_opencode("Mission", {"title": "T", "description": "D"}, workdir or self.work)
+        task = {"title": "T", "description": "D"}
+        if task_extra:
+            task.update(task_extra)
+        return _run_opencode("Mission", task, workdir or self.work)
 
     def test_commit_lauf_ist_strukturiert_und_committet(self) -> None:
         status, reason, payload = self._run("commit")
@@ -134,6 +139,27 @@ class TestRunOpencode(unittest.TestCase):
         os.environ["NIO_KANBAN_OPENCODE_BIN"] = str(self.tmp / "gibt-es-nicht")
         status, reason, _ = _run_opencode("Mission", {}, self.work)
         self.assertEqual((status, reason), ("failed", "opencode_not_found"))
+
+    def test_hollow_repo_task_wird_blocked(self) -> None:
+        # Hollow-Completion-Guard: exit 0 ohne Commit und ohne Tools ist kein
+        # Erfolg — blocked ist retry-faehig, completed waere terminal.
+        status, reason, payload = self._run("hollow", task_extra={"workspace_repo": "/tmp/repo"})
+        self.assertEqual((status, reason), ("blocked", "hollow_completion"))
+        self.assertEqual(payload["exit_code"], 0)
+        self.assertFalse(payload["committed"])
+        self.assertEqual(payload["tools"], [])
+
+    def test_hollow_ohne_repo_task_bleibt_completed(self) -> None:
+        # Der Guard gilt nur fuer Repo-Tasks; Chat-/Noop-Tasks ohne
+        # workspace_repo behalten ihr bisheriges Verhalten.
+        status, reason, payload = self._run("hollow")
+        self.assertEqual((status, reason), ("completed", ""))
+        self.assertFalse(payload["committed"])
+
+    def test_commit_mit_repo_task_bleibt_completed(self) -> None:
+        status, reason, payload = self._run("commit", task_extra={"workspace_repo": "/tmp/repo"})
+        self.assertEqual((status, reason), ("completed", ""))
+        self.assertTrue(payload["committed"])
 
 
 class TestOpencodeEnv(unittest.TestCase):
