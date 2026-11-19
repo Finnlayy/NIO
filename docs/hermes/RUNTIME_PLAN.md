@@ -1,5 +1,17 @@
 # Hermes-Runtime — angepasster Umsetzungsplan (Stand 2026-10-30, Branch `feat/hermes-kanban`)
 
+> **Umsetzungsstatus 2026-11-19: ALLE PHASEN ABGESCHLOSSEN.**
+> Phasen 0–5 und die Architect-Policy-Anbindung sind implementiert, getestet und
+> auf `main` gemergt (Final-Merge `6f16d64`). Gesamtsuite: 238 passed, 8 skipped.
+> Orchestrator-Final-Gate: accept (`job_20261119T120435Z_d01e6c`).
+> `nio-kanban` läuft auf dem neuen Stand; `/api/runtime` ist live (401 ohne Token,
+> 200 mit Token), Pending-Approvals als SSE über den Kanban-Bus (Operator-Entscheidung).
+> Phase 5 nach Option B umgesetzt; Option A bleibt eine offene Operator-Entscheidung.
+> Bekannte Lücken: Redis-Pfade nur gegen Fakes getestet; Architect-Brücke braucht
+> Composition-Root-Verdrahtung (async/sync); SSE nicht im Browser geprüft.
+> Ausführung: Claude Code in isolierten Worktrees, Verifikation durch Hermes +
+> NEU-Orchestrator-Gates; Board-Tracking über den NIO-Kanban.
+
 Dieser Plan ersetzt den ursprünglichen 6-Phasen-Plan „Hermes-Klasse". Er ist gegen den
 tatsächlichen Code abgeglichen: falsche Annahmen sind korrigiert, vorhandene Kanban-Bausteine
 werden wiederverwendet statt neu gebaut, und die Reihenfolge folgt dem Risiko (Kapital-Sicherheit
