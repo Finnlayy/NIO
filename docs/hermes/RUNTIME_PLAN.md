@@ -6,7 +6,8 @@
 > Orchestrator-Final-Gate: accept (`job_20261119T120435Z_d01e6c`).
 > `nio-kanban` läuft auf dem neuen Stand; `/api/runtime` ist live (401 ohne Token,
 > 200 mit Token), Pending-Approvals als SSE über den Kanban-Bus (Operator-Entscheidung).
-> Phase 5 nach Option B umgesetzt; Option A bleibt eine offene Operator-Entscheidung.
+> Phase 5 nach Option B umgesetzt; Option B vom Operator bestätigt (2026-11-19),
+> Option A nur bei Wechsel auf einen Prefix-Caching-Provider wieder aufgreifen.
 > Bekannte Lücken: Redis-Pfade nur gegen Fakes getestet; Architect-Brücke braucht
 > Composition-Root-Verdrahtung (async/sync); SSE nicht im Browser geprüft.
 > Ausführung: Claude Code in isolierten Worktrees, Verifikation durch Hermes +
@@ -492,7 +493,14 @@ Verifikation: python3 -m pytest -q tests/test_ciel_*.py
 
 ## 4. Offene Entscheidungen
 
-1. Phase 5: Option A oder B (siehe oben). — OFFEN (Operator-Entscheidung steht aus).
+1. Phase 5: Option A oder B (siehe oben). — ENT SCHIEDEN (Operator, 2026-11-19):
+   **Option B bleibt.** MRU-Fenster (≤ 3 Skills + 1 Meta-Tool) erhalten; kein
+   prompt_assembler. Begründung: kein Prefix-Caching-ROI mit lokalem Ollama +
+   FreeLLMAPI-Failover; kleines aktives Tool-Fenster erhält die Tool-Auswahl-
+   Qualität kleiner lokeller Modelle; Micro-Compaction + load_skill integrieren
+   sauber ohne die ≤3-Invariante anzutasten. Option A nur wieder aufgreifen,
+   wenn Ciel primär über einen bezahlten Provider mit explizitem Prefix-Caching
+   geroutet wird und lange Multi-Turn-Sessions den statischen Prefix dominieren.
 2. Sigma: Sollen Approval-Tickets aus Phase 0 später auf die Ciel-Policy-Engine (Phase 1) migriert
    werden, oder bleibt Sigma bewusst eigenständig (eigener Prozess, synchroner Executor)?
    — ENT SCHIEDEN (Operator, 2026-11-19): **Architect migrieren statt Sigma**, solange Sigma
