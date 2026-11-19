@@ -14,13 +14,16 @@ from __future__ import annotations
 
 import asyncio
 import time
+import uuid
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from typing import Any, Final, Protocol
 
 from .bus import emit
 from .errors import ToolNotExecutable, ToolNotFound
 from .models import AgentResult, AssistantMessage, ToolCall, ToolResult
 from .ncm_gate import JIT_TOP_K, NCMGate, RegistryFunctionExecutor, ToolExecutor
+from .policy_gate import PolicyDecision, PolicyVerdictCode, PreExecutionPolicyEngine
 from .registry import ColdStorageRegistry, cluster_for, node_id_for
 from .telemetry import NODE_WARM, CielTelemetryPublisher, jit_reload_event
 
@@ -106,8 +109,35 @@ class ScriptedLLMClient:
         return self._script.pop(0)
 
 
+@dataclass
+class _RunState:
+    """Zustand eines Laufs. Beim Warten auf Operator-Freigabe im Agenten gehalten."""
+
+    intent: str
+    state: dict[str, Any]
+    loaded: list[str]
+    messages: list[dict[str, Any]]
+    session_id: str
+    strategy_id: str
+    results: list[ToolResult] = field(default_factory=list)
+    called: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    llm_calls: int = 0
+    turns: int = 0
+    final_answer: str = ""
+    #: Noch nicht abgearbeitete Calls des laufenden Turns; bei Warten steht der ausstehende Call vorne.
+    turn_calls: list[ToolCall] = field(default_factory=list)
+    turn_content: str = ""
+    turn_meta_ok: bool = False
+    waiting_ticket_id: str | None = None
+
+
 class SandboxAgent:
-    """Isolierter Sub-Agent mit JIT-Tool-Teilmenge + Meta-Tool-Nachladen."""
+    """Isolierter Sub-Agent mit JIT-Tool-Teilmenge + Meta-Tool-Nachladen.
+
+    Mit ``policy_engine`` läuft vor jedem Tool-Call die Pre-Execution-Policy.
+    Ohne Policy-Engine verhält sich der Agent wie vor Phase 1.
+    """
 
     def __init__(
         self,
@@ -120,6 +150,7 @@ class SandboxAgent:
         telemetry: CielTelemetryPublisher | None = None,
         max_turns: int = 6,
         default_timeout_sec: float = 30.0,
+        policy_engine: PreExecutionPolicyEngine | None = None,
     ) -> None:
         self._registry = registry
         self._gate = gate or NCMGate(registry, event_bus=event_bus)
@@ -130,6 +161,9 @@ class SandboxAgent:
         self._telemetry = telemetry if telemetry is not None else self._gate.telemetry
         self._max_turns = max(1, max_turns)
         self._default_timeout = default_timeout_sec
+        self._policy = policy_engine
+        #: Auf Freigabe wartende Läufe, Schlüssel ist die Ticket-ID.
+        self._pending: dict[str, _RunState] = {}
 
     @property
     def registry(self) -> ColdStorageRegistry:
@@ -183,10 +217,18 @@ class SandboxAgent:
         state: Mapping[str, Any] | None = None,
         *,
         event_payload: Mapping[str, Any] | None = None,
+        session_id: str | None = None,
+        strategy_id: str = "default",
     ) -> AgentResult:
-        """Führt einen Intent aus: Gate → (Bypass | JIT-Agentenschleife)."""
+        """Führt einen Intent aus: Gate → (Bypass | JIT-Agentenschleife).
+
+        Mit Policy-Engine ist der System-1-Bypass abgeschaltet: der Gate-Bypass
+        würde Tools ohne Prüfung ausführen. Alle Calls laufen dann über die
+        JIT-Schleife und ``execute_tool``.
+        """
         current_state = dict(state or {})
-        decision = await self._gate.route(intent, current_state, event_payload=event_payload)
+        session = session_id or uuid.uuid4().hex
+        decision = await self._gate.route(intent, current_state, event_payload=event_payload, execute=self._policy is None)
         if decision.path == "system1_bypass":
             return AgentResult(
                 path="system1_bypass",
@@ -197,7 +239,9 @@ class SandboxAgent:
                 turns=0,
             )
         loaded: list[str] = list(decision.top_tools)[:JIT_TOP_K]
-        return await self._reasoning_loop(intent, current_state, loaded, decision.error)
+        return await self._reasoning_loop(
+            intent, current_state, loaded, decision.error, session_id=session, strategy_id=strategy_id
+        )
 
     async def _reasoning_loop(
         self,
@@ -205,76 +249,201 @@ class SandboxAgent:
         state: dict[str, Any],
         loaded: list[str],
         gate_note: str,
+        *,
+        session_id: str,
+        strategy_id: str,
     ) -> AgentResult:
         messages: list[dict[str, Any]] = [
             {"role": "user", "content": intent},
             {"role": "system", "content": f"state: {state}" + (f"\ngate_note: {gate_note}" if gate_note else "")},
         ]
-        results: list[ToolResult] = []
-        called: list[str] = []
-        errors: list[str] = []
-        llm_calls = 0
-        turns = 0
-        final_answer = ""
-        while turns < self._max_turns:
-            turns += 1
-            payload = self.build_prompt_payload(intent, state, loaded)
+        run = _RunState(
+            intent=intent,
+            state=state,
+            loaded=loaded,
+            messages=messages,
+            session_id=session_id,
+            strategy_id=strategy_id,
+        )
+        return await self._advance(run)
+
+    async def resume_after_approval(self, session_id: str, ticket_id: str) -> AgentResult:
+        """Setzt einen auf Freigabe wartenden Lauf fort.
+
+        Der ausstehende Call wird mit dem Ticket geprüft und verbraucht; danach
+        läuft die Schleife normal weiter. Ein unbekanntes oder fremdes Ticket
+        liefert ein Ergebnis mit ``APPROVAL_INVALID`` in ``errors``.
+        """
+        run = self._pending.pop(ticket_id, None)
+        if run is None or run.session_id != session_id:
+            if run is not None:
+                self._pending[ticket_id] = run
+            return AgentResult(path="system2_jit", errors=[f"APPROVAL_INVALID: kein wartender Lauf für Ticket {ticket_id}"])
+        return await self._advance(run, first_ticket=ticket_id)
+
+    async def _advance(self, run: _RunState, *, first_ticket: str | None = None) -> AgentResult:
+        """Setzt die Agentenschleife fort: zuerst Reststücke des Turns, dann neue LLM-Turns."""
+        if run.turn_calls:
+            if await self._process_calls(run, first_ticket=first_ticket):
+                return self._waiting_result(run)
+            self._close_turn(run)
+        while run.turns < self._max_turns:
+            run.turns += 1
+            payload = self.build_prompt_payload(run.intent, run.state, run.loaded)
             try:
-                answer = await self._llm.complete(system=payload["system"], messages=messages, tools=payload["tools"])
+                answer = await self._llm.complete(system=payload["system"], messages=run.messages, tools=payload["tools"])
             except Exception as exc:
-                errors.append(f"llm_error: {exc}")
+                run.errors.append(f"llm_error: {exc}")
                 break
-            llm_calls += 1
-            emit(self._bus, "ciel.sandbox.turn", {"turn": turns, "tool_calls": len(answer.tool_calls)})
+            run.llm_calls += 1
+            emit(self._bus, "ciel.sandbox.turn", {"turn": run.turns, "tool_calls": len(answer.tool_calls)})
             if not answer.tool_calls:
-                final_answer = answer.content
+                run.final_answer = answer.content
                 break
-            messages.append({"role": "assistant", "content": answer.content, "tool_calls": [c.model_dump() for c in answer.tool_calls]})
-            for call in answer.tool_calls:
-                if call.name == META_TOOL_NAME:
-                    meta_result = await self._handle_meta_request(call, loaded)
-                    results.append(meta_result)
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": call.id,
-                            "name": call.name,
-                            "content": _stringify(meta_result.result if meta_result.ok else meta_result.error),
-                        }
-                    )
-                    if not meta_result.ok:
-                        errors.append(meta_result.error)
-                    continue
-                tool_result = await self.execute_tool(call)
-                results.append(tool_result)
-                called.append(call.name)
-                messages.append(
+            run.messages.append(
+                {"role": "assistant", "content": answer.content, "tool_calls": [c.model_dump() for c in answer.tool_calls]}
+            )
+            run.turn_calls = list(answer.tool_calls)
+            run.turn_content = answer.content
+            run.turn_meta_ok = False
+            if await self._process_calls(run):
+                return self._waiting_result(run)
+            self._close_turn(run)
+        return AgentResult(
+            path="system2_jit",
+            final_answer=run.final_answer,
+            tool_calls=run.called,
+            tool_results=run.results,
+            errors=run.errors,
+            llm_calls=run.llm_calls,
+            turns=run.turns,
+        )
+
+    async def _process_calls(self, run: _RunState, *, first_ticket: str | None = None) -> bool:
+        """Arbeitet die Calls des laufenden Turns ab. ``True``, wenn auf Freigabe gewartet wird.
+
+        Beim Warten bleibt der ausstehende Call vorne in ``run.turn_calls``.
+        ``first_ticket`` gilt nur für den ersten Call (den Resume-Call).
+        """
+        ticket_for_call = first_ticket
+        while run.turn_calls:
+            call = run.turn_calls[0]
+            if call.name == META_TOOL_NAME:
+                meta_result = await self._handle_meta_request(call, run.loaded)
+                run.results.append(meta_result)
+                run.messages.append(
                     {
                         "role": "tool",
                         "tool_call_id": call.id,
                         "name": call.name,
-                        "content": _stringify(tool_result.result if tool_result.ok else tool_result.error),
+                        "content": _stringify(meta_result.result if meta_result.ok else meta_result.error),
                     }
                 )
-                if not tool_result.ok:
-                    errors.append(tool_result.error)
-            if answer.content and not any(r.name == META_TOOL_NAME and r.ok for r in results[-len(answer.tool_calls) :]):
-                # Falls das LLM neben Tool-Calls bereits eine Antwort formuliert hat,
-                # wird sie als vorläufige Final-Antwort übernommen.
-                final_answer = answer.content
+                if meta_result.ok:
+                    run.turn_meta_ok = True
+                else:
+                    run.errors.append(meta_result.error)
+                run.turn_calls.pop(0)
+                ticket_for_call = None
+                continue
+            tool_result, decision = await self._execute_guarded(
+                call,
+                session_id=run.session_id,
+                strategy_id=run.strategy_id,
+                approval_ticket_id=ticket_for_call,
+            )
+            ticket_for_call = None
+            if decision is not None and decision.code == PolicyVerdictCode.WAITING_APPROVAL and decision.ticket is not None:
+                run.waiting_ticket_id = decision.ticket.id
+                return True
+            run.turn_calls.pop(0)
+            run.results.append(tool_result)
+            run.called.append(call.name)
+            run.messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call.id,
+                    "name": call.name,
+                    "content": _stringify(tool_result.result if tool_result.ok else tool_result.error),
+                }
+            )
+            if not tool_result.ok:
+                run.errors.append(tool_result.error)
+        return False
+
+    def _close_turn(self, run: _RunState) -> None:
+        """Schließt einen Turn ab. Hat das LLM neben Tool-Calls Text geliefert und kein Meta-Tool erfolgreich geladen, gilt der Text als vorläufige Antwort."""
+        if run.turn_content and not run.turn_meta_ok:
+            run.final_answer = run.turn_content
+        run.turn_calls = []
+        run.turn_content = ""
+        run.turn_meta_ok = False
+
+    def _waiting_result(self, run: _RunState) -> AgentResult:
+        """Hält den Lauf für ``resume_after_approval`` vor und meldet ``WAITING_APPROVAL``."""
+        ticket_id = run.waiting_ticket_id or ""
+        self._pending[ticket_id] = run
         return AgentResult(
             path="system2_jit",
-            final_answer=final_answer,
-            tool_calls=called,
-            tool_results=results,
-            errors=errors,
-            llm_calls=llm_calls,
-            turns=turns,
+            final_answer=f"WAITING_APPROVAL:{ticket_id}",
+            tool_calls=run.called,
+            tool_results=run.results,
+            errors=run.errors,
+            llm_calls=run.llm_calls,
+            turns=run.turns,
         )
 
     # -- Tool-Ausführung (Sandbox-Safety) ------------------------------------
 
-    async def execute_tool(self, call: ToolCall) -> ToolResult:
+    async def execute_tool(
+        self,
+        call: ToolCall,
+        *,
+        session_id: str = "default",
+        strategy_id: str = "default",
+        approval_ticket_id: str | None = None,
+    ) -> ToolResult:
+        """Führt einen Tool-Call aus: zuerst Policy-Prüfung (falls verdrahtet), dann die Ausführung."""
+        result, _decision = await self._execute_guarded(
+            call,
+            session_id=session_id,
+            strategy_id=strategy_id,
+            approval_ticket_id=approval_ticket_id,
+        )
+        return result
+
+    async def _execute_guarded(
+        self,
+        call: ToolCall,
+        *,
+        session_id: str,
+        strategy_id: str,
+        approval_ticket_id: str | None,
+    ) -> tuple[ToolResult, PolicyDecision | None]:
+        """Policy-Prüfung vor jeder Ausführung. Fail-closed: ohne Policy-Antwort wird nicht ausgeführt."""
+        if self._policy is None:
+            return await self._execute_raw(call), None
+        try:
+            decision = await self._policy.evaluate(
+                session_id,
+                call.name,
+                dict(call.arguments),
+                strategy_id=strategy_id,
+                symbol=_symbol_of(call.arguments),
+                approval_ticket_id=approval_ticket_id,
+            )
+        except Exception as exc:
+            error = f"POLICY:STORE_UNAVAILABLE: {exc}"
+            return ToolResult(call_id=call.id, name=call.name, ok=False, error=error), None
+        if not decision.allowed:
+            if decision.code == PolicyVerdictCode.WAITING_APPROVAL:
+                ticket_id = decision.ticket.id if decision.ticket is not None else ""
+                return ToolResult(call_id=call.id, name=call.name, ok=False, error=f"WAITING_APPROVAL:{ticket_id}"), decision
+            error = f"POLICY:{decision.code.value}: {decision.reason}"
+            return ToolResult(call_id=call.id, name=call.name, ok=False, error=error), decision
+        return await self._execute_raw(call), decision
+
+    async def _execute_raw(self, call: ToolCall) -> ToolResult:
         """Führt einen einzelnen Tool-Call aus — strikt timeout-gekapselt.
 
         Fängt sauber: unbekanntes Tool, schema-only Tool, Timeout und jeden
@@ -427,6 +596,12 @@ def json_loads(text: str) -> Any:
     import json as _json
 
     return _json.loads(text)
+
+
+def _symbol_of(arguments: Mapping[str, Any]) -> str | None:
+    """Symbol für den Symbol-Halt: ein nicht-leeres ``symbol``-Argument, sonst ``None``."""
+    value = arguments.get("symbol")
+    return value if isinstance(value, str) and value else None
 
 
 def _stringify(value: Any) -> str:
