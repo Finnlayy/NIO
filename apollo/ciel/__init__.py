@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from .bus import CIEL_EVENT_KINDS
+from .dag_state import DAGLineageView, DAGStateManager, DAGTurnNode, InMemoryDAGStore, RedisDAGStore, TurnStatus, working_state_hash
 from .embeddings import AutoEmbeddingProvider, EmbeddingProvider, HashEmbeddingProvider, OnnxEmbeddingProvider, cosine_similarity
 from .errors import (
     CielConfigError,
@@ -59,6 +60,7 @@ from .mcp_nodes import (
     load_mcp_config,
     register_mcp_node,
 )
+from .memory_tier import RECALL_TOOL_NAME, EpisodeHit, EpisodicMemoryStore, WorkingMemoryPin, register_recall_tool
 from .models import (
     HAVE_PYDANTIC,
     AgentResult,
@@ -216,6 +218,7 @@ __all__ = [
     "NODE_COLD",
     "NODE_HOT",
     "NODE_WARM",
+    "RECALL_TOOL_NAME",
     "REQUEST_ADDITIONAL_SKILL_SCHEMA",
     "SANDBOX_SYSTEM_PROMPT",
     "SYNTHESIS_THRESHOLD",
@@ -232,10 +235,16 @@ __all__ = [
     "CielLayer",
     "CielTelemetryPublisher",
     "ColdStorageRegistry",
+    "DAGLineageView",
+    "DAGStateManager",
+    "DAGTurnNode",
     "EmbeddingProvider",
+    "EpisodeHit",
+    "EpisodicMemoryStore",
     "EventBusGraphSubscriber",
     "GateDecision",
     "HashEmbeddingProvider",
+    "InMemoryDAGStore",
     "LLMClient",
     "MCPNodeClient",
     "MCPNodeConfig",
@@ -250,6 +259,7 @@ __all__ = [
     "NoOpLLMClient",
     "OnnxEmbeddingProvider",
     "OpenAICompatLLMClient",
+    "RedisDAGStore",
     "RegistryFunctionExecutor",
     "RoutingMode",
     "SSEMCPTransport",
@@ -264,7 +274,9 @@ __all__ = [
     "ToolResult",
     "ToolSchema",
     "ToolTimeout",
+    "TurnStatus",
     "UDSDatagramSubscriber",
+    "WorkingMemoryPin",
     "build_ciel_layer",
     "cluster_for",
     "cold_state_sync_event",
@@ -277,6 +289,8 @@ __all__ = [
     "macro_evolution_event",
     "node_id_for",
     "register_mcp_node",
+    "register_recall_tool",
     "routing_event",
     "run_handler",
+    "working_state_hash",
 ]
