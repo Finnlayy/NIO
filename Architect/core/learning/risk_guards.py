@@ -17,6 +17,7 @@ import logging
 from pathlib import Path
 
 from core.learning.error_patterns import DEFAULT_ALERT_THRESHOLD
+from core.policy_bridge import OP_DISPATCH_PLAN, PolicyBridge, plan_digest
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ def make_guard_id(plan_id: str, timestamp: str) -> str:
 class RiskGuardEngine:
     """Check plans/updates/modifications against invariants, policy and error memory."""
 
-    def __init__(self, judge=None, policy=None, event_bus=None, config=None):
+    def __init__(self, judge=None, policy=None, event_bus=None, config=None, action_bridge=None):
         # Lazy imports keep this module import-safe without pydantic_settings.
         if judge is None:
             from limbs.math.the_judge_m8 import TheJudgeM8
@@ -47,6 +48,24 @@ class RiskGuardEngine:
         self.judge = judge
         self.policy = policy
         self.event_bus = event_bus
+        # Ohne injizierte Brücke ist jede riskante Freigabe blockiert (fail-closed).
+        self.action_bridge = action_bridge or PolicyBridge(None)
+
+    def authorize_dispatch(self, plan_or_update: dict, current_state: dict | None = None, approval_ticket_id: str | None = None) -> dict:
+        """Risk-Check zuerst (frei), danach Freigabe des Dispatch über die Policy.
+
+        Ein fehlgeschlagener Check legt kein Ticket an. Bei bestandenem Check wird
+        das Dispatch-Ticket an den Plan-Digest gebunden; ohne Freigabe wirft die
+        Brücke :class:`core.policy_bridge.ApprovalRequired`. Die Rückgabe ist das
+        Guard-Ergebnis mit dem Feld ``dispatch_ticket_id``.
+        """
+        result = self.check(plan_or_update, current_state)
+        if not result["passed"]:
+            return result
+        plan = plan_or_update if isinstance(plan_or_update, dict) else {"raw": str(plan_or_update)}
+        arguments = {"plan_id": result["plan_id"], "plan_digest": plan_digest(plan)}
+        result["dispatch_ticket_id"] = self.action_bridge.require(OP_DISPATCH_PLAN, arguments, approval_ticket_id)
+        return result
 
     def check(self, plan_or_update: dict, current_state: dict | None = None) -> dict:
         """Evaluate a plan/update against all guards; returns a RiskGuardResult dict.

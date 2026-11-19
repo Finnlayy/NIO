@@ -3,16 +3,20 @@ import logging
 import shutil
 from pathlib import Path
 
+from core.policy_bridge import OP_APPLY_MANIFEST, PolicyBridge, file_digest
+
 logger = logging.getLogger(__name__)
 
 class SelfModificationSafety:
     """Safety layer for manifest application: backups, rollback, hash verification."""
 
-    def __init__(self, workspace_root: str = "Architect/workspace"):
+    def __init__(self, workspace_root: str = "Architect/workspace", action_bridge: PolicyBridge | None = None):
         self.workspace_root = Path(workspace_root)
         self.workspace_root.mkdir(parents=True, exist_ok=True)
         self.backup_dir = Path("Architect/runtime/backups")
         self.backup_dir.mkdir(parents=True, exist_ok=True)
+        # Ohne injizierte Brücke ist jede Manifest-Anwendung blockiert (fail-closed).
+        self.action_bridge = action_bridge or PolicyBridge(None)
 
     def create_backup(self, file_path: Path) -> Path:
         """Create a backup of file_path with SHA-256 hash verification."""
@@ -76,14 +80,26 @@ class SelfModificationSafety:
             logger.error("Rollback failed for %s: %s", file_path, exc)
             return False
 
-    def apply_modification(self, manifest_path: str, base_dir: Path | None = None) -> tuple:
-        """Apply manifest changes with backup, verification, and rollback capability."""
+    def apply_modification(self, manifest_path: str, base_dir: Path | None = None, approval_ticket_id: str | None = None) -> tuple:
+        """Apply manifest changes with backup, verification, and rollback capability.
+
+        Nach erfolgreicher Validierung und vor jeder Dateiänderung wird die Anwendung
+        über die Policy freigegeben (TIER_2). Ohne Freigabe wirft die Brücke
+        :class:`core.policy_bridge.ApprovalRequired` (Ticket-ID im Feld ``ticket_id``)
+        bzw. :class:`core.policy_bridge.PolicyBlocked`; es wird dann nichts verändert.
+        """
         from core.manifest import Manifest
         from core.manifest_validation import validate_manifest_update
         result = validate_manifest_update(manifest_path, base_dir)
         if not result[0]:
             logger.error("Manifest validation failed before apply: %s", result[1])
             return (False, result[1])
+        arguments = {
+            "manifest_path": str(manifest_path),
+            "manifest_sha256": file_digest(manifest_path),
+            "base_dir": str(base_dir) if base_dir else "",
+        }
+        self.action_bridge.require(OP_APPLY_MANIFEST, arguments, approval_ticket_id)
         manifest = Manifest(manifest_path)
         changes = manifest.extract_changes()
         applied = []
