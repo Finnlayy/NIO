@@ -20,7 +20,9 @@ from dataclasses import dataclass, field
 from typing import Any, Final, Protocol
 
 from .bus import emit
+from .dag_state import DAGStateManager, TurnStatus
 from .errors import ToolNotExecutable, ToolNotFound
+from .memory_tier import WorkingMemoryPin
 from .models import AgentResult, AssistantMessage, ToolCall, ToolResult
 from .ncm_gate import JIT_TOP_K, NCMGate, RegistryFunctionExecutor, ToolExecutor
 from .policy_gate import PolicyDecision, PolicyVerdictCode, PreExecutionPolicyEngine
@@ -130,6 +132,10 @@ class _RunState:
     turn_content: str = ""
     turn_meta_ok: bool = False
     waiting_ticket_id: str | None = None
+    #: Index in ``messages``, ab dem noch kein DAG-Knoten geschrieben wurde.
+    committed_upto: int = 0
+    #: Index in ``results``, ab dem noch keine Tool-Ergebnisse committet wurden.
+    committed_results: int = 0
 
 
 class SandboxAgent:
@@ -137,6 +143,11 @@ class SandboxAgent:
 
     Mit ``policy_engine`` läuft vor jedem Tool-Call die Pre-Execution-Policy.
     Ohne Policy-Engine verhält sich der Agent wie vor Phase 1.
+
+    Mit ``dag_manager`` wird jeder abgeschlossene Turn als DAG-Knoten committet.
+    Ein Lauf auf Freigabe steht dann im Knoten ``WAITING_APPROVAL`` und
+    übersteht den Neuaufbau des Agenten. Ohne DAG bleibt das In-Memory-Dict
+    aus Phase 1 die Quelle.
     """
 
     def __init__(
@@ -151,6 +162,8 @@ class SandboxAgent:
         max_turns: int = 6,
         default_timeout_sec: float = 30.0,
         policy_engine: PreExecutionPolicyEngine | None = None,
+        dag_manager: DAGStateManager | None = None,
+        working_pin: WorkingMemoryPin | None = None,
     ) -> None:
         self._registry = registry
         self._gate = gate or NCMGate(registry, event_bus=event_bus)
@@ -162,7 +175,9 @@ class SandboxAgent:
         self._max_turns = max(1, max_turns)
         self._default_timeout = default_timeout_sec
         self._policy = policy_engine
-        #: Auf Freigabe wartende Läufe, Schlüssel ist die Ticket-ID.
+        self._dag = dag_manager
+        self._pin = working_pin if working_pin is not None else WorkingMemoryPin()
+        #: Auf Freigabe wartende Läufe ohne DAG, Schlüssel ist die Ticket-ID.
         self._pending: dict[str, _RunState] = {}
 
     @property
@@ -180,6 +195,10 @@ class SandboxAgent:
     @property
     def telemetry(self) -> CielTelemetryPublisher | None:
         return self._telemetry
+
+    @property
+    def dag(self) -> DAGStateManager | None:
+        return self._dag
 
     # -- Prompt-Aufbau -----------------------------------------------------
 
@@ -230,6 +249,15 @@ class SandboxAgent:
         session = session_id or uuid.uuid4().hex
         decision = await self._gate.route(intent, current_state, event_payload=event_payload, execute=self._policy is None)
         if decision.path == "system1_bypass":
+            if self._dag is not None:
+                await self._dag.commit_turn(
+                    session,
+                    user_input=intent,
+                    messages_delta=[{"role": "user", "content": intent}],
+                    tool_calls_summary=[{"name": decision.tool or "", "ok": True, "timed_out": False, "error": ""}],
+                    working_state=current_state,
+                    status=TurnStatus.COMPLETED,
+                )
             return AgentResult(
                 path="system1_bypass",
                 final_answer=_stringify(decision.result),
@@ -274,6 +302,14 @@ class SandboxAgent:
         läuft die Schleife normal weiter. Ein unbekanntes oder fremdes Ticket
         liefert ein Ergebnis mit ``APPROVAL_INVALID`` in ``errors``.
         """
+        if self._dag is not None:
+            node = await self._dag.find_waiting(session_id, ticket_id)
+            if node is None or not node.pending or not isinstance(node.pending.get("snapshot"), dict):
+                return AgentResult(path="system2_jit", errors=[f"APPROVAL_INVALID: kein wartender Lauf für Ticket {ticket_id}"])
+            run = _run_from_snapshot(node.pending["snapshot"])
+            if run.session_id != session_id:
+                return AgentResult(path="system2_jit", errors=[f"APPROVAL_INVALID: kein wartender Lauf für Ticket {ticket_id}"])
+            return await self._advance(run, first_ticket=ticket_id)
         run = self._pending.pop(ticket_id, None)
         if run is None or run.session_id != session_id:
             if run is not None:
@@ -285,13 +321,15 @@ class SandboxAgent:
         """Setzt die Agentenschleife fort: zuerst Reststücke des Turns, dann neue LLM-Turns."""
         if run.turn_calls:
             if await self._process_calls(run, first_ticket=first_ticket):
-                return self._waiting_result(run)
+                return await self._suspend(run)
             self._close_turn(run)
         while run.turns < self._max_turns:
             run.turns += 1
             payload = self.build_prompt_payload(run.intent, run.state, run.loaded)
             try:
-                answer = await self._llm.complete(system=payload["system"], messages=run.messages, tools=payload["tools"])
+                answer = await self._llm.complete(
+                    system=payload["system"], messages=self._llm_messages(run), tools=payload["tools"]
+                )
             except Exception as exc:
                 run.errors.append(f"llm_error: {exc}")
                 break
@@ -307,8 +345,27 @@ class SandboxAgent:
             run.turn_content = answer.content
             run.turn_meta_ok = False
             if await self._process_calls(run):
-                return self._waiting_result(run)
+                return await self._suspend(run)
             self._close_turn(run)
+        return await self._finish(run)
+
+    def _llm_messages(self, run: _RunState) -> list[dict[str, Any]]:
+        """Nachrichten für das LLM: Verlauf, danach der Working-Memory-Pin als letzte Message (nie gespeichert)."""
+        pin_text = self._pin.render(run.state)
+        if not pin_text:
+            return list(run.messages)
+        return [*run.messages, {"role": "system", "content": f"working_memory:\n{pin_text}"}]
+
+    async def _finish(self, run: _RunState) -> AgentResult:
+        """Schließt den Lauf ab. Mit DAG wird der Turn committet: LLM-Fehler → FAILED, ohne Antwort → ABORTED_CLEAN."""
+        if self._dag is not None:
+            if any(error.startswith("llm_error:") for error in run.errors):
+                status = TurnStatus.FAILED
+            elif run.final_answer:
+                status = TurnStatus.COMPLETED
+            else:
+                status = TurnStatus.ABORTED_CLEAN
+            await self._checkpoint(run, status)
         return AgentResult(
             path="system2_jit",
             final_answer=run.final_answer,
@@ -318,6 +375,41 @@ class SandboxAgent:
             llm_calls=run.llm_calls,
             turns=run.turns,
         )
+
+    async def _checkpoint(self, run: _RunState, status: TurnStatus, *, pending: dict[str, Any] | None = None) -> None:
+        """Committet den Teil des Laufs seit dem letzten Checkpoint als DAG-Knoten."""
+        if self._dag is None:
+            return
+        delta = [dict(m) for m in run.messages[run.committed_upto :]]
+        summary = [
+            {"name": r.name, "ok": r.ok, "timed_out": r.timed_out, "error": r.error}
+            for r in run.results[run.committed_results :]
+        ]
+        run.committed_upto = len(run.messages)
+        run.committed_results = len(run.results)
+        if status == TurnStatus.WAITING_APPROVAL:
+            pending = {
+                "ticket_id": run.waiting_ticket_id or "",
+                "call": run.turn_calls[0].model_dump() if run.turn_calls else {},
+                "snapshot": _run_to_snapshot(run),
+            }
+        await self._dag.commit_turn(
+            run.session_id,
+            user_input=run.intent,
+            messages_delta=delta,
+            tool_calls_summary=summary,
+            working_state=run.state,
+            status=status,
+            pending=pending,
+        )
+
+    async def _suspend(self, run: _RunState) -> AgentResult:
+        """Hält einen Lauf für ``resume_after_approval`` vor: im DAG als Knoten, sonst im In-Memory-Dict."""
+        if self._dag is not None:
+            await self._checkpoint(run, TurnStatus.WAITING_APPROVAL)
+        else:
+            self._pending[run.waiting_ticket_id or ""] = run
+        return self._waiting_result(run)
 
     async def _process_calls(self, run: _RunState, *, first_ticket: str | None = None) -> bool:
         """Arbeitet die Calls des laufenden Turns ab. ``True``, wenn auf Freigabe gewartet wird.
@@ -382,7 +474,6 @@ class SandboxAgent:
     def _waiting_result(self, run: _RunState) -> AgentResult:
         """Hält den Lauf für ``resume_after_approval`` vor und meldet ``WAITING_APPROVAL``."""
         ticket_id = run.waiting_ticket_id or ""
-        self._pending[ticket_id] = run
         return AgentResult(
             path="system2_jit",
             final_answer=f"WAITING_APPROVAL:{ticket_id}",
@@ -596,6 +687,54 @@ def json_loads(text: str) -> Any:
     import json as _json
 
     return _json.loads(text)
+
+
+def _run_to_snapshot(run: _RunState) -> dict[str, Any]:
+    """Serialisiert einen wartenden Lauf vollständig, damit ein neuer Agent ihn aus dem DAG fortsetzen kann."""
+    return {
+        "intent": run.intent,
+        "state": dict(run.state),
+        "loaded": list(run.loaded),
+        "messages": [dict(m) for m in run.messages],
+        "session_id": run.session_id,
+        "strategy_id": run.strategy_id,
+        "results": [r.model_dump() for r in run.results],
+        "called": list(run.called),
+        "errors": list(run.errors),
+        "llm_calls": run.llm_calls,
+        "turns": run.turns,
+        "final_answer": run.final_answer,
+        "turn_calls": [c.model_dump() for c in run.turn_calls],
+        "turn_content": run.turn_content,
+        "turn_meta_ok": run.turn_meta_ok,
+        "waiting_ticket_id": run.waiting_ticket_id,
+        "committed_upto": run.committed_upto,
+        "committed_results": run.committed_results,
+    }
+
+
+def _run_from_snapshot(data: Mapping[str, Any]) -> _RunState:
+    """Rekonstruiert einen Lauf aus einem Snapshot aus :func:`_run_to_snapshot`."""
+    return _RunState(
+        intent=str(data["intent"]),
+        state=dict(data.get("state") or {}),
+        loaded=[str(n) for n in data.get("loaded") or []],
+        messages=[dict(m) for m in data.get("messages") or []],
+        session_id=str(data["session_id"]),
+        strategy_id=str(data.get("strategy_id", "default")),
+        results=[ToolResult.model_validate(r) for r in data.get("results") or []],
+        called=[str(n) for n in data.get("called") or []],
+        errors=[str(e) for e in data.get("errors") or []],
+        llm_calls=int(data.get("llm_calls", 0)),
+        turns=int(data.get("turns", 0)),
+        final_answer=str(data.get("final_answer", "")),
+        turn_calls=[ToolCall.model_validate(c) for c in data.get("turn_calls") or []],
+        turn_content=str(data.get("turn_content", "")),
+        turn_meta_ok=bool(data.get("turn_meta_ok", False)),
+        waiting_ticket_id=data.get("waiting_ticket_id"),
+        committed_upto=int(data.get("committed_upto", 0)),
+        committed_results=int(data.get("committed_results", 0)),
+    )
 
 
 def _symbol_of(arguments: Mapping[str, Any]) -> str | None:
