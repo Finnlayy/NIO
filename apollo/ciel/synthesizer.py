@@ -15,12 +15,36 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from .bus import emit
 from .models import MacroSynthesis, ToolSchema
+from .procedural_skills import (
+    ProceduralSkillRegistry,
+    ProceduralSkillSpec,
+    TrajectorySkillDistiller,
+    TrajectoryStep,
+)
 from .registry import ColdStorageRegistry, cluster_for, utc_now_iso
 from .telemetry import NODE_HOT, NODE_WARM, CielTelemetryPublisher, macro_evolution_event
+
+#: Kategorie der Episoden (Phase 2), in die destillierte Skills geschrieben werden.
+SKILL_EPISODE_CATEGORY = "procedural_skill"
+
+
+class EpisodeSink(Protocol):
+    """Schreibseite des episodischen Gedächtnisses (Phase 2, :class:`EpisodicMemoryStore`)."""
+
+    def store_episode(
+        self,
+        *,
+        session_id: str,
+        category: str,
+        content: str,
+        tags: Sequence[str] = (),
+        memory_id: str | None = None,
+        created_at_ms: int | None = None,
+    ) -> str: ...
 
 #: Ab wie vielen aufeinanderfolgenden Erfolgen synthetisiert wird.
 SYNTHESIS_THRESHOLD = 3
@@ -43,6 +67,9 @@ class MacroSkillSynthesizer:
         event_bus: Any | None = None,
         telemetry: CielTelemetryPublisher | None = None,
         persist_path: str | Path | None = None,
+        skill_registry: ProceduralSkillRegistry | None = None,
+        distiller: TrajectorySkillDistiller | None = None,
+        episode_sink: EpisodeSink | None = None,
     ) -> None:
         self._registry = registry
         self._threshold = max(2, threshold)
@@ -50,12 +77,45 @@ class MacroSkillSynthesizer:
         self._telemetry = telemetry if telemetry is not None else registry.telemetry
         self._persist_path = Path(persist_path) if persist_path is not None else None
         self._streaks: dict[str, int] = {}
+        self._skills = skill_registry
+        self._distiller = distiller or TrajectorySkillDistiller()
+        self._episodes = episode_sink
         if self._persist_path is not None and self._persist_path.is_file():
             self._load()
 
     @property
     def registry(self) -> ColdStorageRegistry:
         return self._registry
+
+    async def post_run_hook(
+        self,
+        *,
+        session_id: str,
+        intent: str,
+        steps: Sequence[TrajectoryStep],
+        success: bool,
+    ) -> ProceduralSkillSpec | None:
+        """Post-Run-Hook: destilliert bei Erfolg und mindestens zwei verschiedenen Tools einen prozeduralen Skill.
+
+        Der Skill landet in der Skill-Registry und zusätzlich als Episode (Phase 2). Ohne Skill-Registry
+        oder bei Fehlschlag passiert nichts. ``MacroSkillSynthesizer`` bleibt unverändert nutzbar.
+        """
+        if not success or self._skills is None:
+            return None
+        spec = self._distiller.distill(steps, intent=intent)
+        if spec is None:
+            return None
+        self._skills.register(spec)
+        if self._episodes is not None:
+            self._episodes.store_episode(
+                session_id=session_id,
+                category=SKILL_EPISODE_CATEGORY,
+                content=spec.to_markdown_playbook(),
+                tags=[spec.skill_id, *spec.required_tools()],
+                memory_id=f"skill:{spec.skill_id}",
+            )
+        emit(self._bus, "ciel.synth.skill_distilled", {"skill_id": spec.skill_id, "steps": len(spec.steps)})
+        return spec
 
     @property
     def threshold(self) -> int:
