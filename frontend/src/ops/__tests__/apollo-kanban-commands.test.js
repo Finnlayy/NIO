@@ -58,14 +58,16 @@ test("a Kanban failure stays a failure and spawns no node", async () => {
   assert.match(result.entries.at(-1).message, /Failed/);
 });
 
-test("/approve and /deny send nothing while no intent is pending", async () => {
+test("/approve needs a ticket id; /deny still sends nothing", async () => {
   fakeKanban();
-  assert.deepEqual(parseCommand("/approve 1234"), { kind: "approve" });
-  for (const command of ["/approve", "/deny"]) {
-    const result = await useApolloStore.getState().runCommand(command);
-    assert.equal(result.ok, false);
-    assert.match(result.entries.at(-1).message, /No pending approval/);
-  }
+  assert.deepEqual(parseCommand("/approve 1234"), { kind: "approve", ticketId: "1234" });
+  assert.equal(parseCommand("/approve").kind, "error");
+  const bare = await useApolloStore.getState().runCommand("/approve");
+  assert.equal(bare.ok, false);
+  assert.match(bare.entries.at(-1).message, /usage: \/approve/);
+  const deny = await useApolloStore.getState().runCommand("/deny");
+  assert.equal(deny.ok, false);
+  assert.match(deny.entries.at(-1).message, /No pending approval/);
   assert.equal(calls.length, 0);
 });
 

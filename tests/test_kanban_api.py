@@ -13,12 +13,24 @@ try:
 except ImportError:
     fastapi = None  # type: ignore
 
+from apollo.ciel.dag_state import DAGLineageView
+from apollo.ciel.policy_gate import ApprovalTicket
 from orchestrator.kanban.config import KanbanConfig
 from orchestrator.kanban.models import AuditEntry, Experience, KanbanBoard, KanbanTask, RustLimb, Worker
 from orchestrator.kanban.runtime import build_runtime
 
 if fastapi is not None:
-    from orchestrator.kanban.api import AuditEntryOut, BoardOut, ExperienceOut, RustLimbOut, TaskOut, WorkerOut, build_app
+    from orchestrator.kanban.api import (
+        ApprovalTicketOut,
+        AuditEntryOut,
+        BoardOut,
+        DagLineageOut,
+        ExperienceOut,
+        RustLimbOut,
+        TaskOut,
+        WorkerOut,
+        build_app,
+    )
 
 
 @unittest.skipUnless(fastapi is not None, "FastAPI nicht installiert")
@@ -69,11 +81,13 @@ class KanbanApiTest(unittest.IsolatedAsyncioTestCase):
             AuditEntryOut: AuditEntry,
             BoardOut: KanbanBoard,
             RustLimbOut: RustLimb,
+            DagLineageOut: DAGLineageView,  # Dataclass
+            ApprovalTicketOut: ApprovalTicket,  # Pydantic-Modell
         }
-        for pydantic_model, dataclass_model in mapping.items():
-            py_fields = set(pydantic_model.model_fields.keys())
-            dc_fields = set(dataclass_model.__dataclass_fields__.keys())
-            self.assertEqual(py_fields, dc_fields, f"Mismatch in {pydantic_model.__name__} vs {dataclass_model.__name__}")
+        for out_model, source_model in mapping.items():
+            out_fields = set(out_model.model_fields.keys())
+            source_fields = set(getattr(source_model, "model_fields", None) or source_model.__dataclass_fields__.keys())
+            self.assertEqual(out_fields, source_fields, f"Mismatch in {out_model.__name__} vs {source_model.__name__}")
 
     def test_auth_missing(self) -> None:
         resp = self.client.get("/api/v1/kanban/boards")

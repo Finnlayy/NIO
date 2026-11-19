@@ -128,17 +128,30 @@ export interface KanbanResult<T = unknown> {
   error?: string;
 }
 
+/** Ein Signal, das nach `timeoutMs` oder beim Abbruch von `extra` auslöst (ohne `AbortSignal.any`). */
+export function combinedSignal(timeoutMs: number, extra?: AbortSignal): AbortSignal {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  if (extra) {
+    if (extra.aborted) controller.abort();
+    else extra.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+  controller.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+  return controller.signal;
+}
+
 export async function kanbanRequest<T = unknown>(
   path: string,
   method: "GET" | "POST" | "DELETE" = "POST",
-  payload?: unknown
+  payload?: unknown,
+  signal?: AbortSignal,
 ): Promise<KanbanResult<T>> {
   try {
     const response = await fetch("/api/apollo/kanban", {
       method: "POST", // Proxied request is always POST to proxy
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ path, method, payload }),
-      signal: AbortSignal.timeout(10_000),
+      signal: combinedSignal(10_000, signal),
     });
     const data = await response.json();
 
@@ -159,15 +172,103 @@ export async function kanbanRequest<T = unknown>(
   }
 }
 
+/* ==================================================================== */
+/* Control plane (Phase 4): /api/runtime über den Server-Proxy            */
+/* Das Operator-Token liegt nur im Server; hier fließt nie ein Secret.    */
+/* ==================================================================== */
+
+export interface DagLineage {
+  session_id: string;
+  branch_name: string;
+  head_turn_id: string | null;
+  ordered_turn_ids: string[];
+  messages: Array<Record<string, unknown>>;
+  working_state: Record<string, unknown>;
+}
+
+export interface DagView {
+  lineage: DagLineage;
+  branches: Record<string, string | null>;
+}
+
+export interface PendingApproval {
+  id: string;
+  session_id: string;
+  tool: string;
+  status: string;
+  expires_ms: number;
+}
+
+/** Fehler der API kommen als `detail` (FastAPI) oder `error` (Proxy); beides wird gelesen. */
+export async function runtimeRequest<T = unknown>(
+  path: string,
+  method: "GET" | "POST",
+  payload?: unknown,
+  signal?: AbortSignal,
+): Promise<KanbanResult<T>> {
+  try {
+    const response = await fetch(`/api/runtime${path}`, {
+      method,
+      headers: payload === undefined ? undefined : { "content-type": "application/json" },
+      body: payload === undefined ? undefined : JSON.stringify(payload),
+      cache: "no-store",
+      signal: combinedSignal(10_000, signal),
+    });
+    const data = (await response.json().catch(() => null)) as { detail?: unknown; error?: unknown } | null;
+    if (!response.ok) {
+      const message = typeof data?.error === "string" ? data.error : typeof data?.detail === "string" ? data.detail : `HTTP ${response.status}`;
+      return { ok: false, error: message };
+    }
+    return { ok: true, data: data as T };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "network error" };
+  }
+}
+
+export interface ApprovalStreamHandlers {
+  onPending: (ticket: PendingApproval) => void;
+  onResolved: (ticketId: string) => void;
+  onAbort?: (sessionId: string, reason: string) => void;
+}
+
+/**
+ * Abonniert den Freigabe-Strom (SSE über den Kanban-Bus). Kein Polling.
+ * Gibt die Schließfunktion zurück; ohne EventSource (SSR, Tests) passiert nichts.
+ */
+export function subscribeApprovalStream(handlers: ApprovalStreamHandlers): () => void {
+  if (typeof EventSource === "undefined") return () => {};
+  const source = new EventSource("/api/runtime/approvals/stream");
+  const payloadOf = <T,>(event: Event): T | null => {
+    try {
+      return ((JSON.parse((event as MessageEvent<string>).data) as { payload?: T }).payload ?? null) as T | null;
+    } catch {
+      return null;
+    }
+  };
+  source.addEventListener("approval.pending", (event) => {
+    const p = payloadOf<Omit<PendingApproval, "id"> & { ticket_id: string }>(event);
+    if (p) handlers.onPending({ id: p.ticket_id, session_id: p.session_id, tool: p.tool, status: p.status, expires_ms: p.expires_ms });
+  });
+  source.addEventListener("approval.resolved", (event) => {
+    const p = payloadOf<{ ticket_id: string }>(event);
+    if (p) handlers.onResolved(p.ticket_id);
+  });
+  source.addEventListener("runtime.abort", (event) => {
+    const p = payloadOf<{ session_id: string; reason: string }>(event);
+    if (p) handlers.onAbort?.(p.session_id, p.reason);
+  });
+  return () => source.close();
+}
+
 const APOLLO_BOARD_NAME = "Apollo";
 
 /* Boards get generated ids, so the Apollo board is found by name. */
-export async function apolloBoardId(): Promise<KanbanResult<string>> {
-  const boards = await kanbanRequest<{ id: string; name: string }[]>("/api/v1/kanban/boards", "GET");
+export async function apolloBoardId(signal?: AbortSignal): Promise<KanbanResult<string>> {
+  const boards = await kanbanRequest<{ id: string; name: string }[]>("/api/v1/kanban/boards", "GET", undefined, signal);
   if (!boards.ok) return { ok: false, error: boards.error };
   const existing = boards.data?.find((board) => board.name === APOLLO_BOARD_NAME);
   if (existing) return { ok: true, data: existing.id };
-  const created = await kanbanRequest<{ id: string }>("/api/v1/kanban/boards", "POST", { name: APOLLO_BOARD_NAME });
+  const created = await kanbanRequest<{ id: string }>("/api/v1/kanban/boards", "POST", { name: APOLLO_BOARD_NAME }, signal);
   if (!created.ok || !created.data) return { ok: false, error: created.error ?? "board not created" };
   return { ok: true, data: created.data.id };
 }
@@ -204,19 +305,29 @@ export function chatTaskFields(text: string): { title: string; description: stri
   return { title, description: title === clean ? "" : clean };
 }
 
-export async function createChatTask(text: string): Promise<KanbanResult<ChatTask>> {
-  const board = await apolloBoardId();
+export async function createChatTask(text: string, signal?: AbortSignal): Promise<KanbanResult<ChatTask>> {
+  const board = await apolloBoardId(signal);
   if (!board.ok) return { ok: false, error: board.error };
-  return kanbanRequest<ChatTask>("/api/v1/kanban/tasks", "POST", {
-    board_id: board.data,
-    ...chatTaskFields(text),
-    dependencies: [],
-    required_skills: [CHAT_SKILL],
-  });
+  return kanbanRequest<ChatTask>(
+    "/api/v1/kanban/tasks",
+    "POST",
+    {
+      board_id: board.data,
+      ...chatTaskFields(text),
+      dependencies: [],
+      required_skills: [CHAT_SKILL],
+    },
+    signal,
+  );
 }
 
-export async function fetchChatTask(boardId: string, taskId: string): Promise<KanbanResult<ChatTask>> {
-  const tasks = await kanbanRequest<ChatTask[]>(`/api/v1/kanban/tasks?board_id=${encodeURIComponent(boardId)}`, "GET");
+export async function fetchChatTask(boardId: string, taskId: string, signal?: AbortSignal): Promise<KanbanResult<ChatTask>> {
+  const tasks = await kanbanRequest<ChatTask[]>(
+    `/api/v1/kanban/tasks?board_id=${encodeURIComponent(boardId)}`,
+    "GET",
+    undefined,
+    signal,
+  );
   if (!tasks.ok) return { ok: false, error: tasks.error };
   const task = tasks.data?.find((candidate) => candidate.id === taskId);
   return task ? { ok: true, data: task } : { ok: false, error: "task_not_found" };

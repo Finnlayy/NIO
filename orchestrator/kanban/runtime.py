@@ -11,7 +11,7 @@ import asyncio
 import os
 import socket
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, cast
 
 from orchestrator.kanban.audit import AuditLedger
@@ -20,7 +20,7 @@ from orchestrator.kanban.bus import HeartbeatStore, KanbanBus, LockManager, Toke
 from orchestrator.kanban.config import KanbanConfig
 from orchestrator.kanban.decomposer import ChecklistDecomposer
 from orchestrator.kanban.dispatcher import Dispatcher
-from orchestrator.kanban.models import new_id
+from orchestrator.kanban.models import KanbanEvent, new_id
 from orchestrator.kanban.notify import Notifier, build_notifier
 from orchestrator.kanban.reaper import Reaper
 from orchestrator.kanban.sandbox import SandboxRunner, build_sandbox
@@ -29,7 +29,33 @@ from orchestrator.kanban.store import KanbanStore
 from orchestrator.kanban.tools import KanbanToolbox
 from orchestrator.kanban.vault import ObsidianVault
 
-__all__ = ["KanbanRuntime", "build_runtime"]
+__all__ = ["KanbanRuntime", "SandboxAgentRegistry", "build_runtime"]
+
+
+class SandboxAgentRegistry:
+    """Hält die laufenden SandboxAgents der Runtime, damit ``/abort`` sie erreicht.
+
+    Die Registry kennt nur das Abbruch-Protokoll ``abort(session_id, reason, detail)``
+    und importiert keine Ciel-Klassen; Agenten melden sich über ``register`` an.
+    """
+
+    def __init__(self) -> None:
+        self._agents: dict[str, Any] = {}
+
+    def register(self, name: str, agent: Any) -> None:
+        if not name:
+            raise ValueError("Agent-Name darf nicht leer sein")
+        self._agents[name] = agent
+
+    def unregister(self, name: str) -> None:
+        self._agents.pop(name, None)
+
+    def names(self) -> list[str]:
+        return sorted(self._agents)
+
+    def abort_session(self, session_id: str, reason: str, detail: str = "") -> int:
+        """Sendet das Abbruchsignal an alle Agenten. Gibt die Zahl der ausgelösten Signale zurück."""
+        return sum(int(agent.abort(session_id, reason, detail)) for agent in self._agents.values())
 
 
 @dataclass
@@ -50,6 +76,10 @@ class KanbanRuntime:
     sandbox: SandboxRunner
     redis: Any = None
     telegram: Any = None
+    #: Control-Plane-Singletons (Phase 4), in ``build_runtime`` verdrahtet.
+    dag: Any = None
+    policy: Any = None
+    agents: SandboxAgentRegistry = field(default_factory=SandboxAgentRegistry)
 
     async def close(self) -> None:
         if self.telegram is not None:
@@ -167,7 +197,7 @@ async def build_runtime(config: KanbanConfig, *, neu_events: Any = None) -> Kanb
         dispatcher=dispatcher,
     )
 
-    return KanbanRuntime(
+    runtime = KanbanRuntime(
         config=config,
         store=store,
         bus=bus,
@@ -184,6 +214,14 @@ async def build_runtime(config: KanbanConfig, *, neu_events: Any = None) -> Kanb
         sandbox=sandbox,
         redis=client,
     )
+
+    # 5. Control Plane: DAG-Gedächtnis und Pre-Execution-Policy (Redis, sonst In-Memory)
+    from apollo.ciel.dag_state import DAGStateManager, InMemoryDAGStore, RedisDAGStore
+
+    dag_store: Any = RedisDAGStore(client) if client is not None else InMemoryDAGStore()
+    runtime.dag = DAGStateManager(dag_store)
+    runtime.policy = build_pre_execution_policy(runtime)
+    return runtime
 
 
 def build_pre_execution_policy(
@@ -230,6 +268,21 @@ def build_pre_execution_policy(
 
     async def on_ticket(ticket: Any) -> None:
         await notifier.alert(f"Freigabe nötig: Tool {ticket.tool} (Ticket {ticket.id})")
+        # Zusätzlich auf den Bus, damit das Frontend per SSE sofort sieht. Nur Ticket-Metadaten, keine Argumente.
+        bus = getattr(runtime, "bus", None)
+        if bus is not None:
+            await bus.publish(
+                KanbanEvent(
+                    kind="approval.pending",
+                    payload={
+                        "ticket_id": ticket.id,
+                        "session_id": ticket.session_id,
+                        "tool": ticket.tool,
+                        "status": str(ticket.status),
+                        "expires_ms": ticket.expires_ms,
+                    },
+                )
+            )
 
     return PreExecutionPolicyEngine(
         store,

@@ -41,6 +41,9 @@ export default function ApolloStagePage() {
   const log = useApolloStore((s) => s.log);
   const booted = useRef(false);
 
+  /* Freigaben kommen per SSE über den Kanban-Bus; der Strom wird beim Verlassen der Seite geschlossen. */
+  useEffect(() => useApolloStore.getState().startApprovalStream(), []);
+
   useEffect(() => {
     if (booted.current) return;
     booted.current = true;

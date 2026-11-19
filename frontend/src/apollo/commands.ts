@@ -20,7 +20,12 @@ export type ParsedCommand =
     | { kind: "agent"; command: string }
   | { kind: "runs" }
   | { kind: "tasks" }
-  | { kind: "approve" }
+  | { kind: "undo"; steps: number }
+  | { kind: "retry"; branch?: string }
+  | { kind: "abort"; reason: string }
+  | { kind: "approvals" }
+  | { kind: "approve"; ticketId: string }
+  | { kind: "reject"; ticketId: string; reason: string }
   | { kind: "deny" }
   | { kind: "stop" }
   | { kind: "stopall" }
@@ -42,7 +47,12 @@ export const COMMANDS = [
     { command: "/agent", usage: "/agent", detail: "list Kanban workers" },
   { command: "/tasks", usage: "/tasks", detail: "Agentenaufgaben mit echtem Ergebnis oder Fehlerstatus" },
   { command: "/runs", usage: "/runs", detail: "list recent agent runs" },
-  { command: "/approve", usage: "/approve", detail: "approve pending action" },
+  { command: "/undo", usage: "/undo [steps]", detail: "move the session head back 1-50 turns (nodes stay)" },
+  { command: "/retry", usage: "/retry [branch]", detail: "branch from the parent of the head and switch to it" },
+  { command: "/abort", usage: "/abort <reason>", detail: "abort the session's running work (local and backend)" },
+  { command: "/approvals", usage: "/approvals", detail: "list pending tool approvals of this session" },
+  { command: "/approve", usage: "/approve <ticket-id>", detail: "approve one pending tool call" },
+  { command: "/reject", usage: "/reject <ticket-id> [reason]", detail: "reject one pending tool call" },
   { command: "/deny", usage: "/deny", detail: "deny pending action" },
   { command: "/stop", usage: "/stop", detail: "emergency stop" },
   { command: "/stopall", usage: "/stopall", detail: "emergency stop all runs" },
@@ -89,6 +99,9 @@ const NUMBER_KEYS: Record<string, { min: number; max: number; integer?: boolean 
   primaryQuotaPercent: { min: 0, max: 100 },
 };
 const POLICIES = new Set(["AUTONOMOUS", "CONSERVATIVE", "SANDBOX_STRICT"]);
+/* Same character classes as the server routes: anything else never reaches the proxy. */
+const TICKET_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
+const BRANCH_PATTERN = /^[A-Za-z0-9_.-]{1,64}$/;
 
 function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
@@ -246,8 +259,36 @@ export function parseCommand(input: string): ParsedCommand {
       return { kind: "tasks" };
     case "/runs":
       return { kind: "runs" };
-    case "/approve":
-      return { kind: "approve" };
+    case "/undo": {
+      if (!rest) return { kind: "undo", steps: 1 };
+      if (!/^\d+$/.test(rest)) return { kind: "error", message: "usage: /undo [steps]", hint: "steps is an integer 1-50" };
+      const steps = Number(rest);
+      if (steps < 1 || steps > 50) return { kind: "error", message: "/undo steps must be between 1 and 50" };
+      return { kind: "undo", steps };
+    }
+    case "/retry": {
+      if (!rest) return { kind: "retry" };
+      if (!BRANCH_PATTERN.test(rest)) {
+        return { kind: "error", message: "usage: /retry [branch]", hint: "branch: letters, digits, . _ - (max 64)" };
+      }
+      return { kind: "retry", branch: rest };
+    }
+    case "/abort":
+      return { kind: "abort", reason: rest || "Abbruch durch Operator" };
+    case "/approvals":
+      return { kind: "approvals" };
+    case "/approve": {
+      const [ticketId = "", ...extra] = rest.split(/\s+/).filter(Boolean);
+      if (!ticketId || extra.length > 0) return { kind: "error", message: "usage: /approve <ticket-id>", hint: "see /approvals" };
+      if (!TICKET_PATTERN.test(ticketId)) return { kind: "error", message: `invalid ticket id '${ticketId}'` };
+      return { kind: "approve", ticketId };
+    }
+    case "/reject": {
+      const [ticketId = "", ...reasonParts] = rest.split(/\s+/).filter(Boolean);
+      if (!ticketId) return { kind: "error", message: "usage: /reject <ticket-id> [reason]", hint: "see /approvals" };
+      if (!TICKET_PATTERN.test(ticketId)) return { kind: "error", message: `invalid ticket id '${ticketId}'` };
+      return { kind: "reject", ticketId, reason: reasonParts.join(" ") };
+    }
     case "/deny":
       return { kind: "deny" };
     case "/stop":

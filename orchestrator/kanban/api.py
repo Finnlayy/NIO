@@ -14,27 +14,42 @@ Die ``*Out``-Modelle spiegeln die Dataclasses aus ``models.py`` Feld fuer Feld;
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hmac
 import json
 import os
 import urllib.request
+from collections.abc import AsyncIterator
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
+from apollo.ciel.errors import CielError
 from core.atomic import atomic_write_bytes
 from core.protocol import DEFAULT_TICKET_TTL_S, MAX_TICKET_TTL_S, Intent, Operations, ProtocolError, issue_ticket
-from orchestrator.kanban.models import RustLimb, RustLimbRequest, RustLimbResponse, TaskStatus, TransitionError
+from orchestrator.kanban.models import (
+    KanbanEvent,
+    RustLimb,
+    RustLimbRequest,
+    RustLimbResponse,
+    TaskStatus,
+    TransitionError,
+)
 from orchestrator.kanban.runtime import KanbanRuntime
 from orchestrator.kanban.service import ConflictError
 from orchestrator.kanban.tools import TOOL_DEFINITIONS
 
 __all__ = [
+    "ApprovalTicketOut",
     "AuditEntryOut",
     "BoardOut",
+    "DagLineageOut",
+    "DagOut",
     "ExperienceOut",
     "RustLimbOut",
     "TaskOut",
@@ -43,6 +58,10 @@ __all__ = [
 ]
 
 _LIMB_TIMEOUT_S = 30.0
+#: Ereignisarten, die der Approval-Strom an das Frontend weitergibt.
+_APPROVAL_STREAM_KINDS = frozenset({"approval.pending", "approval.resolved", "runtime.abort"})
+_KEEPALIVE_S = 15.0
+_ABORT_REASON = "USER_ABORT"
 
 
 class TicketIssueIn(BaseModel):
@@ -178,6 +197,85 @@ class RustLimbRequestIn(_Out):
     request_id: str
     operation: str
     params: dict[str, Any] = Field(default_factory=dict)
+
+
+class DagLineageOut(_Out):
+    """Spiegelt ``apollo.ciel.dag_state.DAGLineageView`` Feld für Feld (Paritätstest)."""
+
+    session_id: str
+    branch_name: str
+    head_turn_id: str | None
+    ordered_turn_ids: list[str]
+    messages: list[dict[str, Any]]
+    working_state: dict[str, Any]
+
+
+class DagOut(_Out):
+    lineage: DagLineageOut
+    branches: dict[str, str | None]
+
+
+class UndoIn(_Out):
+    steps: int = Field(default=1, ge=1, le=50)
+
+
+class RetryIn(_Out):
+    branch_name: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class AbortIn(_Out):
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class ApprovalTicketOut(_Out):
+    """Spiegelt ``apollo.ciel.policy_gate.ApprovalTicket`` Feld für Feld (Paritätstest)."""
+
+    id: str
+    session_id: str
+    tool: str
+    arguments_sha256: str
+    status: str
+    created_ms: int
+    expires_ms: int
+    operator_id: str
+    reason: str
+
+
+class ApprovalResolveIn(_Out):
+    """``operator_id`` steht bewusst nicht im Body: sie kommt aus der Auth."""
+
+    approved: bool
+    reason: str = Field(default="", max_length=500)
+
+
+async def _sse_events(bus: Any, *, keepalive_s: float = _KEEPALIVE_S) -> AsyncIterator[str]:
+    """Wandelt Bus-Ereignisse in ``text/event-stream``-Frames (nur Freigabe- und Abbruch-Arten).
+
+    Das wartende ``__anext__`` läuft als Task weiter, damit ein Keepalive-Timeout den
+    Bus-Iterator nicht abbricht; sonst wäre die Subscription danach tot.
+    """
+    stream = bus.subscribe()
+    pending = asyncio.ensure_future(stream.__anext__())
+    try:
+        while True:
+            done, _ = await asyncio.wait({pending}, timeout=keepalive_s)
+            if not done:
+                yield ": keepalive\n\n"
+                continue
+            try:
+                event: KanbanEvent = pending.result()
+            except StopAsyncIteration:
+                return
+            pending = asyncio.ensure_future(stream.__anext__())
+            if event.kind in _APPROVAL_STREAM_KINDS:
+                yield f"event: {event.kind}\ndata: {json.dumps(event.to_dict(), ensure_ascii=False)}\n\n"
+    finally:
+        pending.cancel()
+        with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration, Exception):
+            await pending
+        aclose = getattr(stream, "aclose", None)
+        if aclose is not None:
+            await aclose()
 
 
 def _limbs_path(runtime: KanbanRuntime) -> Path:
@@ -420,5 +518,86 @@ def build_app(runtime: KanbanRuntime) -> FastAPI:
         runtime.config.stop_file.unlink(missing_ok=True)
         await runtime.ledger.append(actor=actor, action="kanban.resume", category="system", subject="all", payload={"state": "running"})
         return {"ok": True, "status": "running"}
+    # -- Control Plane (Phase 4): DAG, Abbruch, Freigaben. Alle Routen mit Operator-Auth. --
+    runtime_router = APIRouter(prefix="/api/runtime")
+
+    async def _dag_out(session_id: str, branch: str | None = None) -> dict[str, Any]:
+        view = await runtime.dag.lineage(session_id, branch)
+        return {"lineage": asdict(view), "branches": await runtime.dag.list_branches(session_id)}
+
+    @runtime_router.get("/session/{sid}/dag", response_model=DagOut)
+    async def get_dag(sid: str, actor: str = Depends(operator)) -> dict[str, Any]:
+        return await _dag_out(sid)
+
+    @runtime_router.post("/session/{sid}/undo", response_model=DagOut)
+    async def undo_dag(sid: str, body: UndoIn, actor: str = Depends(operator)) -> dict[str, Any]:
+        try:
+            await runtime.dag.undo(sid, body.steps)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+        return await _dag_out(sid)
+
+    @runtime_router.post("/session/{sid}/retry", response_model=DagOut)
+    async def retry_dag(sid: str, body: RetryIn, actor: str = Depends(operator)) -> dict[str, Any]:
+        try:
+            await runtime.dag.retry_from_parent(sid, body.branch_name)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e)) from e
+        return await _dag_out(sid)
+
+    @runtime_router.post("/session/{sid}/abort")
+    async def abort_session(sid: str, body: AbortIn, actor: str = Depends(operator)) -> dict[str, Any]:
+        signals = runtime.agents.abort_session(sid, _ABORT_REASON, body.reason)
+        await runtime.ledger.append(
+            actor=actor,
+            action="runtime.abort",
+            category="system",
+            subject=sid,
+            payload={"reason": body.reason, "signals": signals},
+        )
+        await runtime.bus.publish(
+            KanbanEvent(kind="runtime.abort", payload={"session_id": sid, "reason": body.reason, "signals": signals})
+        )
+        return {"ok": True, "status": "ABORT_SIGNAL_SENT"}
+
+    @runtime_router.get("/approvals/pending", response_model=list[ApprovalTicketOut])
+    async def pending_approvals(session_id: str | None = None, actor: str = Depends(operator)) -> list[dict[str, Any]]:
+        tickets = await runtime.policy.pending_tickets(session_id)
+        return [t.model_dump(mode="json") for t in tickets]
+
+    @runtime_router.get("/approvals/stream")
+    async def approvals_stream(actor: str = Depends(operator)) -> StreamingResponse:
+        """SSE über den Kanban-Bus (``approval.pending``, ``approval.resolved``, ``runtime.abort``)."""
+        return StreamingResponse(
+            _sse_events(runtime.bus),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @runtime_router.post("/approvals/{ticket_id}/resolve", response_model=ApprovalTicketOut)
+    async def resolve_approval(ticket_id: str, body: ApprovalResolveIn, actor: str = Depends(operator)) -> dict[str, Any]:
+        if await runtime.policy.get_ticket(ticket_id) is None:
+            raise HTTPException(status_code=404, detail="Ticket unbekannt")
+        try:
+            updated = await runtime.policy.resolve_ticket(
+                ticket_id, approved=body.approved, operator_id=actor, reason=body.reason
+            )
+        except CielError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
+        await runtime.bus.publish(
+            KanbanEvent(
+                kind="approval.resolved",
+                payload={
+                    "ticket_id": updated.id,
+                    "session_id": updated.session_id,
+                    "tool": updated.tool,
+                    "status": str(updated.status),
+                    "operator_id": actor,
+                },
+            )
+        )
+        return updated.model_dump(mode="json")
+
     app.include_router(router)
+    app.include_router(runtime_router)
     return app
