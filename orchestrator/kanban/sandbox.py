@@ -282,6 +282,12 @@ def _opencode_mounts(config: KanbanConfig) -> list[str]:
     """
     root = config.repo_root
     argv = [
+        # Gemeinsames Git-Verzeichnis am selben absoluten Pfad einbinden: das Worktree-.git
+        # ist eine Gitdir-Datei, die auf <repo>/.git/worktrees/<name> zeigt. Ohne dieses
+        # Mount kann der Container keine Commits schreiben. Schreibend, da Commits Objekte
+        # in den gemeinsamen Store legen; Ref-Manipulation blockt die Bash-Allowlist.
+        "-v",
+        f"{root / '.git'}:{root / '.git'}",
         "-v",
         f"{root / 'config' / 'opencode' / 'opencode.json'}:/nio/opencode/opencode.json:ro",
         "-v",
