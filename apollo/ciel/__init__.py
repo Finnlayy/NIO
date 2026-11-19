@@ -45,6 +45,14 @@ from .errors import (
     ToolNotFound,
     ToolTimeout,
 )
+from .execution_env import (
+    AbortReason,
+    CancellationToken,
+    ExecutionAbortedError,
+    ExecutionEnvironment,
+    LocalExecutionEnv,
+    SubprocessExecutionEnv,
+)
 from .mcp_nodes import (
     MCP_CLIENT_NAME,
     MCP_PROTOCOL_VERSION,
@@ -84,6 +92,15 @@ from .sandbox_agent import (
     OpenAICompatLLMClient,
     SandboxAgent,
     ScriptedLLMClient,
+)
+from .subagent_delegator import (
+    DELEGATE_TOOL_NAME,
+    DELEGATE_TOOL_SCHEMA,
+    ReceiptStatus,
+    SubAgentDelegator,
+    SubAgentReceipt,
+    SubAgentTaskSpec,
+    parse_task_spec,
 )
 from .synthesizer import MACRO_PREFIX, SYNTHESIS_THRESHOLD, MacroSkillSynthesizer
 from .telemetry import (
@@ -208,6 +225,8 @@ async def build_ciel_layer(
 __all__ = [
     "BYPASS_THRESHOLD",
     "CIEL_EVENT_KINDS",
+    "DELEGATE_TOOL_NAME",
+    "DELEGATE_TOOL_SCHEMA",
     "GRAPH_EVENT_KIND",
     "HAVE_PYDANTIC",
     "JIT_TOP_K",
@@ -222,10 +241,12 @@ __all__ = [
     "REQUEST_ADDITIONAL_SKILL_SCHEMA",
     "SANDBOX_SYSTEM_PROMPT",
     "SYNTHESIS_THRESHOLD",
+    "AbortReason",
     "AgentResult",
     "AssistantMessage",
     "AutoEmbeddingProvider",
     "BaseModel",
+    "CancellationToken",
     "CielConfigError",
     "CielError",
     "CielFastMCPWrapper",
@@ -242,10 +263,13 @@ __all__ = [
     "EpisodeHit",
     "EpisodicMemoryStore",
     "EventBusGraphSubscriber",
+    "ExecutionAbortedError",
+    "ExecutionEnvironment",
     "GateDecision",
     "HashEmbeddingProvider",
     "InMemoryDAGStore",
     "LLMClient",
+    "LocalExecutionEnv",
     "MCPNodeClient",
     "MCPNodeConfig",
     "MCPNodeLoadResult",
@@ -259,6 +283,7 @@ __all__ = [
     "NoOpLLMClient",
     "OnnxEmbeddingProvider",
     "OpenAICompatLLMClient",
+    "ReceiptStatus",
     "RedisDAGStore",
     "RegistryFunctionExecutor",
     "RoutingMode",
@@ -267,6 +292,10 @@ __all__ = [
     "ScoredTool",
     "ScriptedLLMClient",
     "StdioMCPTransport",
+    "SubAgentDelegator",
+    "SubAgentReceipt",
+    "SubAgentTaskSpec",
+    "SubprocessExecutionEnv",
     "ToolCall",
     "ToolExecutor",
     "ToolNotExecutable",
@@ -288,6 +317,7 @@ __all__ = [
     "load_mcp_config",
     "macro_evolution_event",
     "node_id_for",
+    "parse_task_spec",
     "register_mcp_node",
     "register_recall_tool",
     "routing_event",
