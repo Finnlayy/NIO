@@ -180,17 +180,49 @@ class TestDispatcher(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(f"worker:{worker.uid}", self.locks.locks)
 
 
-    async def test_worktree_failure_cleans_up(self):
-        worker = Worker(uid="w1-1111-1111-1111", name="W1", status=WorkerStatus.IDLE)
-        await self.store.upsert_worker(worker)
-        task = KanbanTask(id="1", board_id="b1", title="T", status=TaskStatus.READY,
-                          workspace_repo=str(Path(self.tmp.name) / "kein-repo"))
+    async def test_routing_guard_for_repo_tasks(self):
+        # Setup: Ein Repo-Task
+        repo_path = Path(self.tmp.name) / "repo"
+        repo_path.mkdir()
+        # Erstelle echtes Git Repo in Fixture
+        subprocess.run(["git", "init", "-q"], cwd=repo_path, check=True)
+        (repo_path / "README.md").write_text("ok")
+        subprocess.run(["git", "add", "README.md"], cwd=repo_path, check=True)
+        subprocess.run(["git", "commit", "-m", "init"], cwd=repo_path, check=True)
+
+        task = KanbanTask(id="1", board_id="b1", title="T", status=TaskStatus.READY, workspace_repo=str(repo_path))
         await self.store.create_task(task)
 
-        await self.dispatcher.tick(wait=True)
+        # Worker 1: LLM (darf Repo-Tasks nicht)
+        w_llm = Worker(uid="w_llm", name="W_LLM", status=WorkerStatus.IDLE, soul_md="---\nruntime: llm\n---\n")
+        # Worker 2: Opencode (darf)
+        w_oc = Worker(uid="w_oc", name="W_OC", status=WorkerStatus.IDLE, soul_md="---\nruntime: opencode\n---\n")
+        await self.store.upsert_worker(w_llm)
+        await self.store.upsert_worker(w_oc)
+
+        # Tick
+        report = await self.dispatcher.tick()
+        self.assertEqual(report.assigned, 1)
+
+        # Pruefe ob W_OC zugewiesen wurde
+        t2 = await self.store.get_task(task.id)
+        self.assertEqual(t2.assigned_worker_uid, "w_oc")
+
+    async def test_routing_guard_no_candidates_remains_ready(self):
+        # Setup: Ein Repo-Task
+        repo_path = Path(self.tmp.name) / "repo2"
+        repo_path.mkdir()
+        
+        task = KanbanTask(id="2", board_id="b1", title="T2", status=TaskStatus.READY, workspace_repo=str(repo_path))
+        await self.store.create_task(task)
+
+        # Nur LLM-Worker vorhanden
+        w_llm = Worker(uid="w_llm", name="W_LLM", status=WorkerStatus.IDLE, soul_md="---\nruntime: llm\n---\n")
+        await self.store.upsert_worker(w_llm)
+
+        # Tick
+        report = await self.dispatcher.tick()
+        self.assertEqual(report.assigned, 0)
 
         t2 = await self.store.get_task(task.id)
         self.assertEqual(t2.status, TaskStatus.READY)
-        self.assertEqual(t2.attempts, 1)
-        self.assertEqual((await self.store.get_worker(worker.uid)).status, WorkerStatus.IDLE)
-        self.assertEqual(self.locks.locks, {})
