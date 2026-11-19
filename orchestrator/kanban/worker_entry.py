@@ -337,6 +337,9 @@ def _run_opencode(soul_md: str, task: dict[str, Any], work_dir: Path) -> tuple[s
         return "failed", "opencode_timeout", payload
     if proc.returncode != 0:
         return "failed", f"opencode_exit_{proc.returncode}", payload
+    # Hollow-Completion-Guard: Exit 0 ohne Commit und ohne Tools bei Repo-Tasks ist kein Erfolg
+    if task.get("workspace_repo") and not payload["committed"] and not payload["tools"]:
+        return "blocked", "hollow_completion", payload
     return "completed", "", payload
 
 
