@@ -1,0 +1,17 @@
+[Unit]
+Description=NIO Apollo (Produktions-Build)
+After=nio-kanban.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+WorkingDirectory=@ROOT@/frontend
+EnvironmentFile=%h/.config/nio/nio.env
+Environment=NODE_ENV=production
+ExecStart=@NPX@ next start -H 127.0.0.1 -p 4001
+Restart=on-failure
+RestartSec=5
+MemoryMax=1500M
+
+[Install]
+WantedBy=default.target

@@ -1,6 +1,7 @@
 import asyncio
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from core.protocol import utc_now_iso
@@ -79,6 +80,14 @@ class TestVault(unittest.TestCase):
         self.assertEqual(history_content, "- 2024-01-01 line 1\n- 2024-01-02 line 2\n")
 
         # Write task
+        self.vault.write_task(self.task)
+        self.assertNotIn("## Ergebnis", (self.vault.root / "tasks" / f"task-{self.task.id}.md").read_text(encoding="utf-8"))
+
+        done = replace(self.task, result_payload={"stdout": "fertig", "proposed_soul": {"content": "x"}})
+        self.vault.write_task(done)
+        note = (self.vault.root / "tasks" / f"task-{self.task.id}.md").read_text(encoding="utf-8")
+        self.assertIn('"stdout": "fertig"', note)
+        self.assertNotIn("proposed_soul", note)
         self.vault.write_task(self.task)
         self.assertTrue((self.root / "tasks" / "task-t-1234567890ab.md").exists())
 

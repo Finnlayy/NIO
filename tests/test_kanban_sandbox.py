@@ -9,6 +9,7 @@ import shutil
 import tempfile
 import time
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from orchestrator.kanban.config import KanbanConfig
@@ -77,6 +78,12 @@ class TestKanbanSandbox(unittest.TestCase):
     def _write_soul(self, runtime: str, extra: str = "") -> None:
         content = f"---\nruntime: {runtime}\n{extra}---\n\n## Core Skills\n- Python\n"
         (self.in_dir / "SOUL.md").write_text(content, encoding="utf-8")
+
+    def test_no_new_privileges_ist_standard_und_abschaltbar(self) -> None:
+        self.assertIn("no-new-privileges", DockerSandbox.build_argv(self.spec, self.config))
+        off = replace(self.config, docker_no_new_privileges=False)
+        self.assertNotIn("no-new-privileges", DockerSandbox.build_argv(self.spec, off))
+        self.assertFalse(KanbanConfig.from_env({"NIO_KANBAN_DOCKER_NO_NEW_PRIVILEGES": "0"}).docker_no_new_privileges)
 
     def test_docker_build_argv(self) -> None:
         argv = DockerSandbox.build_argv(self.spec, self.config)

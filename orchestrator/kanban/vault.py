@@ -7,6 +7,7 @@ seine Historie, seine Seele und seine Erfahrungen abgelegt sind.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -118,6 +119,10 @@ class ObsidianVault:
 
         if task.assigned_worker_uid:
             lines.append(f"- Worker: [[{task.assigned_worker_uid}]]")
+
+        result = {key: value for key, value in (task.result_payload or {}).items() if key != "proposed_soul"}
+        if result:
+            lines += ["", "## Ergebnis", "", "```json", json.dumps(result, ensure_ascii=False, indent=2), "```"]
 
         lines.append("")
 
