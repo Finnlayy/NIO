@@ -57,6 +57,10 @@ class KanbanConfig:
     memory: str = "512m"
     pids_limit: int = 256
     network: str = "none"
+    # OpenCode-Worker: eigenes Image und internes Netz (``docker network create --internal``),
+    # dessen einziger Ausgang der model-relay auf freellmapi:3001 und ollama:11434 ist.
+    opencode_image: str = "nio-opencode-worker:latest"
+    opencode_network: str = "nio-opencode-model"
     docker_bin: str = "docker"
     # Nur abschalten, wenn das Image keine Setuid-Dateien hat: Snap-Docker bricht damit schon ``exec`` ab.
     docker_no_new_privileges: bool = True
@@ -105,6 +109,8 @@ class KanbanConfig:
             memory=e.get("NIO_KANBAN_MEMORY", "512m"),
             pids_limit=_int(e, "NIO_KANBAN_PIDS", 256),
             network=e.get("NIO_KANBAN_NETWORK", "none"),
+            opencode_image=e.get("NIO_KANBAN_OPENCODE_IMAGE", "nio-opencode-worker:latest").strip() or "nio-opencode-worker:latest",
+            opencode_network=e.get("NIO_KANBAN_OPENCODE_NETWORK", "nio-opencode-model").strip() or "nio-opencode-model",
             docker_bin=e.get("NIO_KANBAN_DOCKER_BIN", "docker"),
             docker_no_new_privileges=e.get("NIO_KANBAN_DOCKER_NO_NEW_PRIVILEGES", "1").strip() != "0",
             tick_s=_float(e, "NIO_KANBAN_TICK_S", 2.0),
