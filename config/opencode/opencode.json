@@ -1,0 +1,68 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "ollama/qwen2.5-coder:latest",
+  "autoupdate": false,
+  "share": "disabled",
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama (lokal, ueber model-relay)",
+      "options": {
+        "baseURL": "http://nio-model-relay:11434/v1",
+        "apiKey": "ollama"
+      },
+      "models": {
+        "qwen2.5-coder:latest": { "name": "qwen2.5-coder" },
+        "llama3.1:8b": { "name": "llama3.1:8b" }
+      }
+    },
+    "freellmapi": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "freellmapi (ueber model-relay)",
+      "options": {
+        "baseURL": "http://nio-model-relay:3001/v1",
+        "apiKey": "{env:FREELLMAPI_KEY}"
+      },
+      "models": {}
+    }
+  },
+  "permission": {
+    "edit": {
+      "*": "allow",
+      "runtime/**": "deny",
+      ".git/**": "deny",
+      "**/.env": "deny",
+      "**/.env.*": "deny"
+    },
+    "read": {
+      "*": "allow",
+      "**/.env": "deny",
+      "**/.env.*": "deny",
+      "runtime/**": "deny"
+    },
+    "bash": {
+      "*": "deny",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "git add *": "allow",
+      "git commit *": "allow",
+      "git push*": "deny",
+      "git remote*": "deny",
+      "git config*": "deny",
+      "ls*": "allow",
+      "python3 -m pytest*": "allow",
+      "python3 -m unittest*": "allow"
+    },
+    "webfetch": "deny",
+    "external_directory": "deny",
+    "doom_loop": "deny"
+  },
+  "mcp": {
+    "vault": {
+      "type": "local",
+      "command": ["python3", "/nio/mcp/scripts/vault_mcp.py"],
+      "enabled": true
+    }
+  }
+}

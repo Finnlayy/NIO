@@ -267,6 +267,35 @@ class LLMRequestSandbox(SubprocessSandbox):
     _runtime = "llm"
 
 
+def _runtime_of(spec: SandboxSpec) -> str:
+    """Runtime aus dem SOUL-Frontmatter, klein geschrieben; Standard ``noop``."""
+    from orchestrator.kanban.soul import parse_soul
+
+    return str(parse_soul(spec.worker.soul_md).frontmatter.get("runtime", "noop")).strip().lower()
+
+
+def _opencode_mounts(config: KanbanConfig) -> list[str]:
+    """Docker-Argumente für OpenCode: Konfiguration, Vault-MCP und Vault, alles nur lesend.
+
+    Der Vault-MCP (``scripts/vault_mcp.py``) braucht ``core/`` und ``limbs/`` aus dem Repo.
+    Der Vault wird nur eingebunden, wenn er existiert; sonst legt Docker einen leeren Ordner an.
+    """
+    root = config.repo_root
+    argv = [
+        "-v",
+        f"{root / 'config' / 'opencode' / 'opencode.json'}:/nio/opencode/opencode.json:ro",
+        "-v",
+        f"{root / 'scripts' / 'vault_mcp.py'}:/nio/mcp/scripts/vault_mcp.py:ro",
+        "-v",
+        f"{root / 'core'}:/nio/mcp/core:ro",
+        "-v",
+        f"{root / 'limbs'}:/nio/mcp/limbs:ro",
+    ]
+    if config.vault_dir.is_dir():
+        argv.extend(["-v", f"{config.vault_dir}:/nio/vault:ro", "-e", "NIO_OBSIDIAN_VAULT=/nio/vault"])
+    return argv
+
+
 class DockerSandbox(_ProcessSandbox):
     """Sandbox ueber Docker mit CPU/RAM/PIDs-Limits und Isolation."""
 
@@ -279,6 +308,13 @@ class DockerSandbox(_ProcessSandbox):
         run_dir = spec.run_dir
         uid = spec.worker.uid
         run_id = spec.run_id
+
+        # Nur OpenCode bekommt Image und Netz aus der Opencode-Konfiguration; llm und noop bleiben bei ``none``.
+        opencode = _runtime_of(spec) == "opencode"
+        network = config.opencode_network if opencode else config.network
+        image = config.opencode_image if opencode else spec.image
+        if opencode and network in ("", "none", "host", "bridge"):
+            raise ValueError("opencode_network_must_be_internal")
 
         pkg_dir = Path(__file__).parent.resolve()
         worker_script = pkg_dir / "worker_entry.py"
@@ -306,13 +342,14 @@ class DockerSandbox(_ProcessSandbox):
             "--user",
             "1000:1000",
             "--network",
-            config.network,
+            network,
         ]
 
         if config.docker_no_new_privileges:
             argv.extend(["--security-opt", "no-new-privileges"])
 
-        if config.network != "none":
+        # OpenCode erreicht nur das interne Netz mit dem model-relay, kein Host-Gateway.
+        if not opencode and config.network != "none":
             argv.extend(["--add-host", "host.docker.internal:host-gateway"])
 
         argv.extend(
@@ -347,9 +384,12 @@ class DockerSandbox(_ProcessSandbox):
         for k in spec.secrets:
             argv.extend(["-e", k])
 
+        if opencode:
+            argv.extend(_opencode_mounts(config))
+
         argv.extend(
             [
-                spec.image,
+                image,
                 "python3",
                 "/nio/bin/worker_entry.py",
             ]
