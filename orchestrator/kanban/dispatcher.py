@@ -139,6 +139,11 @@ class Dispatcher:
                 # Worker Wahl
                 candidates = []
                 for w in available_workers:
+                    # Routing-Guard: Worker mit runtime "llm" oder "noop" koennen keine Repo-Tasks ausfuehren
+                    if task.workspace_repo:
+                        soul_runtime = parse_soul(w.soul_md).frontmatter.get("runtime", "").lower()
+                        if soul_runtime in {"llm", "noop"}:
+                            continue
                     if set(task.required_skills) <= set(w.skills):
                         candidates.append(w)
 
