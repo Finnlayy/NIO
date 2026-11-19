@@ -26,15 +26,25 @@ from dataclasses import dataclass, field
 from typing import Any, Final, Protocol, TypeVar
 
 from .bus import emit
+from .compactor import FETCH_BLOB_SCHEMA, FETCH_BLOB_TOOL_NAME, MicroCompactor, fetch_blob
 from .dag_state import DAGStateManager, TurnStatus
 from .execution_env import AbortReason, CancellationToken, ExecutionAbortedError, LocalExecutionEnv
 from .memory_tier import WorkingMemoryPin
 from .models import AgentResult, AssistantMessage, ToolCall, ToolResult
 from .ncm_gate import JIT_TOP_K, NCMGate, RegistryFunctionExecutor, ToolExecutor
 from .policy_gate import PolicyDecision, PolicyVerdictCode, PreExecutionPolicyEngine
+from .procedural_skills import (
+    LOAD_SKILL_SCHEMA,
+    LOAD_SKILL_TOOL_NAME,
+    ProceduralSkillRegistry,
+    load_skill_payload,
+)
 from .registry import ColdStorageRegistry, cluster_for, node_id_for
 from .subagent_delegator import DELEGATE_TOOL_NAME, DELEGATE_TOOL_SCHEMA
 from .telemetry import NODE_WARM, CielTelemetryPublisher, jit_reload_event
+
+#: Ab welchem LLM-Turn die Micro-Compaction vor jedem Call greift (NIO Phase 5).
+COMPACTION_FROM_TURN: Final[int] = 2
 
 T = TypeVar("T")
 
@@ -221,6 +231,8 @@ class SandboxAgent:
         delegator: TaskDelegator | None = None,
         tool_scope: Sequence[str] | None = None,
         call_filter: Callable[[ToolCall], str | None] | None = None,
+        compactor: MicroCompactor | None = None,
+        skill_registry: ProceduralSkillRegistry | None = None,
     ) -> None:
         self._registry = registry
         self._gate = gate or NCMGate(registry, event_bus=event_bus)
@@ -239,6 +251,10 @@ class SandboxAgent:
         self._delegator = delegator
         self._scope: tuple[str, ...] | None = None if tool_scope is None else tuple(dict.fromkeys(tool_scope))
         self._call_filter = call_filter
+        #: Micro-Compaction älterer Tool-Ergebnisse (ab Turn 2) und Blob-Zugriff über ``fetch_blob``.
+        self._compactor = compactor
+        #: Prozedurale Skills; aktiviert das Meta-Tool ``load_skill``.
+        self._skills = skill_registry
         #: Laufende Abbruchsignale je Session (für :meth:`abort`).
         self._tokens: dict[str, list[CancellationToken]] = {}
 
@@ -312,6 +328,10 @@ class SandboxAgent:
         tools.append(dict(REQUEST_ADDITIONAL_SKILL_SCHEMA))
         if self._delegator is not None:
             tools.append(dict(DELEGATE_TOOL_SCHEMA))
+        if self._skills is not None:
+            tools.append(dict(LOAD_SKILL_SCHEMA))
+        if self._compactor is not None:
+            tools.append(dict(FETCH_BLOB_SCHEMA))
         return {
             "system": SANDBOX_SYSTEM_PROMPT,
             "messages": [
@@ -491,9 +511,10 @@ class SandboxAgent:
 
     async def _call_llm(self, run: _RunState, payload: Mapping[str, Any]) -> AssistantMessage | None:
         """Ruft das LLM gegen das Abbruchsignal auf. ``None`` bei Abbruch; Fehler propagieren."""
+        messages = await self._llm_messages(run)
         call = self._llm.complete(
             system=str(payload["system"]),
-            messages=self._llm_messages(run),
+            messages=messages,
             tools=list(payload["tools"]),
             token=run.token,
         )
@@ -503,12 +524,18 @@ class SandboxAgent:
             return None
         return answer if completed else None
 
-    def _llm_messages(self, run: _RunState) -> list[dict[str, Any]]:
-        """Nachrichten für das LLM: Verlauf, danach der Working-Memory-Pin als letzte Message (nie gespeichert)."""
+    async def _llm_messages(self, run: _RunState) -> list[dict[str, Any]]:
+        """Nachrichten für das LLM: Verlauf (ab Turn 2 kompaktiert), danach der Working-Memory-Pin als letzte Message (nie gespeichert).
+
+        Die Kompaktion wirkt nur auf die LLM-Sicht; der gespeicherte Verlauf bleibt vollständig.
+        """
+        messages = list(run.messages)
+        if self._compactor is not None and run.turns >= COMPACTION_FROM_TURN:
+            messages = await self._compactor.compact(messages, session_id=run.session_id)
         pin_text = self._pin.render(run.state)
         if not pin_text:
-            return list(run.messages)
-        return [*run.messages, {"role": "system", "content": f"working_memory:\n{pin_text}"}]
+            return messages
+        return [*messages, {"role": "system", "content": f"working_memory:\n{pin_text}"}]
 
     async def _finish(self, run: _RunState) -> AgentResult:
         """Schließt den Lauf ab. Mit DAG wird der Turn committet: LLM-Fehler → FAILED, ohne Antwort → ABORTED_CLEAN."""
@@ -629,8 +656,8 @@ class SandboxAgent:
             if run.token.cancelled:
                 return "aborted"
             call = run.turn_calls[0]
-            if call.name == META_TOOL_NAME:
-                meta_result = await self._handle_meta_request(call, run.loaded)
+            if call.name == META_TOOL_NAME or self._is_local_meta(call.name):
+                meta_result = await self._handle_local_meta(call, run)
                 run.results.append(meta_result)
                 run.messages.append(
                     {
@@ -818,6 +845,87 @@ class SandboxAgent:
         else:
             emit(self._bus, "ciel.sandbox.tool_call", {"tool": call.name, "ok": False, "error": result.error})
         return result
+
+    def _is_local_meta(self, name: str) -> bool:
+        """Meta-Tools, die der Agent selbst ausführt (nur wenn verdrahtet): ``load_skill`` und ``fetch_blob``."""
+        if name == LOAD_SKILL_TOOL_NAME:
+            return self._skills is not None
+        if name == FETCH_BLOB_TOOL_NAME:
+            return self._compactor is not None
+        return False
+
+    async def _handle_local_meta(self, call: ToolCall, run: _RunState) -> ToolResult:
+        """Dispatch der lokalen Meta-Tools. ``request_additional_skill`` bleibt bei :meth:`_handle_meta_request`."""
+        if call.name == LOAD_SKILL_TOOL_NAME:
+            return await self._handle_load_skill(call, run.loaded)
+        if call.name == FETCH_BLOB_TOOL_NAME:
+            return await self._handle_fetch_blob(call, run)
+        return await self._handle_meta_request(call, run.loaded)
+
+    async def _handle_load_skill(self, call: ToolCall, loaded: list[str]) -> ToolResult:
+        """Lädt ein Playbook in den Buffer und aktiviert dessen Tools vorne im MRU-Fenster.
+
+        Tools außerhalb des Registry-Bestands oder außerhalb von ``tool_scope`` werden nicht aktiviert
+        und im Ergebnis als ``missing`` gemeldet. Der ≤3-Deckel des Prompt-Fensters gilt weiter.
+        """
+        started = time.monotonic()
+        skill_id = call.arguments.get("skill_id", "")
+        if self._skills is None or not isinstance(skill_id, str) or not skill_id.strip():
+            return ToolResult(
+                call_id=call.id,
+                name=call.name,
+                ok=False,
+                error="load_skill braucht 'skill_id' (str) und eine Skill-Registry.",
+                elapsed_s=time.monotonic() - started,
+            )
+        payload = load_skill_payload(self._skills, skill_id)
+        if payload is None:
+            return ToolResult(
+                call_id=call.id,
+                name=call.name,
+                ok=False,
+                error=f"Unbekannter Skill {skill_id!r}.",
+                elapsed_s=time.monotonic() - started,
+            )
+        required = [str(t) for t in payload["required_tools"]]
+        activated = [t for t in required if t in self._registry and (self._scope is None or t in self._scope)]
+        missing = [t for t in required if t not in activated]
+        for name in activated:
+            if name in loaded:
+                loaded.remove(name)
+        loaded[:0] = activated
+        del loaded[32:]
+        emit(self._bus, "ciel.sandbox.skill_loaded", {"skill_id": skill_id, "tools": activated, "missing": missing})
+        return ToolResult(
+            call_id=call.id,
+            name=call.name,
+            ok=True,
+            result={"skill_id": skill_id, "playbook": payload["playbook"], "activated": activated, "missing": missing},
+            elapsed_s=time.monotonic() - started,
+        )
+
+    async def _handle_fetch_blob(self, call: ToolCall, run: _RunState) -> ToolResult:
+        """Holt das Original eines kompaktierten Ergebnisses. Nur Referenzen der eigenen Session sind zulässig."""
+        started = time.monotonic()
+        blob_ref = call.arguments.get("blob_ref", "")
+        content = None
+        if self._compactor is not None and isinstance(blob_ref, str):
+            content = await fetch_blob(self._compactor.blob_store, blob_ref, session_id=run.session_id)
+        if content is None:
+            return ToolResult(
+                call_id=call.id,
+                name=call.name,
+                ok=False,
+                error="fetch_blob: Blob unbekannt oder nicht in dieser Session.",
+                elapsed_s=time.monotonic() - started,
+            )
+        return ToolResult(
+            call_id=call.id,
+            name=call.name,
+            ok=True,
+            result={"blob_ref": blob_ref, "content": content},
+            elapsed_s=time.monotonic() - started,
+        )
 
     async def _handle_meta_request(self, call: ToolCall, loaded: list[str]) -> ToolResult:
         """Behandelt ``request_additional_skill``: lädt JIT genau ein weiteres Schema nach."""
