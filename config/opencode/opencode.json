@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "ollama/llama3.1:8b",
+  "model": "ollama/qwen2.5:7b-instruct",
   "autoupdate": false,
   "share": "disabled",
   "provider": {
@@ -13,7 +13,8 @@
       },
       "models": {
         "qwen2.5-coder:latest": { "name": "qwen2.5-coder (Base, ohne native Tool-Calls)" },
-        "llama3.1:8b": { "name": "llama3.1:8b", "tool_call": true }
+        "llama3.1:8b": { "name": "llama3.1:8b (Tool-Calls unzuverlaessig)", "tool_call": true },
+        "qwen2.5:7b-instruct": { "name": "qwen2.5:7b-instruct", "tool_call": true }
       }
     },
     "freellmapi": {
