@@ -8,26 +8,38 @@ mitgegebene Meta-Tool ist ``request_additional_skill`` zum JIT-Nachladen.
 Sandbox-Safety (Pflichtregel 3): Jeder Tool-Aufruf ist mit striktem
 ``asyncio.wait_for(..., timeout=...)`` gekapselt — ein hängendes Tool
 blockiert niemals den Apollo-Event-Loop.
+
+NIO Phase 3: Jeder Lauf hat ein :class:`CancellationToken`. Abbruch während
+LLM- oder Tool-Aufruf beendet die Schleife sofort; der Turn wird als
+``ABORTED_CLEAN`` committet, nur mit vollständigen Assistant/Tool-Paaren.
+Mit ``delegator`` wird das Meta-Tool ``delegate_task`` angeboten.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Final, Protocol
+from typing import Any, Final, Protocol, TypeVar
 
 from .bus import emit
 from .dag_state import DAGStateManager, TurnStatus
-from .errors import ToolNotExecutable, ToolNotFound
+from .execution_env import AbortReason, CancellationToken, ExecutionAbortedError, LocalExecutionEnv
 from .memory_tier import WorkingMemoryPin
 from .models import AgentResult, AssistantMessage, ToolCall, ToolResult
 from .ncm_gate import JIT_TOP_K, NCMGate, RegistryFunctionExecutor, ToolExecutor
 from .policy_gate import PolicyDecision, PolicyVerdictCode, PreExecutionPolicyEngine
 from .registry import ColdStorageRegistry, cluster_for, node_id_for
+from .subagent_delegator import DELEGATE_TOOL_NAME, DELEGATE_TOOL_SCHEMA
 from .telemetry import NODE_WARM, CielTelemetryPublisher, jit_reload_event
+
+T = TypeVar("T")
+
+#: Markierung der finalen Antwort eines abgebrochenen Laufs.
+ABORTED_MARKER: Final[str] = "[ABORTED_CLEAN]"
 
 #: Fest im Code hinterlegter System-Prompt des Sandbox-Agenten.
 SANDBOX_SYSTEM_PROMPT: Final[str] = """You are Ciel, an isolated sandbox sub-agent of the NIO/Apollo orchestrator.
@@ -68,7 +80,12 @@ REQUEST_ADDITIONAL_SKILL_SCHEMA: Final[dict[str, Any]] = {
 
 
 class LLMClient(Protocol):
-    """Schnittstelle zum LLM (wird von außen verdrahtet, z. B. FreeLLMAPI-Proxy)."""
+    """Schnittstelle zum LLM (wird von außen verdrahtet, z. B. FreeLLMAPI-Proxy).
+
+    ``token`` ist das Abbruchsignal des Laufs. Implementierungen sollen bei Abbruch
+    zeitnah mit :class:`ExecutionAbortedError` zurückkehren; der Agent racet den Aufruf
+    zusätzlich selbst gegen das Token.
+    """
 
     async def complete(
         self,
@@ -76,7 +93,22 @@ class LLMClient(Protocol):
         system: str,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
+        token: CancellationToken | None = None,
     ) -> AssistantMessage: ...
+
+
+class TaskDelegator(Protocol):
+    """Führt ``delegate_task``-Aufträge aus (siehe :mod:`.subagent_delegator`)."""
+
+    async def delegate(
+        self,
+        arguments: Mapping[str, Any],
+        *,
+        parent_state: Mapping[str, Any],
+        parent_token: CancellationToken,
+        session_id: str,
+        strategy_id: str = "default",
+    ) -> Any: ...
 
 
 class NoOpLLMClient:
@@ -86,8 +118,15 @@ class NoOpLLMClient:
         self._content = content
         self.calls = 0
 
-    async def complete(self, *, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> AssistantMessage:
-        _ = (system, messages, tools)
+    async def complete(
+        self,
+        *,
+        system: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        token: CancellationToken | None = None,
+    ) -> AssistantMessage:
+        _ = (system, messages, tools, token)
         self.calls += 1
         return AssistantMessage(content=self._content, tool_calls=[])
 
@@ -102,8 +141,15 @@ class ScriptedLLMClient:
         self.calls = 0
         self.seen_tools: list[list[str]] = []
 
-    async def complete(self, *, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> AssistantMessage:
-        _ = (system, messages)
+    async def complete(
+        self,
+        *,
+        system: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        token: CancellationToken | None = None,
+    ) -> AssistantMessage:
+        _ = (system, messages, token)
         self.calls += 1
         self.seen_tools.append([str(t.get("name", "?")) for t in tools])
         if not self._script:
@@ -136,6 +182,10 @@ class _RunState:
     committed_upto: int = 0
     #: Index in ``results``, ab dem noch keine Tool-Ergebnisse committet wurden.
     committed_results: int = 0
+    #: Index des Assistant-Eintrags des laufenden Turns in ``messages``; -1 ohne laufenden Turn.
+    turn_start: int = -1
+    #: Abbruchsignal des Laufs. Wird nicht serialisiert; nach einem Resume gilt ein neues Token.
+    token: CancellationToken = field(default_factory=CancellationToken)
 
 
 class SandboxAgent:
@@ -148,6 +198,10 @@ class SandboxAgent:
     Ein Lauf auf Freigabe steht dann im Knoten ``WAITING_APPROVAL`` und
     übersteht den Neuaufbau des Agenten. Ohne DAG bleibt das In-Memory-Dict
     aus Phase 1 die Quelle.
+
+    ``tool_scope`` begrenzt Sichtbarkeit und Ausführung auf eine feste Werkzeugmenge
+    (Sub-Agent). ``call_filter`` ist ein Vorab-Filter vor der Policy und liefert eine
+    Ablehnungsbegründung oder ``None``. ``delegator`` bietet ``delegate_task`` an.
     """
 
     def __init__(
@@ -164,6 +218,9 @@ class SandboxAgent:
         policy_engine: PreExecutionPolicyEngine | None = None,
         dag_manager: DAGStateManager | None = None,
         working_pin: WorkingMemoryPin | None = None,
+        delegator: TaskDelegator | None = None,
+        tool_scope: Sequence[str] | None = None,
+        call_filter: Callable[[ToolCall], str | None] | None = None,
     ) -> None:
         self._registry = registry
         self._gate = gate or NCMGate(registry, event_bus=event_bus)
@@ -179,6 +236,11 @@ class SandboxAgent:
         self._pin = working_pin if working_pin is not None else WorkingMemoryPin()
         #: Auf Freigabe wartende Läufe ohne DAG, Schlüssel ist die Ticket-ID.
         self._pending: dict[str, _RunState] = {}
+        self._delegator = delegator
+        self._scope: tuple[str, ...] | None = None if tool_scope is None else tuple(dict.fromkeys(tool_scope))
+        self._call_filter = call_filter
+        #: Laufende Abbruchsignale je Session (für :meth:`abort`).
+        self._tokens: dict[str, list[CancellationToken]] = {}
 
     @property
     def registry(self) -> ColdStorageRegistry:
@@ -200,6 +262,33 @@ class SandboxAgent:
     def dag(self) -> DAGStateManager | None:
         return self._dag
 
+    # -- Abbruch ------------------------------------------------------------
+
+    def abort(
+        self,
+        session_id: str,
+        reason: AbortReason | str = AbortReason.USER_ABORT,
+        detail: str = "",
+    ) -> int:
+        """Bricht alle laufenden Läufe der Session ab. Gibt die Anzahl der Abbruchsignale zurück."""
+        tokens = list(self._tokens.get(session_id, ()))
+        for token in tokens:
+            token.cancel(reason, detail)
+        return len(tokens)
+
+    @contextlib.contextmanager
+    def _tracked(self, session_id: str, token: CancellationToken) -> Iterator[None]:
+        """Hält das Token eines laufenden Laufs in der Registry, solange der Lauf aktiv ist."""
+        self._tokens.setdefault(session_id, []).append(token)
+        try:
+            yield
+        finally:
+            active = self._tokens.get(session_id, [])
+            if token in active:
+                active.remove(token)
+            if not active:
+                self._tokens.pop(session_id, None)
+
     # -- Prompt-Aufbau -----------------------------------------------------
 
     def build_prompt_payload(
@@ -212,11 +301,17 @@ class SandboxAgent:
 
         Garantie (TDD-verifiziert): Bei beliebig vielen registrierten Tools
         landen höchstens ``JIT_TOP_K`` Skill-Schemas plus exakt ein Meta-Tool
-        im Payload.
+        im Payload. Mit ``delegator`` kommt ``delegate_task`` als weiteres Meta-Tool dazu.
+        Mit ``tool_scope`` landen nur freigegebene Tools im Payload.
         """
-        names = list(injected_tools or [])[:JIT_TOP_K]
+        names = list(injected_tools or [])
+        if self._scope is not None:
+            names = [name for name in names if name in self._scope]
+        names = names[:JIT_TOP_K]
         tools = self._registry.to_prompt_schemas(names)
         tools.append(dict(REQUEST_ADDITIONAL_SKILL_SCHEMA))
+        if self._delegator is not None:
+            tools.append(dict(DELEGATE_TOOL_SCHEMA))
         return {
             "system": SANDBOX_SYSTEM_PROMPT,
             "messages": [
@@ -238,6 +333,7 @@ class SandboxAgent:
         event_payload: Mapping[str, Any] | None = None,
         session_id: str | None = None,
         strategy_id: str = "default",
+        token: CancellationToken | None = None,
     ) -> AgentResult:
         """Führt einen Intent aus: Gate → (Bypass | JIT-Agentenschleife).
 
@@ -268,7 +364,35 @@ class SandboxAgent:
             )
         loaded: list[str] = list(decision.top_tools)[:JIT_TOP_K]
         return await self._reasoning_loop(
-            intent, current_state, loaded, decision.error, session_id=session, strategy_id=strategy_id
+            intent,
+            current_state,
+            loaded,
+            decision.error,
+            session_id=session,
+            strategy_id=strategy_id,
+            token=token,
+        )
+
+    async def run_scoped(
+        self,
+        intent: str,
+        state: Mapping[str, Any] | None = None,
+        *,
+        token: CancellationToken | None = None,
+        session_id: str | None = None,
+        strategy_id: str = "default",
+    ) -> AgentResult:
+        """Lauf mit fester Werkzeugmenge (``tool_scope``) ohne NCM-Gate. Für Sub-Agenten."""
+        session = session_id or uuid.uuid4().hex
+        loaded = list(self._scope or ())[:JIT_TOP_K]
+        return await self._reasoning_loop(
+            intent,
+            dict(state or {}),
+            loaded,
+            "",
+            session_id=session,
+            strategy_id=strategy_id,
+            token=token,
         )
 
     async def _reasoning_loop(
@@ -280,6 +404,7 @@ class SandboxAgent:
         *,
         session_id: str,
         strategy_id: str,
+        token: CancellationToken | None = None,
     ) -> AgentResult:
         messages: list[dict[str, Any]] = [
             {"role": "user", "content": intent},
@@ -292,6 +417,7 @@ class SandboxAgent:
             messages=messages,
             session_id=session_id,
             strategy_id=strategy_id,
+            token=token if token is not None else CancellationToken(),
         )
         return await self._advance(run)
 
@@ -318,36 +444,64 @@ class SandboxAgent:
         return await self._advance(run, first_ticket=ticket_id)
 
     async def _advance(self, run: _RunState, *, first_ticket: str | None = None) -> AgentResult:
-        """Setzt die Agentenschleife fort: zuerst Reststücke des Turns, dann neue LLM-Turns."""
+        """Registriert das Token der Session und setzt die Agentenschleife fort."""
+        with self._tracked(run.session_id, run.token):
+            return await self._advance_loop(run, first_ticket=first_ticket)
+
+    async def _advance_loop(self, run: _RunState, *, first_ticket: str | None = None) -> AgentResult:
+        """Arbeitet Reststücke des Turns ab, danach neue LLM-Turns. Abbruch hat Vorrang."""
         if run.turn_calls:
-            if await self._process_calls(run, first_ticket=first_ticket):
+            step = await self._process_calls(run, first_ticket=first_ticket)
+            if step == "waiting":
                 return await self._suspend(run)
+            if step == "aborted":
+                return await self._abort(run)
             self._close_turn(run)
         while run.turns < self._max_turns:
+            if run.token.cancelled:
+                return await self._abort(run)
             run.turns += 1
             payload = self.build_prompt_payload(run.intent, run.state, run.loaded)
             try:
-                answer = await self._llm.complete(
-                    system=payload["system"], messages=self._llm_messages(run), tools=payload["tools"]
-                )
+                answer = await self._call_llm(run, payload)
             except Exception as exc:
                 run.errors.append(f"llm_error: {exc}")
                 break
+            if answer is None:
+                return await self._abort(run)
             run.llm_calls += 1
             emit(self._bus, "ciel.sandbox.turn", {"turn": run.turns, "tool_calls": len(answer.tool_calls)})
             if not answer.tool_calls:
                 run.final_answer = answer.content
                 break
+            run.turn_start = len(run.messages)
             run.messages.append(
                 {"role": "assistant", "content": answer.content, "tool_calls": [c.model_dump() for c in answer.tool_calls]}
             )
             run.turn_calls = list(answer.tool_calls)
             run.turn_content = answer.content
             run.turn_meta_ok = False
-            if await self._process_calls(run):
+            step = await self._process_calls(run)
+            if step == "waiting":
                 return await self._suspend(run)
+            if step == "aborted":
+                return await self._abort(run)
             self._close_turn(run)
         return await self._finish(run)
+
+    async def _call_llm(self, run: _RunState, payload: Mapping[str, Any]) -> AssistantMessage | None:
+        """Ruft das LLM gegen das Abbruchsignal auf. ``None`` bei Abbruch; Fehler propagieren."""
+        call = self._llm.complete(
+            system=str(payload["system"]),
+            messages=self._llm_messages(run),
+            tools=list(payload["tools"]),
+            token=run.token,
+        )
+        try:
+            completed, answer = await _race_abort(call, run.token)
+        except ExecutionAbortedError:
+            return None
+        return answer if completed else None
 
     def _llm_messages(self, run: _RunState) -> list[dict[str, Any]]:
         """Nachrichten für das LLM: Verlauf, danach der Working-Memory-Pin als letzte Message (nie gespeichert)."""
@@ -375,6 +529,58 @@ class SandboxAgent:
             llm_calls=run.llm_calls,
             turns=run.turns,
         )
+
+    async def _abort(self, run: _RunState) -> AgentResult:
+        """Beendet den Lauf nach Abbruch: unvollständige Turns werden entfernt, der Rest als ``ABORTED_CLEAN`` committet."""
+        reason = run.token.reason.value if run.token.reason is not None else AbortReason.USER_ABORT.value
+        if run.turn_calls:
+            self._trim_incomplete_turn(run)
+        run.turn_calls = []
+        run.turn_content = ""
+        run.turn_meta_ok = False
+        run.final_answer = ABORTED_MARKER
+        run.errors.append(f"ABORTED:{reason}")
+        if self._dag is not None:
+            await self._checkpoint(run, TurnStatus.ABORTED_CLEAN)
+        return AgentResult(
+            path="system2_jit",
+            final_answer=run.final_answer,
+            tool_calls=run.called,
+            tool_results=run.results,
+            errors=run.errors,
+            llm_calls=run.llm_calls,
+            turns=run.turns,
+        )
+
+    @staticmethod
+    def _trim_incomplete_turn(run: _RunState) -> None:
+        """Entfernt den halb ausgeführten Turn, damit nur vollständige Assistant/Tool-Paare bleiben.
+
+        Ist ein Teil des Turns schon persistiert (Resume nach Freigabe), kann nichts
+        zurückgenommen werden: die offenen Calls bekommen dann einen expliziten Abbruch-Eintrag.
+        """
+        start = run.turn_start
+        if start < 0 or start >= len(run.messages):
+            return
+        if run.committed_upto > start:
+            answered = {str(m.get("tool_call_id")) for m in run.messages[start:] if m.get("role") == "tool"}
+            for call in run.turn_calls:
+                if call.id not in answered:
+                    run.messages.append(
+                        {"role": "tool", "tool_call_id": call.id, "name": call.name, "content": ABORTED_MARKER}
+                    )
+            return
+        answered_ids = {str(m.get("tool_call_id")) for m in run.messages[start + 1 :] if m.get("role") == "tool"}
+        open_ids = {call.id for call in run.turn_calls}
+        completed = answered_ids - open_ids
+        assistant = dict(run.messages[start])
+        kept_calls = [c for c in assistant.get("tool_calls", []) or [] if str(c.get("id")) in completed]
+        if not kept_calls:
+            del run.messages[start:]
+            return
+        assistant["tool_calls"] = kept_calls
+        tail = [m for m in run.messages[start + 1 :] if m.get("role") == "tool" and str(m.get("tool_call_id")) in completed]
+        run.messages[start:] = [assistant, *tail]
 
     async def _checkpoint(self, run: _RunState, status: TurnStatus, *, pending: dict[str, Any] | None = None) -> None:
         """Committet den Teil des Laufs seit dem letzten Checkpoint als DAG-Knoten."""
@@ -411,14 +617,17 @@ class SandboxAgent:
             self._pending[run.waiting_ticket_id or ""] = run
         return self._waiting_result(run)
 
-    async def _process_calls(self, run: _RunState, *, first_ticket: str | None = None) -> bool:
-        """Arbeitet die Calls des laufenden Turns ab. ``True``, wenn auf Freigabe gewartet wird.
+    async def _process_calls(self, run: _RunState, *, first_ticket: str | None = None) -> str:
+        """Arbeitet die Calls des laufenden Turns ab.
 
-        Beim Warten bleibt der ausstehende Call vorne in ``run.turn_calls``.
+        Liefert ``"done"``, ``"waiting"`` (auf Freigabe; der Call bleibt vorne in ``run.turn_calls``)
+        oder ``"aborted"`` (der Abbruch-Call wird nicht als Ergebnis gebucht).
         ``first_ticket`` gilt nur für den ersten Call (den Resume-Call).
         """
         ticket_for_call = first_ticket
         while run.turn_calls:
+            if run.token.cancelled:
+                return "aborted"
             call = run.turn_calls[0]
             if call.name == META_TOOL_NAME:
                 meta_result = await self._handle_meta_request(call, run.loaded)
@@ -438,16 +647,36 @@ class SandboxAgent:
                 run.turn_calls.pop(0)
                 ticket_for_call = None
                 continue
+            if call.name == DELEGATE_TOOL_NAME and self._delegator is not None:
+                delegated = await self._handle_delegate(call, run)
+                run.results.append(delegated)
+                run.called.append(call.name)
+                run.messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "name": call.name,
+                        "content": _stringify(delegated.result if delegated.ok else delegated.error),
+                    }
+                )
+                if not delegated.ok:
+                    run.errors.append(delegated.error)
+                run.turn_calls.pop(0)
+                ticket_for_call = None
+                continue
             tool_result, decision = await self._execute_guarded(
                 call,
                 session_id=run.session_id,
                 strategy_id=run.strategy_id,
                 approval_ticket_id=ticket_for_call,
+                token=run.token,
             )
             ticket_for_call = None
             if decision is not None and decision.code == PolicyVerdictCode.WAITING_APPROVAL and decision.ticket is not None:
                 run.waiting_ticket_id = decision.ticket.id
-                return True
+                return "waiting"
+            if tool_result.error.startswith("ABORTED:"):
+                return "aborted"
             run.turn_calls.pop(0)
             run.results.append(tool_result)
             run.called.append(call.name)
@@ -461,7 +690,30 @@ class SandboxAgent:
             )
             if not tool_result.ok:
                 run.errors.append(tool_result.error)
-        return False
+        return "done"
+
+    async def _handle_delegate(self, call: ToolCall, run: _RunState) -> ToolResult:
+        """Gibt ``delegate_task`` an den Delegator ab. Der Receipt ist das Ergebnis; ungültige Argumente sind Fehler."""
+        started = time.monotonic()
+        if self._delegator is None:  # nur vom Aufrufer geprüft; hier defensiv
+            return ToolResult(call_id=call.id, name=call.name, ok=False, error="delegate_task ist nicht verfügbar.")
+        try:
+            receipt = await self._delegator.delegate(
+                dict(call.arguments),
+                parent_state=run.state,
+                parent_token=run.token,
+                session_id=run.session_id,
+                strategy_id=run.strategy_id,
+            )
+        except ValueError as exc:
+            return ToolResult(call_id=call.id, name=call.name, ok=False, error=str(exc), elapsed_s=time.monotonic() - started)
+        return ToolResult(
+            call_id=call.id,
+            name=call.name,
+            ok=True,
+            result=receipt.model_dump(),
+            elapsed_s=time.monotonic() - started,
+        )
 
     def _close_turn(self, run: _RunState) -> None:
         """Schließt einen Turn ab. Hat das LLM neben Tool-Calls Text geliefert und kein Meta-Tool erfolgreich geladen, gilt der Text als vorläufige Antwort."""
@@ -470,6 +722,7 @@ class SandboxAgent:
         run.turn_calls = []
         run.turn_content = ""
         run.turn_meta_ok = False
+        run.turn_start = -1
 
     def _waiting_result(self, run: _RunState) -> AgentResult:
         """Hält den Lauf für ``resume_after_approval`` vor und meldet ``WAITING_APPROVAL``."""
@@ -510,10 +763,18 @@ class SandboxAgent:
         session_id: str,
         strategy_id: str,
         approval_ticket_id: str | None,
+        token: CancellationToken | None = None,
     ) -> tuple[ToolResult, PolicyDecision | None]:
-        """Policy-Prüfung vor jeder Ausführung. Fail-closed: ohne Policy-Antwort wird nicht ausgeführt."""
+        """Scope- und Vorab-Filter, dann Policy-Prüfung vor jeder Ausführung. Fail-closed: ohne Policy-Antwort wird nicht ausgeführt."""
+        if self._scope is not None and call.name not in self._scope:
+            error = f"Tool {call.name!r} ist für diesen Lauf nicht freigegeben."
+            return ToolResult(call_id=call.id, name=call.name, ok=False, error=error), None
+        if self._call_filter is not None:
+            reason = self._call_filter(call)
+            if reason:
+                return ToolResult(call_id=call.id, name=call.name, ok=False, error=reason), None
         if self._policy is None:
-            return await self._execute_raw(call), None
+            return await self._execute_raw(call, token), None
         try:
             decision = await self._policy.evaluate(
                 session_id,
@@ -532,12 +793,12 @@ class SandboxAgent:
                 return ToolResult(call_id=call.id, name=call.name, ok=False, error=f"WAITING_APPROVAL:{ticket_id}"), decision
             error = f"POLICY:{decision.code.value}: {decision.reason}"
             return ToolResult(call_id=call.id, name=call.name, ok=False, error=error), decision
-        return await self._execute_raw(call), decision
+        return await self._execute_raw(call, token), decision
 
-    async def _execute_raw(self, call: ToolCall) -> ToolResult:
-        """Führt einen einzelnen Tool-Call aus — strikt timeout-gekapselt.
+    async def _execute_raw(self, call: ToolCall, token: CancellationToken | None = None) -> ToolResult:
+        """Führt einen einzelnen Tool-Call aus — strikt timeout-gekapselt und gegen das Abbruchsignal geraced.
 
-        Fängt sauber: unbekanntes Tool, schema-only Tool, Timeout und jeden
+        Fängt sauber: unbekanntes Tool, schema-only Tool, Timeout, Abbruch und jeden
         Handler-Fehler. Ein hängendes Tool blockiert niemals den Event-Loop.
         """
         record = self._registry.get(call.name)
@@ -548,26 +809,14 @@ class SandboxAgent:
             emit(self._bus, "ciel.sandbox.tool_call", {"tool": call.name, "ok": False, "error": error})
             return result
         timeout = record.timeout_sec if record.timeout_sec > 0 else self._default_timeout
-        try:
-            value = await asyncio.wait_for(self._executor.execute(call.name, dict(call.arguments)), timeout=timeout)
-        except TimeoutError:
-            error = f"Tool {call.name!r} überschritt das Timeout von {timeout:g}s."
-            result = ToolResult(
-                call_id=call.id, name=call.name, ok=False, error=error, timed_out=True, elapsed_s=time.monotonic() - started
-            )
+        run_token = token if token is not None else CancellationToken()
+        result = await LocalExecutionEnv(self._executor).execute(call, token=run_token, timeout_s=timeout)
+        if result.ok:
+            emit(self._bus, "ciel.sandbox.tool_call", {"tool": call.name, "ok": True, "elapsed_s": round(result.elapsed_s, 4)})
+        elif result.timed_out:
             emit(self._bus, "ciel.sandbox.tool_call", {"tool": call.name, "ok": False, "timed_out": True})
-            return result
-        except (ToolNotFound, ToolNotExecutable) as exc:
-            result = ToolResult(call_id=call.id, name=call.name, ok=False, error=str(exc), elapsed_s=time.monotonic() - started)
-            emit(self._bus, "ciel.sandbox.tool_call", {"tool": call.name, "ok": False, "error": str(exc)})
-            return result
-        except Exception as exc:
-            error = f"Tool {call.name!r} scheiterte: {exc}"
-            result = ToolResult(call_id=call.id, name=call.name, ok=False, error=error, elapsed_s=time.monotonic() - started)
-            emit(self._bus, "ciel.sandbox.tool_call", {"tool": call.name, "ok": False, "error": error})
-            return result
-        result = ToolResult(call_id=call.id, name=call.name, ok=True, result=value, elapsed_s=time.monotonic() - started)
-        emit(self._bus, "ciel.sandbox.tool_call", {"tool": call.name, "ok": True, "elapsed_s": round(result.elapsed_s, 4)})
+        else:
+            emit(self._bus, "ciel.sandbox.tool_call", {"tool": call.name, "ok": False, "error": result.error})
         return result
 
     async def _handle_meta_request(self, call: ToolCall, loaded: list[str]) -> ToolResult:
@@ -582,7 +831,10 @@ class SandboxAgent:
                 error="request_additional_skill braucht 'intent_query' (str).",
                 elapsed_s=time.monotonic() - started,
             )
-        hits = self._registry.search(query, top_k=1, exclude=[*loaded, META_TOOL_NAME])
+        top_k = 1 if self._scope is None else max(1, len(self._registry))
+        hits = self._registry.search(query, top_k=top_k, exclude=[*loaded, META_TOOL_NAME])
+        if self._scope is not None:
+            hits = [hit for hit in hits if hit.name in self._scope][:1]
         if not hits:
             return ToolResult(
                 call_id=call.id,
@@ -623,12 +875,42 @@ class SandboxAgent:
         )
 
 
+async def _race_abort(awaitable: Awaitable[T], token: CancellationToken) -> tuple[bool, T | None]:
+    """Wartet auf ``awaitable``, außer das Token wird vorher abgebrochen.
+
+    Liefert ``(True, Ergebnis)`` bei Abschluss, ``(False, None)`` bei Abbruch. Ein Fehler des
+    Awaitables wird weitergereicht. Bei Abbruch wird der Task gecancelt, sein Ergebnis verworfen.
+    """
+    task: asyncio.Future[T] = asyncio.ensure_future(awaitable)
+    cancel_wait = asyncio.ensure_future(token.wait_cancelled())
+    try:
+        done, _pending = await asyncio.wait({task, cancel_wait}, return_when=asyncio.FIRST_COMPLETED)
+    except BaseException:
+        task.cancel()
+        _silence(task)
+        raise
+    finally:
+        cancel_wait.cancel()
+    if task in done:
+        return True, task.result()
+    task.cancel()
+    _silence(task)
+    return False, None
+
+
+def _silence(task: asyncio.Future[Any]) -> None:
+    """Verwirft das Ergebnis eines abgebrochenen Tasks, ohne auf ihn zu warten."""
+    task.add_done_callback(lambda t: t.cancelled() or t.exception())
+
+
 class OpenAICompatLLMClient:
     """Minimaler OpenAI-kompatibler LLM-Client (Stdlib-only, z. B. FreeLLMAPI-Proxy).
 
     Nutzt ``urllib`` im Worker-Thread (blockiert den Loop nicht) und versteht
-    ``tool_calls``-Antworten. Für Produktionsbetrieb; Tests nutzen
-    :class:`ScriptedLLMClient`.
+    ``tool_calls``-Antworten. Bei Abbruch kehrt der Aufruf sofort mit
+    :class:`ExecutionAbortedError` zurück; der Hintergrund-Thread endet über das
+    bestehende HTTP-Timeout und das Ergebnis wird verworfen.
+    Für Produktionsbetrieb; Tests nutzen :class:`ScriptedLLMClient`.
     """
 
     def __init__(self, *, base_url: str, api_key: str, model: str, timeout_sec: float = 60.0) -> None:
@@ -638,7 +920,14 @@ class OpenAICompatLLMClient:
         self._timeout = timeout_sec
         self.calls = 0
 
-    async def complete(self, *, system: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> AssistantMessage:
+    async def complete(
+        self,
+        *,
+        system: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        token: CancellationToken | None = None,
+    ) -> AssistantMessage:
         import json as _json
         import urllib.request as _request
 
@@ -660,7 +949,13 @@ class OpenAICompatLLMClient:
             with _request.urlopen(req, timeout=self._timeout) as resp:
                 return _json.loads(resp.read().decode("utf-8"))
 
-        payload = await asyncio.to_thread(_post)
+        if token is None:
+            payload = await asyncio.to_thread(_post)
+        else:
+            completed, payload_or_none = await _race_abort(asyncio.to_thread(_post), token)
+            if not completed or payload_or_none is None:
+                raise ExecutionAbortedError(token.reason or AbortReason.USER_ABORT, token.detail)
+            payload = payload_or_none
         self.calls += 1
         try:
             message = payload["choices"][0]["message"]
@@ -710,11 +1005,12 @@ def _run_to_snapshot(run: _RunState) -> dict[str, Any]:
         "waiting_ticket_id": run.waiting_ticket_id,
         "committed_upto": run.committed_upto,
         "committed_results": run.committed_results,
+        "turn_start": run.turn_start,
     }
 
 
 def _run_from_snapshot(data: Mapping[str, Any]) -> _RunState:
-    """Rekonstruiert einen Lauf aus einem Snapshot aus :func:`_run_to_snapshot`."""
+    """Rekonstruiert einen Lauf aus einem Snapshot aus :func:`_run_to_snapshot`. Das Abbruchsignal ist neu."""
     return _RunState(
         intent=str(data["intent"]),
         state=dict(data.get("state") or {}),
@@ -734,6 +1030,7 @@ def _run_from_snapshot(data: Mapping[str, Any]) -> _RunState:
         waiting_ticket_id=data.get("waiting_ticket_id"),
         committed_upto=int(data.get("committed_upto", 0)),
         committed_results=int(data.get("committed_results", 0)),
+        turn_start=int(data.get("turn_start", -1)),
     )
 
 
@@ -757,6 +1054,7 @@ def _stringify(value: Any) -> str:
 
 
 __all__ = [
+    "ABORTED_MARKER",
     "META_TOOL_NAME",
     "REQUEST_ADDITIONAL_SKILL_SCHEMA",
     "SANDBOX_SYSTEM_PROMPT",
@@ -765,4 +1063,5 @@ __all__ = [
     "OpenAICompatLLMClient",
     "SandboxAgent",
     "ScriptedLLMClient",
+    "TaskDelegator",
 ]
