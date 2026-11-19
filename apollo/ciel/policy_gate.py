@@ -617,6 +617,10 @@ class PreExecutionPolicyEngine:
         await self._audit("approve" if approved else "reject", updated)
         return updated
 
+    async def get_ticket(self, ticket_id: str) -> ApprovalTicket | None:
+        """Liest ein Ticket unabhängig vom Status (für Operator-Routen: unbekannt vs. nicht mehr offen)."""
+        return await self._store.get_ticket(ticket_id)
+
     async def pending_tickets(self, session_id: str | None = None) -> list[ApprovalTicket]:
         """Offene, nicht abgelaufene Tickets (optional je Session), nach Anlage sortiert."""
         now = self._clock()

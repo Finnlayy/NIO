@@ -14,11 +14,15 @@ import {
   type ChatTask,
   createApolloTask,
   createChatTask,
+  type DagView,
   fetchChatTask,
   fetchRuns,
   kanbanRequest,
+  type PendingApproval,
   runSandboxCommand,
+  runtimeRequest,
   secureKanbanRequest,
+  subscribeApprovalStream,
 } from "./client";
 import {
   COMMANDS,
@@ -84,8 +88,34 @@ export type AnsweredModel = ModelRef & { failoverCount: number };
 
 const MAX_ENTRIES = 400;
 
+/** Eine Sitzung pro Deck: DAG-Lineage und Freigaben hängen an dieser ID. */
+export const DEFAULT_SESSION_ID = "apollo-deck";
+
+/** Wartet `ms`, bricht aber sofort ab, sobald das Signal auslöst. */
+function sleepUnless(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener("abort", done, { once: true });
+  });
+}
+
 export interface ApolloStore {
   config: ApolloConfiguration;
+  /* control plane (Phase 4) */
+  sessionId: string;
+  activeBranch: string | null;
+  headTurnId: string | null;
+  dagLineage: DagView["lineage"] | null;
+  pendingApprovals: PendingApproval[];
   router: RouterState;
   /** Who really answered the last turn, as the live endpoint reported it. */
   answered: AnsweredModel | null;
@@ -122,6 +152,8 @@ export interface ApolloStore {
   /* terminal */
   prompt: (text: string) => Promise<void>;
   runCommand: (text: string) => Promise<CommandResult>;
+  /** Abonniert den Freigabe-Strom (SSE, kein Polling). Gibt die Schließfunktion zurück. */
+  startApprovalStream: () => () => void;
   setSpeech: (status: SpeechStatus) => void;
   setDeckOpen: (open: boolean) => void;
   setTerminalOpen: (open: boolean) => void;
@@ -231,6 +263,11 @@ function preview(value: unknown, max = 220): string {
 /* ==================================================================== */
 
 export const useApolloStore = create<ApolloStore>()((set, get) => {
+  /* Laufender Chat-Turn: `/abort` bricht ihn lokal per AbortController ab. */
+  let inFlight: AbortController | null = null;
+  const applyDag = (view: DagView) =>
+    set({ dagLineage: view.lineage, activeBranch: view.lineage.branch_name, headTurnId: view.lineage.head_turn_id });
+
   const push = (draft: Omit<LogEntry, "id" | "timestamp">): LogEntry => {
     const entry: LogEntry = { ...draft, id: id("log"), timestamp: stamp() };
     set((state) => ({ entries: [...state.entries.slice(-(MAX_ENTRIES - 1)), entry] }));
@@ -374,6 +411,11 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
     terminalMode: "unified",
     busy: false,
     bootAt: Date.now(),
+    sessionId: DEFAULT_SESSION_ID,
+    activeBranch: null,
+    headTurnId: null,
+    dagLineage: null,
+    pendingApprovals: [],
 
     log: push,
 
@@ -590,18 +632,21 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
       };
       set({ busy: true, task });
       setOrb("THINKING");
+      const controller = new AbortController();
+      inFlight = controller;
       try {
         /* Chat runs as a Kanban task: the dispatcher hands it to the worker with
            the `apollo` skill, and its real result (or block reason) comes back here. */
-        const created = await createChatTask(promptText);
+        const created = await createChatTask(promptText, controller.signal);
         if (!created.ok || !created.data) throw new Error(created.error ?? "task_not_created");
         const { id: taskId, board_id: boardId } = created.data;
         push({ origin: "NIO_CORE", level: "INFO", message: `Kanban-Aufgabe ${taskId} angelegt, wartet auf den Apollo-Worker.` });
         const deadline = Date.now() + CHAT_TASK_TIMEOUT_MS;
         let done: ChatTask | undefined;
         while (Date.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, CHAT_POLL_MS));
-          const polled = await fetchChatTask(boardId, taskId);
+          await sleepUnless(CHAT_POLL_MS, controller.signal);
+          if (controller.signal.aborted) throw new DOMException("aborted", "AbortError");
+          const polled = await fetchChatTask(boardId, taskId, controller.signal);
           if (!polled.ok || !polled.data) throw new Error(polled.error ?? "task_lost");
           if (polled.data.status === "completed" || polled.data.status === "blocked") { done = polled.data; break; }
         }
@@ -623,10 +668,18 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
         setOrb("SYNTHESIZING", 1100);
       } catch (error) {
         set({ answered: null });
-        push({ origin: "APOLLO", level: "ERROR", message: `Chat-Aufgabe fehlgeschlagen: ${error instanceof Error ? error.message : "network_error"}. Kein Simulationsersatz.` });
         set({ task: { ...task, steps: [{ ...task.steps[0], status: "FAILED" }] } });
-        setOrb("ERROR");
-      } finally { set({ busy: false }); }
+        if (controller.signal.aborted) {
+          push({ origin: "APOLLO", level: "WARN", message: "[ABORTED_CLEAN] Chat-Aufgabe lokal abgebrochen." });
+          setOrb("IDLE");
+        } else {
+          push({ origin: "APOLLO", level: "ERROR", message: `Chat-Aufgabe fehlgeschlagen: ${error instanceof Error ? error.message : "network_error"}. Kein Simulationsersatz.` });
+          setOrb("ERROR");
+        }
+      } finally {
+        if (inFlight === controller) inFlight = null;
+        set({ busy: false });
+      }
     },
 
     /* Dictation colours an idle orb only: a running turn keeps its own state. */
@@ -818,10 +871,80 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
           rows.forEach((run) => emit("APOLLO", "INFO", `${run.run_id} · ${run.agent} · ${run.state}`));
           return { ok: true, entries };
         }
-        case "approve": {
-          /* A ticket binds one concrete intent, and nothing queues intents for Apollo yet. */
-          emit("APOLLO", "WARN", "No pending approval in Apollo. Issue tickets with `neu approve`.");
+        case "undo": {
+          const res = await runtimeRequest<DagView>(`/session/${encodeURIComponent(state.sessionId)}/undo`, "POST", { steps: parsed.steps });
+          if (!res.ok || !res.data) {
+            emit("NIO_CORE", "ERROR", `undo fehlgeschlagen: ${res.error ?? "unbekannt"}`);
+            return { ok: false, entries };
+          }
+          applyDag(res.data);
+          emit("NIO_CORE", "INFO", `undo · ${parsed.steps} Schritt(e) · Kopf ${res.data.lineage.head_turn_id ?? "leer"} · Branch ${res.data.lineage.branch_name}`);
+          return { ok: true, entries };
+        }
+        case "retry": {
+          const res = await runtimeRequest<DagView>(
+            `/session/${encodeURIComponent(state.sessionId)}/retry`,
+            "POST",
+            parsed.branch ? { branch_name: parsed.branch } : {},
+          );
+          if (!res.ok || !res.data) {
+            emit("NIO_CORE", "ERROR", `retry fehlgeschlagen: ${res.error ?? "unbekannt"}`);
+            return { ok: false, entries };
+          }
+          applyDag(res.data);
+          emit("NIO_CORE", "INFO", `retry · Branch ${res.data.lineage.branch_name} · Kopf ${res.data.lineage.head_turn_id ?? "leer"}`);
+          return { ok: true, entries };
+        }
+        case "abort": {
+          /* Erst lokal kappen (laufender fetch/Polling-Turn), dann das Backend-Signal senden. */
+          const local = inFlight;
+          inFlight = null;
+          local?.abort();
+          const res = await runtimeRequest<{ ok: boolean; status: string }>(
+            `/session/${encodeURIComponent(state.sessionId)}/abort`,
+            "POST",
+            { reason: parsed.reason },
+          );
+          if (res.ok) {
+            emit("NIO_CORE", "WARN", `[${res.data?.status ?? "ABORT_SIGNAL_SENT"}] Session ${state.sessionId} · ${parsed.reason}`);
+            return { ok: true, entries };
+          }
+          /* Offline oder Mock: nur lokal abgebrochen, ehrlich benannt. */
+          emit("NIO_CORE", "WARN", `Backend nicht erreichbar (${res.error ?? "unbekannt"}). Nur lokal abgebrochen.`);
+          emit("NIO_CORE", "WARN", "[ABORTED_CLEAN] lokal abgebrochen, kein Backend-Signal gesendet.");
           return { ok: false, entries };
+        }
+        case "approvals": {
+          const res = await runtimeRequest<PendingApproval[]>(
+            `/approvals/pending?session_id=${encodeURIComponent(state.sessionId)}`,
+            "GET",
+          );
+          if (!res.ok) {
+            emit("NIO_CORE", "ERROR", `Freigaben nicht lesbar: ${res.error ?? "unbekannt"}`);
+            return { ok: false, entries };
+          }
+          const rows = res.data ?? [];
+          set({ pendingApprovals: rows });
+          emit("NIO_CORE", "INFO", rows.length ? `${rows.length} offene Freigabe(n)` : "Keine offenen Freigaben.");
+          rows.forEach((row) => emit("NIO_CORE", "INFO", `${row.id} · ${row.tool} · ${row.status}`));
+          return { ok: true, entries };
+        }
+        case "approve":
+        case "reject": {
+          const approved = parsed.kind === "approve";
+          const reason = parsed.kind === "reject" ? parsed.reason : "";
+          const res = await runtimeRequest<{ status: string }>(
+            `/approvals/${encodeURIComponent(parsed.ticketId)}/resolve`,
+            "POST",
+            { approved, reason },
+          );
+          if (!res.ok) {
+            emit("NIO_CORE", "ERROR", `${approved ? "approve" : "reject"} ${parsed.ticketId} fehlgeschlagen: ${res.error ?? "unbekannt"}`);
+            return { ok: false, entries };
+          }
+          set((s) => ({ pendingApprovals: s.pendingApprovals.filter((t) => t.id !== parsed.ticketId) }));
+          emit("NIO_CORE", "INFO", `Ticket ${parsed.ticketId} → ${res.data?.status ?? (approved ? "APPROVED" : "REJECTED")}`);
+          return { ok: true, entries };
         }
         case "deny": {
           emit("APOLLO", "WARN", "No pending approval to deny.");
@@ -913,6 +1036,25 @@ export const useApolloStore = create<ApolloStore>()((set, get) => {
 
     setTerminalMode: (mode) => set({ terminalMode: mode }),
     clearTerminal: () => set({ entries: [] }),
+
+    startApprovalStream: () => {
+      const sid = get().sessionId;
+      let open = true;
+      const close = subscribeApprovalStream({
+        onPending: (ticket) => {
+          if (open) set((s) => ({ pendingApprovals: [...s.pendingApprovals.filter((t) => t.id !== ticket.id), ticket] }));
+        },
+        onResolved: (ticketId) => set((s) => ({ pendingApprovals: s.pendingApprovals.filter((t) => t.id !== ticketId) })),
+      });
+      /* Einmaliger Startstand; danach liefert nur noch der Strom Änderungen. */
+      void runtimeRequest<PendingApproval[]>(`/approvals/pending?session_id=${encodeURIComponent(sid)}`, "GET").then((res) => {
+        if (open && res.ok && res.data) set({ pendingApprovals: res.data });
+      });
+      return () => {
+        open = false;
+        close();
+      };
+    },
 
     snapshot: () => {
       const live = get();

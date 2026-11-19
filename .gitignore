@@ -9,7 +9,7 @@ data/learning/state.json
 
 # --- Projekt "Neu": Laufzeitdaten gehoeren nicht ins Git ---
 # Queues, Job-Zustaende, Archiv, Backups, Agent-Locks, system.log
-runtime/
+/runtime/
 
 # Sandbox des Limbs: nur die Verzeichnismarke wird versioniert
 workspace/*
