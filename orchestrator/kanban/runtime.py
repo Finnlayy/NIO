@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 import socket
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -182,4 +183,58 @@ async def build_runtime(config: KanbanConfig, *, neu_events: Any = None) -> Kanb
         notifier=notifier,
         sandbox=sandbox,
         redis=client,
+    )
+
+
+def build_pre_execution_policy(
+    runtime: Any,
+    *,
+    tool_tiers: Mapping[str, Any] | None = None,
+    **engine_kwargs: Any,
+) -> Any:
+    """Baut die Ciel-Pre-Execution-Policy über die Kanban-Infrastruktur.
+
+    Bewusst nur gebaut, nicht global eingeschaltet: der Aufrufer reicht das
+    Ergebnis an ``SandboxAgent(policy_engine=...)`` weiter.
+
+    * Store: Redis (Lua-Gate über ``runtime.redis``), sonst In-Memory.
+    * ``on_audit`` schreibt ins Hash-Kettenprotokoll (``AuditLedger``). Die
+      Kategorie ist ``system`` mit Aktion ``approval.<aktion>``, weil das
+      SQL-``CHECK`` auf ``audit_ledger.category`` nur die fünf bestehenden
+      Kategorien erlaubt (Schemaänderung nicht Teil dieser Änderung).
+    * ``on_ticket`` benachrichtigt über ``runtime.notifier``; ein Fehler dort
+      blockiert die Policy nicht.
+    """
+    from apollo.ciel.policy_gate import (
+        InMemoryPolicyStore,
+        PreExecutionPolicyEngine,
+        RedisPolicyStore,
+        resp_eval_shim,
+    )
+
+    if getattr(runtime, "redis", None) is not None:
+        store: Any = RedisPolicyStore(resp_eval_shim(runtime.redis))
+    else:
+        store = InMemoryPolicyStore()
+    ledger = runtime.ledger
+    notifier = runtime.notifier
+
+    async def on_audit(action: str, payload: dict[str, Any]) -> None:
+        await ledger.append(
+            actor="policy",
+            action=f"approval.{action}",
+            category="system",
+            subject=str(payload.get("ticket_id", "")),
+            payload=payload,
+        )
+
+    async def on_ticket(ticket: Any) -> None:
+        await notifier.alert(f"Freigabe nötig: Tool {ticket.tool} (Ticket {ticket.id})")
+
+    return PreExecutionPolicyEngine(
+        store,
+        tool_tiers=dict(tool_tiers or {}),
+        on_audit=on_audit,
+        on_ticket=on_ticket,
+        **engine_kwargs,
     )
