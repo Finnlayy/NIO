@@ -1,0 +1,6 @@
+{
+  "name": "OMEGA NIO - The Judge & The Swarm",
+  "description": "Quantitative trading platform separating Swarm signal generation from The Judge risk allocation, with Google Drive blueprint synchronization and high-frequency execution architecture.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
