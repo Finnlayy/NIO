@@ -1,5 +1,14 @@
 # TWIN-CITY INFRA PLAN — NIO Sovereign Twin-City Frontend
 
+Leitprinzip (Operator-Kanon): Software ist Informationsfluss. Alles kann mit
+allem verbunden werden, wenn man die Software selbst entwirft statt diskrete
+Pakete zu kaufen; Software dient dazu, Information zu wandeln, auszutauschen
+und zu bewegen. Die Twin-City ist die Sicht- und Steueroberflaeche dieses
+Flusses: Agenten tragen Tasks zwischen Districts (Information bewegt sich),
+Gates sind Wandlungspunkte (Approval/Reject), das Orb-Sanctum ist der
+Dispatch-Hub. Jede Phase wird daran gemessen, ob sie Informationsfluss
+sichtbarer, steuerbarer und verlustfreier macht (D1-D5 sind seine Regeln).
+
 Guide-Entwurf (Hermes), 2026-11-19. Basis: Master-Prompt v8.1/v8.2 (Twin-City
 UI Extraction & API Synthesis), Git-Guardrails-Direktive des Operators,
 verifizierte Ist-Infrastruktur. Umsetzung ausschliesslich ueber NIO-Kanban
