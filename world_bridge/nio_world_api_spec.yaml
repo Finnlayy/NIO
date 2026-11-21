@@ -1,0 +1,81 @@
+# NIO World-Bridge API Spec (T3) — Single Source of Truth fuer WS/REST/MCP.
+# Bridge: FastAPI loopback 127.0.0.1:8750, Auth Bearer NIO_WORLD_TOKEN.
+# D3: jedes Event/Command traegt world_id live|shadow; serverseitige Isolation.
+version: 1
+service:
+  name: nio-world-bridge
+  host: 127.0.0.1
+  port: 8750
+  auth: bearer
+  token_env: NIO_WORLD_TOKEN
+  static_mount: /
+  batch_hz_max: 15
+worlds: [live, shadow]
+ws:
+  path: /ws/world
+  multiplex: [live, shadow]
+  resume: { by: seq, query: last_event_id }
+  envelope:
+    required: [type, world_id, timestamp_ms, seq, payload]
+    world_id_enum: [live, shadow]
+  events:
+    world_snapshot:
+      payload:
+        required: [agents, districts, gates, orb, commit_stand]
+        agents: { type: array, items: agent }
+        districts: { type: array, items: district }
+        gates: { type: array, items: gate }
+        orb: { type: object, ref: orb_state }
+        commit_stand: { type: string }
+    orb_update:
+      payload:
+        required: [state]
+        state_enum: [idle, listening, dispatching, alert]
+    district_upsert:
+      payload:
+        required: [district_id, district_type]
+        district_type_enum: [bootstrap, vault, tavern, forge, trading, library, gate_outpost, tavern_limbs]
+    district_remove:
+      payload: { required: [district_id] }
+    agent_upsert:
+      payload:
+        required: [agent_id, state]
+        state_enum: [idle, working, moving, error, parked]
+        optional: [worker_uid, task_id, task_summary, target_district, kind, skills]
+    agent_remove:
+      payload: { required: [agent_id] }
+    gate_alert:
+      priority: true
+      payload:
+        required: [gate_id, severity]
+        severity_enum: [info, warning, critical]
+        optional: [prompt, diff, board_id]
+    divergence_diff:
+      payload:
+        required: [entities, commit_stand_live, commit_stand_shadow]
+        entities: { type: array }
+rest:
+  command:
+    method: POST
+    path: /api/world/command
+    body_required: [command, world_id]
+    commands:
+      dispatch_prompt:
+        args_required: [title, description, required_skills]
+        guards: [world_id_valid, required_skills_nonempty, workspace_repo_allowlist]
+      resolve_gate:
+        args_required: [gate_id, action]
+        action_enum: [approve, reject]
+        guards: [world_id_valid, gate_belongs_to_world]
+      promote_limb_or_config:
+        args_required: [limb_or_config]
+        guards: [world_id_shadow, operator_modal, resolve_gate_approve]
+mcp:
+  transport: stdio-jsonrpc
+  methods: [initialize, tools/list, tools/call]
+  tools:
+    world_register_district: { args: [world_id, district_id, district_type] }
+    world_retire_district: { args: [world_id, district_id] }
+    world_sync_agent: { args: [world_id, agent_id] }
+    world_set_orb_state: { args: [world_id, state] }
+    world_raise_gate: { args: [world_id, gate_id, severity, prompt] }
