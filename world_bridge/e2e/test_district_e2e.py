@@ -19,7 +19,7 @@ def test_register_district_emits_event_and_state():
     assert ev["type"] == "district_upsert"
     assert ev["payload"]["district_type"] == "forge"
     assert b.store.get("live").districts["forge-1"]["district_type"] == "forge"
-    assert b.batchers["live"].pending() >= 1  # geht an WS-Client -> Allocator
+    assert b._mcp_inbox["live"].qsize() >= 1  # queued fuer Publisher -> WS-Client -> Allocator
 
 
 def test_register_then_retire_district():
