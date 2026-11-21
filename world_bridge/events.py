@@ -38,7 +38,9 @@ class CityEvent:
         return self.type in PRIORITY_EVENTS
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        d = asdict(self)
+        d["priority"] = self.priority
+        return d
 
 
 class SeqGen:
