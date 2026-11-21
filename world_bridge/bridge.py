@@ -1,13 +1,17 @@
 """World-Bridge Core (T6): FastAPI loopback :8750, WS /ws/world Multiplex live+shadow,
 Snapshot-Resume (seq), Batch <=15Hz, Auth Bearer NIO_WORLD_TOKEN (fail-closed),
-Static-Serve, POST /api/world/command -> Router (D3)."""
+Static-Serve, POST /api/world/command -> Router (D3).
+
+Broadcast-Design: je Welt EIN Publisher-Task (pollt Adapter + MCP-Inbox, batcht,
+faechert an alle WS-Verbindungs-Queues aus). Jede Verbindung liest seine eigene Queue
+-> zuverlaessige Broadcast-Zustellung, einheitliche monotone seq je Welt aus dem Store."""
 from __future__ import annotations
 import asyncio
+import os
 import time
 from typing import Any, AsyncIterator
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from fastapi.responses import JSONResponse
 from .adapters import WorldAdapter
 from .state import StateStore
 from .batch import WorldBatcher
@@ -22,15 +26,44 @@ class Bridge:
                  store: StateStore | None = None) -> None:
         self.adapters = adapters
         self.store = store or StateStore()
-        self.batchers = {w: WorldBatcher() for w in adapters}
         self.router = CommandRouter(adapters, {w: {a.repo_path} for w, a in adapters.items()}, self.store)
         self.token = token
         self.static_dir = static_dir
         self.poll_s = poll_s
         self.mcp = MCPToolServer(self.store, on_event=self._on_mcp_event)
+        self._subs: dict[str, list[asyncio.Queue]] = {w: [] for w in adapters}
+        self._mcp_inbox: dict[str, asyncio.Queue] = {w: asyncio.Queue() for w in adapters}
+        self._batchers: dict[str, WorldBatcher] = {w: WorldBatcher() for w in adapters}
+        self._pub_started = False
 
     def _on_mcp_event(self, ev: CityEvent) -> None:
-        self.batchers[ev.world_id].add(ev)
+        # MCP-Events sind bereits ueber StateStore.seq sequenziert.
+        self.store.get(ev.world_id).apply(ev)
+        self._mcp_inbox[ev.world_id].put_nowait(ev)
+
+    async def _publisher(self, world: str) -> None:
+        adapter = self.adapters[world]
+        batcher = self._batchers[world]
+        st = self.store.get(world)
+        while True:
+            now = time.time() * 1000
+            while not self._mcp_inbox[world].empty():
+                batcher.add(self._mcp_inbox[world].get_nowait())
+            for ev in await adapter.poll_events():
+                ev.seq = st.seq.next()          # einheitliche seq je Welt
+                st.apply(ev)
+                batcher.add(ev)
+            for ev in batcher.drain(now):
+                msg = ev.to_dict()
+                for q in list(self._subs[world]):
+                    q.put_nowait(msg)
+            await asyncio.sleep(self.poll_s)
+
+    def _ensure_publishers(self) -> None:
+        if not self._pub_started:
+            for w in self.adapters:
+                asyncio.create_task(self._publisher(w))
+            self._pub_started = True
 
     async def _snapshot_event(self, world_id: str) -> CityEvent:
         snap = await self.adapters[world_id].snapshot()
@@ -41,23 +74,32 @@ class Bridge:
 
     async def stream(self, worlds: list[str], last_event_id: int = 0,
                      iterations: int | None = None) -> AsyncIterator[dict]:
+        self._ensure_publishers()
         for w in worlds:
             ev = await self._snapshot_event(w)
             if ev.seq > last_event_id:
                 yield ev.to_dict()
-        n = 0
-        while iterations is None or n < iterations:
-            n += 1
-            now = time.time() * 1000
+        q: asyncio.Queue = asyncio.Queue()
+        for w in worlds:
+            self._subs[w].append(q)
+        try:
+            n = 0
+            while iterations is None or n < iterations:
+                timeout = self.poll_s * 3 if iterations is None else 0.25
+                try:
+                    msg = await asyncio.wait_for(q.get(), timeout=timeout)
+                except asyncio.TimeoutError:
+                    if iterations is not None:
+                        n += 1
+                    continue
+                if msg.get("seq", 0) > last_event_id:
+                    yield msg
+                if iterations is not None:
+                    n += 1
+        finally:
             for w in worlds:
-                for ev in await self.adapters[w].poll_events():
-                    self.store.get(w).apply(ev)
-                    self.batchers[w].add(ev)
-                for ev in self.batchers[w].drain(now):
-                    if ev.seq > last_event_id:
-                        yield ev.to_dict()
-            if iterations is None:
-                await asyncio.sleep(self.poll_s)
+                if q in self._subs[w]:
+                    self._subs[w].remove(q)
 
     def create_app(self) -> FastAPI:
         app = FastAPI(title="NIO World-Bridge", version="1.0")
@@ -113,9 +155,6 @@ class Bridge:
             async def index() -> dict:
                 return {"service": "nio-world-bridge", "static": "kein Build vorhanden (P3)", "ws": "/ws/world"}
         return app
-
-
-import os  # noqa: E402  (fuer static_dir check)
 
 
 def build_bridge_from_env(adapters: dict[str, WorldAdapter]) -> Bridge:
