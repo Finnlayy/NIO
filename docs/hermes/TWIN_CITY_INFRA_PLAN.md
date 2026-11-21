@@ -180,6 +180,46 @@ NIO-Core; P2 baut auf deren Park/Gate-Semantik auf (Rebase nach Merge).
 - E5 Wetter-Asset-Lizenz/Quelle: vorhanden in Agent-Quest-Assets?
   Phase-1-Audit abwarten.
 
+## 10.1 Entscheidungen (Guide, 2026-11-21 — Operator-Autorität für diesen Lauf delegiert)
+
+Der Operator hat die Gate-/Merge- und Entscheidungsautorität für diesen Lauf an den
+Guide delegiert ("delegate Nio to finish up all the remaining To-Dos", "dont expect
+user interference youre on your own"). Entscheidungen evidenzbasiert (Board-Historie,
+Code, Sandbox):
+
+- E1: Board-Isolation auf EINER kanban-Instanz (Start). Neues Shadow-Board, world_id=shadow.
+  D3 wird SERVERSEITIG in der Bridge erzwungen: Command-Router fail-closed (world_id),
+  workspace_repo-Allowlist je Welt (live=~/Projects/NIO, shadow=~/NIN), board_id-Prüfung
+  bei resolve_gate, getrennte Worker-Skills je Welt, kein gemeinsamer Client-Pool,
+  Negativ-Tests (Shadow-Command darf Live-Repo/Live-Gate NIE erreichen). Zweite Instanz später.
+- E2: Bridge-Port 8750 + NIO_WORLD_TOKEN (neu in nio.env) — bestätigt.
+- E3: agent-quest.service (bun :4444, node :4445) BLEIBT aktiv und unberührt. P3 arbeitet
+  ausschließlich in isolierten Dispatcher-Worktrees/Branches. Die DELETE-Cut-Line gilt für
+  den Twin-City-Build, NICHT für den laufenden Nutzer-Dienst. Kein Stop/Restart/Löschen des
+  Dienstes ohne explizites Nutzer-Ok. Twin-City-Frontend wird statisch von der Bridge ausgeliefert.
+- E4: Orb-Sanctum = Portierung von frontend/src/apollo/orbShader.ts (D4 Wiederverwendung) — bestätigt.
+- E5: Wetter-Assets aus dem P1-Audit; falls nicht lokal vorhanden, prozedurale/lokale Assets
+  (kein externer Download im Worker). Festlegung nach T1/T2.
+
+Route & Sizing (evidenzbasiert, korrigiert das DP-Modell):
+- Effektives opencode-Fenster = 600 s (worker_entry.py:189 Default; NIO_KANBAN_OPENCODE_TIMEOUT_S
+  nicht gesetzt). B=900 s im DP-Modell ist zu groß. Tasks klein halten; inkrementelle
+  WIP-Commits PFLICHT (Commits eines Timeout-Runs überleben auf dem Branch). Kein Service-Restart.
+- Hollow-Completion-Guard (f1d2cfb) + Routing-Guard (7567ae6) + Tests (d60d792) sind auf main:
+  falsche Completes werden blockiert, llm/noop-Worker erhalten keine Repo-Tasks.
+- Frontend-Build/E2E (tsc/vite/playwright/bun) sind NICHT im Worker-Image und nicht in der
+  bash-Allowlist. Worker schreibt Code + committet; der Guide verifiziert Build auf dem
+  Host-Worktree (client/node_modules/.bin/tsc + vite). Claude-Route/Guide-Finish ist Fallback,
+  wenn ein Worker stolpert.
+- P1 workspace_repo=~/Projects/Agent-Quest (Git-Repo, remote FulAppiOS/Agent-Quest). Blueprint +
+  Rohdaten in den Agent-Quest-Worktree; Guide kopiert den Blueprint nach NIO/docs/hermes.
+- P2/P4 workspace_repo=~/Projects/NIO, neues Paket world_bridge/. P3 workspace_repo=Agent-Quest (client/).
+- Phasen serialisiert P1→P2→P3→P4 mit je einem Merge-Gate; Guide verifiziert je Phase
+  (committed=true, head_after!=head_before, Zieldateien ls/grep, Tests) und merged dann.
+  T7 implementiert die Nexus-Learnings (EventBus-Resilienz, Pipeline-Operatoren) direkt aus
+  ~/.hermes/cache/scratch/nexus_learnings_task.md; der blockierte Analyse-Task t-db173071f92f
+  ist optionale Kontext-Quelle, KEINE harte Dependency (vermeidet Deadlock).
+
 ## 11. Risiken
 
 - FreeLLMAPI-Quota: zwei parallele Worker + Bridge-Tests teilen sich

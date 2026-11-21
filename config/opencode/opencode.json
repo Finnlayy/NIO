@@ -25,7 +25,11 @@
         "baseURL": "http://nio-model-relay:3001/v1",
         "apiKey": "{env:FREELLMAPI_KEY}"
       },
-      "models": {}
+      "models": {
+        "auto": { "name": "FreeLLMAPI auto-route (bester freier Anbieter)", "tool_call": true },
+        "qwen3.8-max": { "name": "Qwen3.8-Max via FreeLLMAPI", "tool_call": true },
+        "gemini-flash": { "name": "Gemini Flash via FreeLLMAPI", "tool_call": true }
+      }
     }
   },
   "permission": {
