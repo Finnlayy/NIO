@@ -48,7 +48,7 @@ class HttpKanbanClient:
 
     async def get_approvals(self) -> list[dict[str, Any]]:
         try:
-            return await self._get("/api/v1/runtime/approvals")
+            return await self._get("/api/runtime/approvals/pending")
         except Exception:
             return []
 
@@ -60,7 +60,8 @@ class HttpKanbanClient:
                                 {"target": target, "reason": reason})
 
     async def resolve_approval(self, gate_id: str, action: str) -> dict[str, Any]:
-        return await self._post(f"/api/v1/runtime/approvals/{gate_id}/{action}", {})
+        return await self._post(f"/api/runtime/approvals/{gate_id}/resolve",
+                                {"approved": action == "approve", "reason": "world-bridge"})
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -102,8 +103,7 @@ class WorldAdapter:
             ev = M.map_task(t, self.world_id)
             if ev:
                 agents[ev.payload["agent_id"]] = ev.payload
-        gates = [M.map_approval(a, self.world_id).payload
-                 for a in approvals if not a.get("board_id") or a.get("board_id") == self.board_id]
+        gates = [M.map_approval(t, self.world_id).payload for t in approvals] if self.world_id == "live" else []
         districts = [{"district_id": f"district:{d}", "district_type": d} for d in _STATIC_DISTRICTS]
         for g in gates:
             districts.append({"district_id": f"gate:{g['gate_id']}", "district_type": "gate_outpost"})

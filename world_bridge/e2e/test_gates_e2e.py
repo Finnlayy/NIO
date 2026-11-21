@@ -8,29 +8,42 @@ from world_bridge.divergence import compute_divergence
 from world_bridge.tests.test_adapters import FakeClient
 
 
-def make_bridge(gates=None):
-    live = WorldAdapter("live", "b1", "/tmp", FakeClient(approvals=gates or []))
+def make_bridge():
+    live = WorldAdapter("live", "b1", "/tmp", FakeClient())
     shadow = WorldAdapter("shadow", "b2", "/tmp", FakeClient())
-    return Bridge({"live": live, "shadow": shadow}, token="t"), live, shadow
+    return Bridge({"live": live, "shadow": shadow}, token="t")
 
 
 def test_raise_gate_priority():
-    b, _, _ = make_bridge()
+    b = make_bridge()
     ev = b.mcp.call_tool("world_raise_gate", {"world_id": "live", "gate_id": "g", "severity": "critical", "prompt": "p"})
     assert ev["type"] == "gate_alert" and ev["priority"] is True
 
 
 @pytest.mark.anyio
-async def test_gate_klick_resolve_gate():
-    b, _, _ = make_bridge(gates=[{"id": "g1", "severity": "warning", "board_id": "b1"}])
+async def test_gate_klick_resolve_gate_kanban():
+    b = make_bridge()
+    b.store.get("live").gates["g1"] = {"gate_id": "g1", "severity": "warning", "source": "kanban"}
     res = await b.router.handle({"command": "resolve_gate", "world_id": "live",
                                  "args": {"gate_id": "g1", "action": "approve"}})
     assert res["ok"] and res["action"] == "approve"
+    assert "g1" not in b.store.get("live").gates
+
+
+@pytest.mark.anyio
+async def test_gate_klick_resolve_gate_mcp():
+    b = make_bridge()
+    b.mcp.call_tool("world_raise_gate", {"world_id": "shadow", "gate_id": "mg", "severity": "info", "prompt": "p"})
+    res = await b.router.handle({"command": "resolve_gate", "world_id": "shadow",
+                                 "args": {"gate_id": "mg", "action": "approve"}})
+    assert res["ok"]
+    assert "mg" not in b.store.get("shadow").gates
 
 
 @pytest.mark.anyio
 async def test_resolve_gate_cross_world_rejected():
-    b, _, _ = make_bridge(gates=[{"id": "g1", "severity": "info", "board_id": "b1"}])
+    b = make_bridge()
+    b.store.get("live").gates["g1"] = {"gate_id": "g1", "severity": "info", "source": "kanban"}
     with pytest.raises(CommandError) as e:
         await b.router.handle({"command": "resolve_gate", "world_id": "shadow",
                                "args": {"gate_id": "g1", "action": "approve"}})
@@ -38,19 +51,17 @@ async def test_resolve_gate_cross_world_rejected():
 
 
 def test_offline_only_orb_idle_D2():
-    b, _, _ = make_bridge()
-    # D2: kein Mock/Fallback — ohne Backend-Events ist Orb idle
+    b = make_bridge()
     assert b.store.get("live").orb == "idle"
     assert b.store.get("shadow").orb == "idle"
 
 
 def test_wetter_twinview_getrennt():
-    # Wetter folgt world_id (live=Sonne, shadow=Regen); Twin-View activeWorld separat.
-    b, _, _ = make_bridge()
+    b = make_bridge()
     b.mcp.call_tool("world_set_orb_state", {"world_id": "live", "state": "idle"})
     b.mcp.call_tool("world_set_orb_state", {"world_id": "shadow", "state": "alert"})
     assert b.store.get("live").orb == "idle"
-    assert b.store.get("shadow").orb == "alert"  # strikt getrennt
+    assert b.store.get("shadow").orb == "alert"
 
 
 @pytest.mark.anyio

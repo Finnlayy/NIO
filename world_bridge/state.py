@@ -54,7 +54,7 @@ class WorldState:
     def raise_gate(self, gate_id: str, severity: str, prompt: str = "") -> CityEvent:
         if severity not in ("info", "warning", "critical"):
             raise ValueError(severity)
-        return self._ev("gate_alert", {"gate_id": gate_id, "severity": severity, "prompt": prompt})
+        return self._ev("gate_alert", {"gate_id": gate_id, "severity": severity, "prompt": prompt, "source": "mcp"})
 
     def sync_agent(self, agent_id: str) -> CityEvent:
         a = self.agents.get(agent_id, {"agent_id": agent_id, "state": "idle"})

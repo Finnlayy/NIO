@@ -60,10 +60,13 @@ def map_approval(ticket: dict[str, Any], world_id: str) -> CityEvent:
     sev = ticket.get("severity") or "warning"
     if sev not in ("info", "warning", "critical"):
         sev = "warning"
+    tool = ticket.get("tool") or ""
+    reason = ticket.get("reason") or ""
+    prompt = ticket.get("prompt") or (f"{tool}: {reason}".strip(": ") if tool or reason else "")
     return CityEvent("gate_alert", world_id, {
-        "gate_id": str(gid), "severity": sev,
-        "prompt": ticket.get("prompt") or ticket.get("reason") or "",
-        "diff": ticket.get("diff"), "board_id": ticket.get("board_id"),
+        "gate_id": str(gid), "severity": sev, "prompt": prompt,
+        "diff": ticket.get("diff"), "board_id": ticket.get("board_id") or ticket.get("session_id"),
+        "source": "kanban",
     })
 
 
