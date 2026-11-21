@@ -23,7 +23,7 @@ class Bridge:
         self.adapters = adapters
         self.store = store or StateStore()
         self.batchers = {w: WorldBatcher() for w in adapters}
-        self.router = CommandRouter(adapters, {w: {a.repo_path} for w, a in adapters.items()})
+        self.router = CommandRouter(adapters, {w: {a.repo_path} for w, a in adapters.items()}, self.store)
         self.token = token
         self.static_dir = static_dir
         self.poll_s = poll_s

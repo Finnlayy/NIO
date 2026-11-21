@@ -1,9 +1,11 @@
 """Command-Router POST /api/world/command (T8) — D3 serverseitige Welt-Isolation.
 fail-closed world_id; required_skills-Guard; workspace_repo-Allowlist je Welt;
-Gate-Welt-Pruefung; promote nur shadow + Operator-Gate. Kein gemeinsamer Client-Pool."""
+Gate-Welt-Pruefung ueber den Welt-Zustand (Store); promote nur shadow + Operator-Gate.
+Kein gemeinsamer Client-Pool. Gates: live=echte kanban-CIEL-Tickets, shadow=MCP-State."""
 from __future__ import annotations
 from typing import Any
 from .adapters import WorldAdapter
+from .state import StateStore
 
 
 class CommandError(Exception):
@@ -14,9 +16,10 @@ class CommandError(Exception):
 
 class CommandRouter:
     def __init__(self, adapters: dict[str, WorldAdapter],
-                 repo_allowlist: dict[str, set[str]]) -> None:
+                 repo_allowlist: dict[str, set[str]], store: StateStore) -> None:
         self._adapters = adapters
         self._allow = {w: set(v) for w, v in repo_allowlist.items()}
+        self._store = store
 
     def _world(self, world_id: Any) -> WorldAdapter:
         if world_id not in self._adapters:
@@ -61,11 +64,14 @@ class CommandRouter:
             raise CommandError("action muss approve|reject sein", 400)
         if not gate_id:
             raise CommandError("gate_id fehlt", 400)
-        snap = await adapter.snapshot()
-        if not any(g.get("gate_id") == gate_id for g in snap["gates"]):
+        world_state = self._store.get(world_id)
+        gate = world_state.gates.get(gate_id)
+        if gate is None:
             raise CommandError(f"Gate {gate_id!r} gehoert nicht zur Welt {world_id!r} (D3)", 403)
-        res = await adapter.client.resolve_approval(gate_id, action)
-        return {"ok": True, "world_id": world_id, "gate_id": gate_id, "action": action, "result": res}
+        if gate.get("source") == "kanban":
+            await adapter.client.resolve_approval(gate_id, action)
+        del world_state.gates[gate_id]
+        return {"ok": True, "world_id": world_id, "gate_id": gate_id, "action": action}
 
     async def _promote(self, adapter: WorldAdapter, world_id: str, args: dict, body: dict) -> dict:
         if world_id != "shadow":
