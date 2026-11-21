@@ -1,0 +1,17 @@
+[Unit]
+Description=NIO World-Bridge (Twin-City Sicht-/Steueroberflaeche, FastAPI :8750)
+After=network.target nio-kanban.service
+Wants=nio-kanban.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Projects/NIO
+EnvironmentFile=%h/.config/nio/nio.env
+ExecStart=%h/Projects/NIO/.venv/bin/python -m world_bridge
+Restart=on-failure
+RestartSec=3
+# Loopback-Bindung; NIO_WORLD_TOKEN kommt aus nio.env (E2). Static-Dir = P3-Build.
+Environment=NIO_WORLD_STATIC_DIR=%h/Projects/AQ-twin-city/client/dist
+
+[Install]
+WantedBy=default.target
