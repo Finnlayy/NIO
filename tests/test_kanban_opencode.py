@@ -52,6 +52,10 @@ elif MODE == "exit3":
     sys.exit(3)
 elif MODE == "hollow":
     print(json.dumps({{"type": "text", "part": {{"type": "text", "text": "pip install pytest"}}}}), flush=True)
+elif MODE == "error_tools":
+    print(json.dumps({{"type": "text", "part": {{"type": "text", "text": "versuche tools"}}}}), flush=True)
+    print(json.dumps({{"type": "tool_use", "part": {{"type": "tool", "tool": "write", "state": {{"status": "error"}}}}}}), flush=True)
+    print(json.dumps({{"type": "tool_use", "part": {{"type": "tool", "tool": "bash", "state": {{"status": "error"}}}}}}), flush=True)
 """
 
 
@@ -149,6 +153,15 @@ class TestRunOpencode(unittest.TestCase):
         self.assertFalse(payload["committed"])
         self.assertEqual(payload["tools"], [])
 
+    def test_error_tools_repo_task_wird_blocked(self) -> None:
+        # Error-only-Tool-Laeufe ohne Commit sind ebenfalls hollow (TC-007).
+        status, reason, payload = self._run("error_tools", task_extra={"workspace_repo": "/tmp/repo"})
+        self.assertEqual((status, reason), ("blocked", "hollow_completion"))
+        self.assertEqual(payload["exit_code"], 0)
+        self.assertFalse(payload["committed"])
+        self.assertEqual(len(payload["tools"]), 2)
+        self.assertTrue(all(t["status"] == "error" for t in payload["tools"]))
+
     def test_hollow_ohne_repo_task_bleibt_completed(self) -> None:
         # Der Guard gilt nur fuer Repo-Tasks; Chat-/Noop-Tasks ohne
         # workspace_repo behalten ihr bisheriges Verhalten.
@@ -200,14 +213,23 @@ class TestOpencodeConfig(unittest.TestCase):
         self.cfg = json.loads(self.raw)
 
     def test_provider_zeigen_nur_auf_den_relay(self) -> None:
+        # Cloud-Provider (Groq, OpenRouter, ...) duerfen direkt auf ihre
+        # Cloud-Endpoints zeigen; nur Relay-interne Provider muessen ueber
+        # nio-model-relay laufen.
+        cloud_direct = {"groq"}
         for name, provider in self.cfg["provider"].items():
             with self.subTest(provider=name):
-                self.assertTrue(provider["options"]["baseURL"].startswith("http://nio-model-relay:"))
+                if name in cloud_direct:
+                    self.assertTrue(provider["options"]["baseURL"].startswith("https://"))
+                else:
+                    self.assertTrue(provider["options"]["baseURL"].startswith("http://nio-model-relay:"))
 
     def test_keine_literalen_keys(self) -> None:
         self.assertEqual(self.cfg["provider"]["freellmapi"]["options"]["apiKey"], "{env:FREELLMAPI_KEY}")
         self.assertEqual(self.cfg["provider"]["ollama"]["options"]["apiKey"], "ollama")
+        self.assertEqual(self.cfg["provider"]["groq"]["options"]["apiKey"], "{env:GROQ_API_KEY}")
         self.assertNotIn("sk-", self.raw)
+        self.assertNotIn("gsk_", self.raw)
 
     def test_push_env_und_runtime_sind_gesperrt(self) -> None:
         perm = self.cfg["permission"]

@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "ollama/qwen2.5:7b-ctx16k",
+  "model": "groq/gpt-oss-120b",
   "autoupdate": false,
   "share": "disabled",
   "provider": {
@@ -12,10 +12,39 @@
         "apiKey": "ollama"
       },
       "models": {
-        "qwen2.5-coder:latest": { "name": "qwen2.5-coder (Base, ohne native Tool-Calls)" },
-        "llama3.1:8b": { "name": "llama3.1:8b (Tool-Calls unzuverlaessig)", "tool_call": true },
-        "qwen2.5:7b-instruct": { "name": "qwen2.5:7b-instruct", "tool_call": true },
-        "qwen2.5:7b-ctx16k": { "name": "qwen2.5:7b-instruct (num_ctx 16384)", "tool_call": true }
+        "qwen2.5-coder:latest": {
+          "name": "qwen2.5-coder (Base, ohne native Tool-Calls)"
+        },
+        "llama3.1:8b": {
+          "name": "llama3.1:8b (Tool-Calls unzuverlaessig)",
+          "tool_call": true
+        },
+        "qwen2.5:7b-instruct": {
+          "name": "qwen2.5:7b-instruct",
+          "tool_call": true
+        },
+        "qwen2.5:7b-ctx16k": {
+          "name": "qwen2.5:7b-instruct (num_ctx 16384)",
+          "tool_call": true
+        }
+      }
+    },
+    "groq": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Groq (Cloud, schnelle Tool-Calls)",
+      "options": {
+        "baseURL": "https://api.groq.com/openai/v1",
+        "apiKey": "{env:GROQ_API_KEY}"
+      },
+      "models": {
+        "gpt-oss-120b": {
+          "name": "GPT-OSS 120B (Tool-Calls, 128k ctx)",
+          "tool_call": true
+        },
+        "gpt-oss-20b": {
+          "name": "GPT-OSS 20B (schnell, Tool-Calls, 128k ctx)",
+          "tool_call": true
+        }
       }
     },
     "freellmapi": {
@@ -26,9 +55,18 @@
         "apiKey": "{env:FREELLMAPI_KEY}"
       },
       "models": {
-        "auto": { "name": "FreeLLMAPI auto-route (bester freier Anbieter)", "tool_call": true },
-        "qwen3.8-max": { "name": "Qwen3.8-Max via FreeLLMAPI", "tool_call": true },
-        "gemini-flash": { "name": "Gemini Flash via FreeLLMAPI", "tool_call": true }
+        "auto": {
+          "name": "FreeLLMAPI auto-route (bester freier Anbieter)",
+          "tool_call": true
+        },
+        "qwen3.8-max": {
+          "name": "Qwen3.8-Max via FreeLLMAPI",
+          "tool_call": true
+        },
+        "gemini-flash": {
+          "name": "Gemini Flash via FreeLLMAPI",
+          "tool_call": true
+        }
       }
     }
   },
@@ -67,7 +105,10 @@
   "mcp": {
     "vault": {
       "type": "local",
-      "command": ["python3", "/nio/mcp/scripts/vault_mcp.py"],
+      "command": [
+        "python3",
+        "/nio/mcp/scripts/vault_mcp.py"
+      ],
       "enabled": true
     }
   }

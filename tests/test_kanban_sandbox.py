@@ -150,6 +150,24 @@ class TestKanbanSandbox(unittest.TestCase):
         off = replace(self.config, docker_no_new_privileges=False)
         self.assertNotIn("no-new-privileges", DockerSandbox.build_argv(self.spec, off))
 
+    def test_opencode_mounts_cross_repo_git(self) -> None:
+        """Cross-repo tasks (workspace_repo != repo_root) must mount the TASK repo's .git,
+        not config.repo_root/.git, so the worktree's gitdir reference resolves."""
+        from orchestrator.kanban.sandbox import _opencode_mounts
+
+        repo_a = self.tmp_dir / "repo_a"
+        repo_a.mkdir()
+        (repo_a / ".git").mkdir()
+
+        # Ohne workspace_repo: NIO-Repo-.git (config.repo_root)
+        mounts_default = _opencode_mounts(self.config)
+        self.assertIn(f"{self.config.repo_root / '.git'}:{self.config.repo_root / '.git'}", mounts_default)
+
+        # Mit workspace_repo: Task-Repo-.git
+        mounts_cross = _opencode_mounts(self.config, workspace_repo=str(repo_a))
+        self.assertIn(f"{repo_a / '.git'}:{repo_a / '.git'}", mounts_cross)
+        self.assertNotIn(f"{self.config.repo_root / '.git'}:{self.config.repo_root / '.git'}", mounts_cross)
+
     def test_subprocess_noop(self) -> None:
         self._write_soul("noop")
         runner = build_sandbox(self.config)

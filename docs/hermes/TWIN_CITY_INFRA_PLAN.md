@@ -1,233 +1,101 @@
-# TWIN-CITY INFRA PLAN — NIO Sovereign Twin-City Frontend
+# Twin-City — überarbeiteter Ausführungsplan
 
-Leitprinzip (Operator-Kanon): Software ist Informationsfluss. Alles kann mit
-allem verbunden werden, wenn man die Software selbst entwirft statt diskrete
-Pakete zu kaufen; Software dient dazu, Information zu wandeln, auszutauschen
-und zu bewegen. Die Twin-City ist die Sicht- und Steueroberflaeche dieses
-Flusses: Agenten tragen Tasks zwischen Districts (Information bewegt sich),
-Gates sind Wandlungspunkte (Approval/Reject), das Orb-Sanctum ist der
-Dispatch-Hub. Jede Phase wird daran gemessen, ob sie Informationsfluss
-sichtbarer, steuerbarer und verlustfreier macht (D1-D5 sind seine Regeln).
+Stand: 22.11.2026. Auftrag: **zuerst planen**, mit NIO-Notebook, Audios und Agent-Quest-Bestand. Dies ist ein Ausführungsplan, keine Implementierungsabnahme. Der vorherige Run bleibt **FAILED**; „all delivered“ und Guide-Finish sind aufgehoben. [Unveränderter Altplan](archive/TWIN_CITY_INFRA_PLAN_2026-11-21_FAILED.md).
 
-Guide-Entwurf (Hermes), 2026-11-19. Basis: Master-Prompt v8.1/v8.2 (Twin-City
-UI Extraction & API Synthesis), Git-Guardrails-Direktive des Operators,
-verifizierte Ist-Infrastruktur. Umsetzung ausschliesslich ueber NIO-Kanban
-(Phasen P1-P4, jede mit Merge-Gate). Dieses Dokument ist der Plan, nicht der Code.
+**Planstand: 143 atomare Aufgaben. Quellenabnahme offen:** drei von vier Audios ausgewertet; AUDIO-UI benötigt erneuerte NotebookLM-Anmeldung. PLAN_REVIEW und alle Ausführungsaufgaben bleiben blockiert, bis der letzte Audioabgleich und die offene REA-Laufzeitprüfung abgeschlossen sind.
 
-## 0. Invarianten (NON-NEGOTIABLE, aus Master-Prompt + Direktiven)
+## 1. RGCCO und Zielbild
 
-- D1 Zero Local State: Frontend ist reiner View-/Dispatch-Client. Single
-  Source of Truth = NIO FastAPI/Redis. Kein Task-, Agent-, Gate-, Map-Save
-  im Client.
-- D2 Kein Mock/Fallback im Produktivpfad. Ohne Backend-Events: nur das
-  NIO-Orb-Sanctum, State disconnected/idle.
-- D3 Welt-Isolation: jeder API-Call, jedes WS-Event, jeder Command traegt
-  world_id live|shadow. Shadow-Commands erreichen NIE Live-Execution oder
-  Live-Gates. Isolation wird SERVERSEITIG erzwungen, nicht im Client.
-- D4 Maximale Wiederverwendung: Phaser-Rendering, Sprites, Pathfinding,
-  Tilemap bleiben; Bun-Server + ~/.claude*/~/.codex-File-Watcher entfallen
-  restlos.
-- D5 Git-Guardrails: Limbs arbeiten nur auf orchestrator-verwalteten
-  Worktrees/Branches; parken statt verwerfen; Merge/Loeschen nur durch
-  Orchestrator nach Gate-Freigabe (resolve_gate approve).
+**Role:** Guide plant, überwacht später NIO und prüft Ergebnisse. NIO-Kanban-Worker erzeugen Produktänderungen.
+**Goal:** Zwei getrennte NIO-Welten als vollwertige Agent-Quest-Pixelart-Städte mit Terrain, Gebäuden, Helden, NPCs, Wetter und dem bestehenden Karteneditor. Karten gestalten/speichern/laden; reale Arbeit und Gate-Entscheidungen sichtbar und bedienbar machen.
+**Constraints:** WIP = 1; bestehende Dienste und uncommittete Arbeit schützen; keine Ersatzimplementierung durch den Guide.
+**Context:** [Quellen und Befunde](TWIN_CITY_EVIDENCE.md), [Blueprint](TWIN_CITY_ARCHITECTURE_BLUEPRINT.md).
+**Output:** [atomare Aufgaben](TWIN_CITY_TASKS.md), [maschinenlesbares Planmanifest](TWIN_CITY_TASKS.json).
 
-## 1. Ist-Stand (verifiziert 2026-11-19)
+**Non-Goals / DORMANT:** Neuer 3D-Renderer, Ersatz für VillageScene oder Editor, ungeprüfter A*-Umbau, neue Message-Broker/Java-Runtime, Prompt-Caching-Umbau, Trading-Logik, Worker-Erstellung durch NPC-Platzierung, beliebige weitere Ausführungswelten.
 
-| Komponente | Ort | Rolle |
+## 2. Invarianten
+
+- **D1 Serverautorität:** NIO hält bestätigte Karten, Districts, NPCs, Gates und Ausführungszustand. Clientseitig zulässig: Kamera, Auswahl, Animation und sichtbar ungespeicherter flüchtiger Entwurf. Keine persistente Browser-Ersatzwahrheit. Speicherbestätigung erst nach erfolgreicher Serverpersistenz; Editorentwürfe lösen keine Jobs aus.
+- **D2 Ehrliche Zustände:** Ohne gültigen Backendzustand nur Orb und lesbarer Verbindungsstatus; keine prozedural erfundenen Gebäude/Worker. Bei Abbruch Mutationen sperren, Weltinhalt ausblenden und Status anzeigen; keine blinden Command-Retries. Authentifizierte leere Welt, Fehler, getrennte Verbindung und Laden unterscheiden.
+- **D3 Isolation:** world_id bei jedem Zugriff/Befehl. Getrennte Speicherbereiche, Boards, Repos, Gate-Autorität und Ausführung. Auch EventBridge, Straßengraph, Stores und Szenen trennen. Gleiche Entity-IDs in zwei Welten dürfen nicht kollidieren.
+- **D4 Wiederverwendung:** VillageScene, EditorScene, TerrainRenderer, MapConfigRenderer, Building, HeroSprite, NpcSprite, Assets und vorhandene BFS bleiben Grundlage. Bun-Watcher/Session-Parser entfallen nur im Twin-City-Produktpfad; keine Editorfähigkeit entfällt dadurch.
+- **D5 Git-Nachweis:** NIO verwaltet Worktrees. Run-ID, Worker-ID, tatsächliches Modell, Basis-/Ergebnis-Commit, Diff und Prüfbelege gehören zusammen. Reject und Timeout parken Arbeit. Kein automatisches Löschen, Force-Push oder Umdeuten von Guide-Arbeit zu Worker-Erfolg.
+- **D6 Zugänglichkeit:** Gleichwertige DOM-Bedienung zusätzlich zur Karte. Stadt-, Objekt-, Speicher- und Gate-Aktionen per Tastatur, Screenreader und Einzelzeiger ohne Ziehen ermöglichen.
+- **D7 Ergebnisnachweis:** Exit-Code, Commit oder grüne Tests allein sind keine Produktabnahme. Funktion, visuelle Qualität, Isolation und tatsächliche NIO-Produktion jeweils belegen.
+
+## 3. Korrigierter Bestand
+
+Agent-Quest besitzt fünf Kartenslots, aktive Karte, Templates, Terrain, Dekorationen, Pfade, Gebäudebewegung, NPC-Erstellung, Spawn und Skalierung. Speichern erfolgt bereits serverseitig. **Editor löschen wegen „lokaler Persistenz“ war falsch.** Acht funktionale Gebäude sind fest definiert; freie Hausdekoration ist noch kein neuer funktionaler District.
+
+World-Bridge prüfen und nur belegte Lücken ergänzen: aktuell RAM-Zustand, kein dauerhafter Karten-/NPC-Speicher, Snapshot überschreibt dynamische Districts, Promotion-Erfolg ohne Merge. Alte Testzahlen sind keine Abnahme dieser Eigenschaften.
+
+Agent-Quest bleibt laufendes Nutzerwerkzeug und Referenz. Sein Arbeitsbaum enthält fremde Änderungen; ein sauberer Commit bildet diesen Baum nicht vollständig ab. Am 22.11. vorhandene fremde Laufzeitänderungen adressieren bereits Mount und Error-only-Erkennung; P0 prüft deren Wirkung und verbleibende Lücken. Vor Umsetzung Basis und relevante uncommittete Änderungen inventarisieren, kein pauschales Stash/Reset/Übernehmen.
+
+## 4. Architekturentscheidungen
+
+1. **Welt ≠ Stadt:** world_id = live|shadow. map_id = Karte; slot_id = zunächst einer von fünf Speicherplätzen je Welt. Aktivierung nur in ihrer Welt. „Stadt neu“ erzeugt keine weitere Ausführungswelt.
+2. **Typ ≠ Instanz:** district_id stabil und frei innerhalb der Welt; asset_type bestimmt Darstellung; district_type/Capability verbindet NIO-Funktion. Zwei Schmieden können verschiedene IDs haben.
+3. **NPC ≠ Worker:** Dekorative Bewohner mit eigener ID und Placement; keine Prozesse durch Platzierung. Helden repräsentieren serverbestätigte Worker.
+4. **Serverpersistenz:** Versionierte MapConfig-Dokumente und Metadaten im bestehenden NIO-/Redis-Bereich; atomare Revision-/Idempotenzprüfung mit kleinem Lua-Skript und bestehendem Redis-Zugriff. Kein zweites Datenbank-Framework. AOF/Recovery vor Neustartversprechen prüfen; Redis-Ausfall darf keine Speicherbestätigung liefern. Python ist Eigentümer; Bridge adaptiert.
+5. **Reproduzierbares Layout:** Logische Raster-/Pfaddaten, Assetreferenzen und Layoutversion speichern, keine browserabhängigen Bildschirmkoordinaten. Bestehende MapConfig-Weltkoordinaten verlustfrei migrieren; Einheiten/Umrechnung festlegen. Automatische Slots nur als Vorgabe für neue Districts; manuelle Layouts nicht bei Snapshot neu verteilen.
+6. **Transport:** Versionierte Snapshots/Deltas, Sequenz je Welt plus Neustartkennung. Resync bei Lücke/Epochwechsel. Snapshot-Abonnement ohne verlorenes Zwischenereignis, begrenzte Clientqueues, kontrollierter Reconnect, Fehler je Welt isoliert.
+7. **Datenrate ≠ Pollrate:** Maximal 15 gebatchte Ausgaben/s/Welt als Obergrenze; vorhandene SSE-/Bus-Events nutzen, keine 15 vollständigen Backendabfragen/s ableiten. 60 FPS als gemessenes Renderziel auf dokumentierter Hardware. Gate-Updates dürfen nicht verhungern.
+8. **Browserauth:** Backendtokens serverseitig; keine langfristigen Tokens in Bundle, LocalStorage oder WS-URL. Bestehende NIO-Authentifizierung zuerst prüfen; eng begrenzte Sitzung oder kurzlebiges WS-Ticket, Origin-/CSRF- und Weltprüfung. Keine allgemeine IAM-Neuentwicklung.
+9. **Promotion:** Falschen Erfolg zuerst sperren. Danach gespeicherten Verdict an Repo, Basis, Kandidaten-Commit und Diff binden, Autorität/Gültigkeit prüfen, Orchestrator-Merge ausführen, Receipt zurückgeben. Request-Flags sind keine Freigabe. Geänderter Head invalidiert den Verdict.
+10. **Reject:** Branch/Worktree mit Grund und Hash parken. Löschbeschreibung des generierten Noir-Reports wird wegen D5 nicht übernommen.
+
+## 5. Phasen und harte Gates
+
+Genaue Einzelaufgaben stehen im Manifest. Phasen seriell, höchstens eine aktive Aufgabe. Accessibility beginnt beim Vertrag.
+
+| Phase | Ergebnis | Gate vor nächster Phase |
 |---|---|---|
-| nio-kanban (FastAPI) | 127.0.0.1:8740, systemd user | Tasks/Workers/Boards, SSE-Bus, Approvals; Redis (sigma-redis) fuer Locks/Policy/DAG |
-| nio-apollo (Next.js) | 127.0.0.1:4001, systemd user | bestehendes Orb-UI + Terminal (CLI /tasks, /approvals, /approve) |
-| NEU-Orchestrator | ~/Projects/NIO, CLI | Jobs/Intents/Limbs, Policy-Gates, Refinement-Vault (geparkte Limbs), Audit-Ledger |
-| CIEL | apollo/ciel/ | DAG-State (Redis), Pre-Execution-Policy, Sandbox-Agent, Telemetry — produktiv nur teilweise verdrahtet |
-| Worker | Docker, nio-opencode-model (internal) | opencode-Runtime, freellmapi/auto via Relay; States idle/busy/disabled |
-| Agent-Quest | ~/Projects/Agent-Quest | Client: Phaser + React + Vite (KEEP); Bun-Server :4444 + File-Watcher (DELETE) |
-| FreeLLMAPI | 127.0.0.1:3001 | Modell-Router, unified key, Provider google/groq/mistral/openrouter |
-| Twin-Repo | ~/NIN | zweiter Clone fuer Shadow-/Mirror-Arbeit (blue-green) |
+| P0 Ausführungsfähigkeit | Mount, Modell/Tools, Deadlines, Hollow-Guard, Provenienz | NIO-Canary und Cross-Repo-Canary mit echten Artefakten/Commits; Error-only abgewiesen |
+| P1 Verträge/Reuse | Feldmapping, Datenautorität, Quellenkonflikte, Assets/Buildgrenze | Kein verlorenes Editorfeld; Welt/Stadt/NPC/Worker eindeutig |
+| P2 Persistenz/Isolation | Revisionen, Events, Resync, Ausfälle | Gleiche IDs unabhängig; neuer Client, Reconnect und Neustart bewahren bestätigte Daten |
+| P3 APIs/Gates | Kartenbefehle, Auth, echte Entscheidungen/Promotion | Fremde Welt, gefälschte Freigabe, veralteter Head abgewiesen; echter Merge-Receipt; Reject parkt |
+| P4 Village | Rich Rendering aus NIO-Daten, isolierte Szenen | Reales Gebäude, gültige Heldenwege, kein erfundener Offlinezustand |
+| P5 Editor | Werkzeuge, fünf Slots, Save/Load/Activate, Konflikte | Alle MapConfig-Felder im Roundtrip; NPC erzeugt keinen Worker |
+| P6 Accessibility | Vollständige alternative Bedienwege | Tastatur/Screenreader, Kontrast, Reflow, Zielgrößen, reduzierte Bewegung |
+| P7 Integration/Betrieb | Echte NIO-Ausführung, Twin-View, Fehlerfälle, Deployment/Rückweg | Visuelle Referenz, technische Gates und Worker-Provenienz am ausgelieferten Stand |
 
-Es gibt KEINEN world_id-/Twin-City-Code in NIO (grep-verifiziert) — Greenfield.
+## 6. Aufgabenvertrag und Monitor
 
-## 2. Soll-Topologie
+Jede Einheit: RGCCO-Ziel, begrenzte Dateien, Quellen, Dependencies, Abnahme, Prüfverfahren, Artefakte, Budget, Fehleraktion. Zielbudget 300 s, zunächst höchstens 450 s. Historischer OpenCode-Default 600 s; vor Dispatch zählt das **gemessene Minimum** aller Modell-/Tool-/Worker-/Sandbox-/Jobdeadlines abzüglich Start-, Prüf- und Commitreserve. Zu große Einheit teilen. Taskzahl ist kein Optimierungsziel.
 
-```
- Operator-Browser (loopback)
-   |  HTTP/WS
-   v
- nio-world-bridge (NEU, FastAPI, 127.0.0.1:8750, systemd user)
-   |-- GET /            -> statischer Frontend-Build (Phaser/React, offline)
-   |-- WS  /ws/world    -> Multiplex-Stream live+shadow (<=15 Hz gebatcht)
-   |-- POST /api/world/command -> Command-Router (world_id-Gate)
-   |-- FastMCP: world_register_district / world_retire_district /
-   |            world_sync_agent / world_set_orb_state / world_raise_gate
-   |
-   |-- liest: kanban-SSE-Bus (:8740), Redis (DAG/Policy/Worker-State),
-   |          Orchestrator-Status (Jobs, Refinement-Vault, Gates)
-   |-- schreibt: kanban-API (Tasks/Transitions), Approvals-API,
-   |             Orchestrator-Gate-Flow — IMMER mit world_id
-   v
- NIO State Engine (FastAPI :8740 + Redis) = Single Source of Truth
-   live:   Haupt-Board b-5fb62933ab27, Repo ~/Projects/NIO, main
-   shadow: Shadow-Board (neu, world_id=shadow), Repo ~/NIN (Twin)
-```
+Plan-IDs erst beim späteren Import auf echte Kanban-IDs abbilden. Titel „Schritt N — …“, Beschreibung endet „- [offen]“. Alle blocked anlegen; einzeln nach erfüllten Dependencies ready. Kein Bulk-Backlog mit unerwartetem Autodispatch.
 
-Begruendung Bridge als eigener Dienst: enge, typisierte Schnittstelle
-(FastAPI/FastMCP) ohne Business-Logik-Duplikate; kanban-API bleibt
-unveraendert; Frontend hat genau einen Endpoint. Loopback-Bindung wie alle
-NIO-Dienste; Auth: Bearer-Token (NIO_WORLD_TOKEN, neu in nio.env).
+**API-Abgleich:** Aktuelles TaskCreate hat workspace_repo und dependencies, aber **kein workspace_kind**. worktree ist Planmetadata, kein ungeprüft sendbares API-Feld. Dispatcher erzeugt den Worktree anhand workspace_repo. Aktuelles Schema vor Import erneut prüfen. Codeaufgaben brauchen required_skills=code.
 
-## 3. State-Mapping (NIO -> Stadt)
+Codeerfolg: passendes Run-Result, tatsächlicher Diff im zugewiesenen Worktree, Prüfungen am exakten Head. Prüftask: gehashtes Berichtartefakt zulässig, kein künstlicher Produktcommit. Vorgängercommit nicht als eigene Arbeit zählen.
 
-| NIO-Entity | Stadt-Entity | Mapping-Quelle |
-|---|---|---|
-| Worker (idle/busy/disabled) | Agent/Held | GET /workers; busy->working, idle->idle, disabled->error |
-| Task in_progress + assigned_worker | Agent moving/working + task_summary | SSE task.* Events, target_district aus required_skills/limb |
-| Refinement-Vault parked limb | tavern_limbs-Bewohner (parked_limb) | orchestrator refinement status |
-| Approval-Ticket (Policy-Gate) | gate_outpost + gate_alert (severity, prompt, diff) | /api/runtime/approvals + SSE |
-| Limb-Domaene (trading/forge=bootstrap/library=vault/tavern) | district_type | limbs/registry.json, statisch + world_register_district |
-| Orb-Zustand (orchestrator aktiv/leer/gate-offen) | orb_update (idle/listening/dispatching/alert) | Job-Queue + offene Tickets, aggregiert in Bridge |
-| Live vs Shadow Delta | divergence_diff | Bridge vergleicht Welt-Snapshots (gleiche Entity-IDs) |
+Bei Timeout, Error-only-Tools, leerem Diff oder falscher Funktion: offen/blocked lassen; Ursache klassifizieren; Ausführungsblockade als begrenzte Voraussetzung reparieren oder Task teilen; erneut NIO ausführen lassen. **Kein Guide-Finish.** Heartbeats ersetzen keinen Fortschrittsnachweis; Retry begrenzen und Ursache dokumentieren.
 
-Districts sind dynamisch (Slot-Grid), keine Pixel-Koordinaten vom Backend.
-Gebaeude-Slots: konzentrisch um Orb-Sanctum (0,0); Strassen-Tiles automatisch;
-A*-Graph-Update zur Laufzeit; parked limbs automatisch in tavern_limbs.
+Phasenbeleg: reviewed_commit, Exit-Codes, Hashes, manuelle Protokolle, Restlücken, Freigabe. Skip wegen fehlendem Docker/Browser/Dependencies bedeutet nicht bestanden. Stack-Gates passend zur Änderung; Runtime-/GUI-Abnahme separat.
 
-## 4. Welt-Isolation (D3) — serverseitig
+## 7. Accessibility-Abnahme
 
-- Bridge haelt zwei Welt-Adapter: live (Haupt-Board, ~/Projects/NIO) und
-  shadow (Shadow-Board, ~/NIN). Jeder Adapter hat eigene API-Clients/Queues.
-- Commands tragen world_id; Router lehnt fehlende/ungueltige world_id ab
-  (fail-closed). Cross-World-Zugriffe sind im Router unmoeglich (kein
-  gemeinsamer Client-Pool).
-- promote_limb_or_config: einziger Pfad shadow->live; erfordert explizites
-  Modal + resolve_gate(approve) durch Operator; Orchestrator merged nach
-  Git-Guardrails (FF/squash auf main nach Gate), danach kontrolliertes
-  Branch-Cleanup.
-- Shadow-Board initial: eigenes Board auf derselben kanban-Instanz
-  (billig, gleiche API). Spaeter: zweite Instanz aus ~/NIN (echtes
-  blue-green) — Entscheidung E1.
+Ziel WCAG 2.2 AA für komplette Bedienabläufe. Native HTML-Controls, sichtbarer/unverdeckter Fokus, benannte Felder, verständliche Fehler, dosierte Statusmeldungen. Canvas erhält DOM-Liste mit Auswahl, Positionsfeldern und Aktionen; Dragging optional. Zweidimensionale Karte darf räumlich bleiben; Formulare/Listen/Dialoge bleiben bei Reflow bedienbar.
 
-## 5. Event-Pipeline
+Kriterien: 2.1.1 Tastatur, 2.1.2 keine Falle, 2.4.7 Fokus sichtbar, 2.4.11 Fokus nicht verdeckt, 2.5.7 Drag-Alternative, 2.5.8 Zielgröße, 1.4.3/1.4.11 Kontrast, 1.4.10 Reflow, 4.1.2 Name/Rolle/Wert, 4.1.3 Status. Projektziel mindestens 24×24 CSS-Pixel je Control ohne Abstandsausnahme; Normaltext 4.5:1, großer Text/relevante UI-Grenzen 3:1. Reduced Motion und abschaltbare Wetter-/Orb-Effekte; Weltstatus nicht nur farblich. 2.4.13 Focus Appearance ist AAA, kein AA-Kriterium.
 
-kanban-SSE + Redis-Polling (Bridge) -> Transform (Mapping Tabelle 3) ->
-Batch/Throttle max 15 Hz pro Welt -> WS /ws/world (Schema Master-Prompt 2.1:
-world_snapshot | orb_update | district_upsert/remove | agent_upsert/remove |
-gate_alert | divergence_diff, jeweils world_id + timestamp_ms + payload).
-Client: 60-FPS-Renderloop interpoliert zwischen Snapshots; kein eigener
-State ausser View (Camera, Wetter-Transition, UI-Flags).
+[Normative Referenz W3C WCAG 2.2](https://www.w3.org/TR/WCAG22/). Automatisierte Checks ergänzen Tastatur-, Screenreader-, Zoom- und Touchprüfung; DOM-Snapshot allein beweist keine Konformität.
 
-## 6. Command-Router (POST /api/world/command)
+## 8. Produkt-DoD
 
-| Command | Ziel | Guard |
-|---|---|---|
-| dispatch_prompt | kanban task create (Welt-Board, required_skills explizit!) | world_id; kein implizites Skill-Empty (Routing-Guard!) |
-| resolve_gate | Approvals-API approve/reject | world_id; Gate muss zur Welt gehoeren |
-| promote_limb_or_config | Orchestrator-Gate-Flow shadow->live | Modal-Bestaetigung + Operator-Gate |
+1. NIO erzeugt nachweisbar eine Änderung, sichtbar als echtes Gebäude mit Straße und gültiger Heldenbewegung.
+2. Stadt bearbeiten, NPC setzen, Gebäude ändern, speichern, aktivieren, neu laden und Neustart bewahren bestätigte Felder.
+3. Gleiche IDs, gleichzeitige Szenen, Reconnect und schnelle Weltwechsel verletzen Isolation nicht.
+4. Gate-Aktion gilt exakt dem geprüften Stand; Promotion liefert Orchestrator-Beleg; Reject bewahrt Arbeit.
+5. Backendverlust/leere Zustände erzeugen keine fiktive Aktivität; Save/Dispatch zeigen Fehler ehrlich.
+6. Abläufe ohne Mausziehen; visuelle Qualität entspricht Agent-Quest; Asset-Ladefehler geklärt.
+7. Ausgelieferter Commit, Assets, Backend und Belege passen zusammen; Rückweg dokumentiert; Nutzer-Agent-Quest funktioniert weiter.
 
-## 7. Frontend-Infrastruktur (Phase 3, auf Agent-Quest-Client)
+## 9. Revisionsstatus
 
-- KEEP: Phaser-Scene, Tilemap, Sprites, A*/Waypoints, React-DOM-Overlays.
-- DELETE: server/ (Bun, :4444), Claude/Codex-Provider/Watcher, alle
-  lokalen JSONL-Pfade; package.json-Scripts ohne Bun-Server.
-- NEU: Slot-Grid-Allocator (deterministisch, konzentrisch), Orb-Sanctum
-  zentral (idle pulsieren / listening Cyan-Gold-Wirbel + Ringe / dispatching
-  Energie-Partikel zu Ziel-Districts / alert roter Puls), Wetter-Shader
-  (Sonne=live, Regen=shadow mit Laternen/Reflexionen), Single-View-Toggle
-  + Side-by-Side-Twin-View mit Camera-Sync + Divergenz-Markern,
-  Viewport-Culling >15 Gebaeude, WS-Client mit Reconnect + Snapshot-Resume.
-- Assets: 100% lokal (Phase-1-Audit als Checkliste), Build = vite build,
-  Auslieferung statisch durch Bridge (ein Dienst, offline-faehig).
+Nur Planung/Evidenz beauftragt. Keine Produktaufgabe gestartet oder abgeschlossen, keine Änderung an nio.env, Modellen, Diensten oder Boards.
 
-## 8. Deployment
+NIN-Legacy-API :4000 beim Healthcheck nicht erreichbar. Ihr DeterministicCoreAdapter liefert Promptmetadaten, keine produktive Kanban-Ausführung. Ein Start allein würde diese Lücke nicht beheben; aktuelle Anweisung „zuerst Plan“ bleibt maßgeblich.
 
-- systemd user: nio-world-bridge.service (Restart=on-failure, loopback,
-  EnvironmentFile nio.env, NIO_WORLD_TOKEN neu). Frontend statisch im
-  Bridge — kein zweiter Unit noetig. nio-apollo bleibt bestehen (Ops-UI).
-- Keine neuen externen Dependencies; Bridge stdlib+FastAPI/fastmcp wie
-  kanban; keine Docker-Netz-Aenderungen (Worker bleiben internal).
-- Ports: 8750 Bridge (Vorschlag E2), 4444/4445 werden frei (Agent-Quest-
-  Altserver entfaellt; agent-quest.service des Nutzers bleibt unberuehrt,
-  falls gewuenscht — Entscheidung E3).
-
-## 9. Phasen + Gates (Kanban-_tasks, required_skills explizit)
-
-- P1 REA-Extraktion Agent-Quest -> architecture_blueprint.md (laeuft:
-  t-78deecf6e32b, coder). Gate: Blueprint vollstaendig (5 Artefakten).
-- P2 nio_world_api_spec.yaml + nio_world_bridge.py (FastAPI/WS/FastMCP,
-  ohne Business-Duplikate) + Welt-Adapter live/shadow + Tests. Gate:
-  Spec-Validation + pytest gruen + WS-Schema-Contract-Test.
-- P3 Frontend-Refactor (Allocator, Orb, Wetter, Twin-View, Culling,
-  Asset-Bundle) auf P1-Cut-Line. Gate: vite build fehlerfrei, DoD-Kriterien
-  manuell + automatisch.
-- P4 Integration + DoD: register_district -> Gebaeude + Strasse + A*-Lauf;
-  Wetter-Toggle + Twin-View routen strikt getrennt; Gate-Klick ->
-  resolve_gate erfolgreich; ohne Backend nur Orb idle. Gate: Operator.
-
-Serialisierung: P2 und P3 teilen sich die Bridge-Spec — P3 startet erst
-nach P2-Merge. Git-Guardrails (t-2264c44babc5, EDITH) laufen parallel auf
-NIO-Core; P2 baut auf deren Park/Gate-Semantik auf (Rebase nach Merge).
-
-## 10. Offene Entscheidungen (Operator)
-
-- E1 Shadow-Realisierung: Board-Isolation auf einer Instanz (Start,
-  empfohlen) vs. zweite kanban-Instanz aus ~/NIN (spaeter, echtes
-  blue-green).
-- E2 Bridge-Port 8750 + NIO_WORLD_TOKEN: ok?
-- E3 Agent-Quest-Altserver (agent-quest.service, :4445): behalten als
-  separates Spiel-Dashboard oder nach P3-Merge stilllegen? (Nutzer-Tool,
-  nicht NIO-Eigentum — nur mit Nutzer-Ok anfassen.)
-- E4 Orb-Sanctum-Quelle: Apollo-Orb-Shader (frontend/src/apollo/orbShader.ts)
-  portieren vs. neuen Phaser-Shader schreiben. Empfehlung: Portierung
-  (Wiederverwendung, D4).
-- E5 Wetter-Asset-Lizenz/Quelle: vorhanden in Agent-Quest-Assets?
-  Phase-1-Audit abwarten.
-
-## 10.1 Entscheidungen (Guide, 2026-11-21 — Operator-Autorität für diesen Lauf delegiert)
-
-Der Operator hat die Gate-/Merge- und Entscheidungsautorität für diesen Lauf an den
-Guide delegiert ("delegate Nio to finish up all the remaining To-Dos", "dont expect
-user interference youre on your own"). Entscheidungen evidenzbasiert (Board-Historie,
-Code, Sandbox):
-
-- E1: Board-Isolation auf EINER kanban-Instanz (Start). Neues Shadow-Board, world_id=shadow.
-  D3 wird SERVERSEITIG in der Bridge erzwungen: Command-Router fail-closed (world_id),
-  workspace_repo-Allowlist je Welt (live=~/Projects/NIO, shadow=~/NIN), board_id-Prüfung
-  bei resolve_gate, getrennte Worker-Skills je Welt, kein gemeinsamer Client-Pool,
-  Negativ-Tests (Shadow-Command darf Live-Repo/Live-Gate NIE erreichen). Zweite Instanz später.
-- E2: Bridge-Port 8750 + NIO_WORLD_TOKEN (neu in nio.env) — bestätigt.
-- E3: agent-quest.service (bun :4444, node :4445) BLEIBT aktiv und unberührt. P3 arbeitet
-  ausschließlich in isolierten Dispatcher-Worktrees/Branches. Die DELETE-Cut-Line gilt für
-  den Twin-City-Build, NICHT für den laufenden Nutzer-Dienst. Kein Stop/Restart/Löschen des
-  Dienstes ohne explizites Nutzer-Ok. Twin-City-Frontend wird statisch von der Bridge ausgeliefert.
-- E4: Orb-Sanctum = Portierung von frontend/src/apollo/orbShader.ts (D4 Wiederverwendung) — bestätigt.
-- E5: Wetter-Assets aus dem P1-Audit; falls nicht lokal vorhanden, prozedurale/lokale Assets
-  (kein externer Download im Worker). Festlegung nach T1/T2.
-
-Route & Sizing (evidenzbasiert, korrigiert das DP-Modell):
-- Effektives opencode-Fenster = 600 s (worker_entry.py:189 Default; NIO_KANBAN_OPENCODE_TIMEOUT_S
-  nicht gesetzt). B=900 s im DP-Modell ist zu groß. Tasks klein halten; inkrementelle
-  WIP-Commits PFLICHT (Commits eines Timeout-Runs überleben auf dem Branch). Kein Service-Restart.
-- Hollow-Completion-Guard (f1d2cfb) + Routing-Guard (7567ae6) + Tests (d60d792) sind auf main:
-  falsche Completes werden blockiert, llm/noop-Worker erhalten keine Repo-Tasks.
-- Frontend-Build/E2E (tsc/vite/playwright/bun) sind NICHT im Worker-Image und nicht in der
-  bash-Allowlist. Worker schreibt Code + committet; der Guide verifiziert Build auf dem
-  Host-Worktree (client/node_modules/.bin/tsc + vite). Claude-Route/Guide-Finish ist Fallback,
-  wenn ein Worker stolpert.
-- P1 workspace_repo=~/Projects/Agent-Quest (Git-Repo, remote FulAppiOS/Agent-Quest). Blueprint +
-  Rohdaten in den Agent-Quest-Worktree; Guide kopiert den Blueprint nach NIO/docs/hermes.
-- P2/P4 workspace_repo=~/Projects/NIO, neues Paket world_bridge/. P3 workspace_repo=Agent-Quest (client/).
-- Phasen serialisiert P1→P2→P3→P4 mit je einem Merge-Gate; Guide verifiziert je Phase
-  (committed=true, head_after!=head_before, Zieldateien ls/grep, Tests) und merged dann.
-  T7 implementiert die Nexus-Learnings (EventBus-Resilienz, Pipeline-Operatoren) direkt aus
-  ~/.hermes/cache/scratch/nexus_learnings_task.md; der blockierte Analyse-Task t-db173071f92f
-  ist optionale Kontext-Quelle, KEINE harte Dependency (vermeidet Deadlock).
-
-## 11. Risiken
-
-- FreeLLMAPI-Quota: zwei parallele Worker + Bridge-Tests teilen sich
-  Free-Tier-Limits; Router-Failover mildert, aber P2/P3 nicht parallel
-  dispatchen.
-- Phaser-Lernkurve fuer Worker: P3 in Teil-Tasks schneiden (Allocator,
-  Orb, Wetter, Twin-View je ein Task) — 600s-opencode-Fenster.
-- Shadow-Drift: Twin ~/NIN kann main hinterherhinken; Bridge muss
-  Commit-Stand je Welt im Snapshot melden (divergence_diffGrundlage).
-- CIEL-Telemetry ist nicht produktiv verdrahtet; Orb-States zunaechst aus
-  kanban-/Orchestrator-Status aggregieren, CIEL-Events spaeter andocken.
+REA konnte MCP nicht starten; CLI antwortet mit vorhandenem Node 24, aber die Targetsuche ersetzt keine Frontendanalyse und bestätigt keinen MCP-Neustart. Quellcode- und Browserbefunde separat belegt. Quellen-/Audioabdeckung und Grenzen: [Evidenzregister](TWIN_CITY_EVIDENCE.md). Späterer Start beginnt mit P0.

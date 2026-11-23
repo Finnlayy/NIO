@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-11-19T10:14:54.489559Z",
+  "source": "gemini_deep",
+  "mode": "real",
+  "post_mortem_reference": "test_123",
+  "structured_reflection": {
+    "diagnosis": "This is a dummy response.",
+    "summary": "This is a dummy response.",
+    "recommendation": "This is a dummy response.",
+    "confidence": 0.5,
+    "risk_flags": [
+      "none_detected"
+    ]
+  },
+  "raw_output": "This is a dummy response."
+}

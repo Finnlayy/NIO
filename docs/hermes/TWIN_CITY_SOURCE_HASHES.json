@@ -1,0 +1,226 @@
+{
+  "date": "2026-11-22",
+  "scope": "Lokale Abrufe und Transkripte; Hash beweist Identität, nicht Inhaltsrichtigkeit oder vollständige Auswertung. Keine Downloadadressen enthalten.",
+  "files": [
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/audio/3c257085-12e3-4677-84c8-4c44d4d08cf6.m4a",
+      "bytes": 16362796,
+      "sha256": "c620e1145271d4e9d7f3dd12421cee0d0a76c1aa099847817945a36e0e329a57"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/audio/3c257085-12e3-4677-84c8-4c44d4d08cf6.sse",
+      "bytes": 263955,
+      "sha256": "790d2e929f82be3a786f79af93ae0182dd4a54a4a716ad50c9b9070928d95344"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/audio/3c257085-12e3-4677-84c8-4c44d4d08cf6.txt",
+      "bytes": 34476,
+      "sha256": "e6bc28656dbe4fb8045a6ab1a5f3a483767167d225575c54507ed11772782d11"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/audio/98a39e0e-dcea-470f-8815-d8a74f13abd7.json",
+      "bytes": 203123,
+      "sha256": "4ba2322a64d351071d1eacc3b13a5db94b60b09270ca5727a14b11470b67b587"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/audio/98a39e0e-dcea-470f-8815-d8a74f13abd7.m4a",
+      "bytes": 17429372,
+      "sha256": "f088848de894f8d4a4d1e69326e48fc45e413d56b09daeef43bc078400d4e132"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/audio/98a39e0e-dcea-470f-8815-d8a74f13abd7.txt",
+      "bytes": 24739,
+      "sha256": "b319b1059a162007ec13cc9785fc78a22dd0b927ee4e1d8201be491cb80d7807"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/audio/d67c9919-5858-4428-9534-ea7a33885110.json",
+      "bytes": 143146,
+      "sha256": "0ea953b5adfc0803724f913f0890d057a388f5ffde61abb030a0e3c561040110"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/audio/d67c9919-5858-4428-9534-ea7a33885110.m4a",
+      "bytes": 12144962,
+      "sha256": "7f4d4dff7f505f6427cab29cb465292006cdd78fb38da60eaf660e12bfda4208"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/audio/d67c9919-5858-4428-9534-ea7a33885110.txt",
+      "bytes": 18244,
+      "sha256": "4b655c4594395446cca685aebc5cea4bff67302cfa3f66d5ec6723b38530434e"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/interactive-report.json",
+      "bytes": 22330,
+      "sha256": "24895299c9299ecac812d41677b557841895e0ef2d4ebb851b6dc1924b184b3a"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/interactive-report.md",
+      "bytes": 9987,
+      "sha256": "c7ace7c7447c9e9c8d315c0ffac9c6273f99965717c652e4c035db6dbac951ba"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/noir-report.md",
+      "bytes": 9923,
+      "sha256": "97f9ccbfac3ec6624de3528d5c0864a456a163cd763c88b7d6f8c15121bd6d45"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/note-8c2bfd83-87ff-41a3-9878-1c7b276bcd62.md",
+      "bytes": 14820,
+      "sha256": "e522eee1d1666c26510ed893761faf1cda904f3b0624c6b88e54d31b50c2637a"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/note-dc48e170-af55-4786-8ccb-ffd413d43b66.md",
+      "bytes": 78686,
+      "sha256": "c9844b4945d33a4fd84e61f0a290f6cb535aa4517093009a1d1b64a528caaa94"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/notes.json",
+      "bytes": 95699,
+      "sha256": "b440b65413726a8e72f8b64f25837269782b8bab195b52a958e2b7dd9e4b33af"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/rea-doctor.json",
+      "bytes": 11805,
+      "sha256": "4fa22c79e478aee54fe6f57b7a481095511a3486d3175076a2be8af8bf01e32f"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/0b13b3b5-59bd-4bd8-a55d-3fd36713af6d.json",
+      "bytes": 4941,
+      "sha256": "af99133ef684a8f5df0de42ef0f9fbd44592f97aacf8239fe36a9484872d2157"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/0b13b3b5-59bd-4bd8-a55d-3fd36713af6d.txt",
+      "bytes": 3752,
+      "sha256": "447e32a2f860c09c576761ab59defe25d0e1225c387769b28fdf774cf3a480e9"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/154cb39f-9d25-4ae0-aaa5-27db046f0239.json",
+      "bytes": 68443,
+      "sha256": "3aebb10e141e5d9c8ef0206a2bf500cb910b18946f0b414729b34bcad2d6d3e2"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/154cb39f-9d25-4ae0-aaa5-27db046f0239.txt",
+      "bytes": 25477,
+      "sha256": "eca6cf9cb9700d143bc66f8ee9484cddc624948a3c14a7e35bf190459b426069"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/39016fb4-cd8e-4d38-87e3-2671a7197256.json",
+      "bytes": 279159,
+      "sha256": "6f79b61c377e9f47d9a4e1af418042fcd4607bfcbba506bb3554f1a50323ed43"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/39016fb4-cd8e-4d38-87e3-2671a7197256.txt",
+      "bytes": 266557,
+      "sha256": "01801f69477b1d016d00372c5fe870f41875d1d1f9144d7d50f373faeb750161"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/76047987-1793-460d-9512-0308b896c9df.json",
+      "bytes": 4712,
+      "sha256": "6489a371382ad9325a11a7fda15e633c5e82cd18007300052b09e330b40f74c0"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/76047987-1793-460d-9512-0308b896c9df.txt",
+      "bytes": 4345,
+      "sha256": "62865e8d141bf9e24c314879bd1892b79c3933dedfd4bb209006bbb79e33fd6b"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/8e3538e1-06fe-4f97-93ae-8c6b2cd3c098.json",
+      "bytes": 3582,
+      "sha256": "38fe534ab92ce60ae93b1e4694e1ceed2014c2f5fea6111134001b97206ed275"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/8e3538e1-06fe-4f97-93ae-8c6b2cd3c098.txt",
+      "bytes": 3161,
+      "sha256": "959c5f2ee4c9cc78def1623cdb2c6e369ab43824e76c2bc644594ac9da560baf"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/901e1217-5dad-4f87-afee-5f18db3738ed.json",
+      "bytes": 47509,
+      "sha256": "9c32057e834ea0d9e763c16a07b3a3e612809cd833a9f7459054f8e1bda4cc98"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/901e1217-5dad-4f87-afee-5f18db3738ed.txt",
+      "bytes": 44474,
+      "sha256": "93b5f45fdd20251d26b41ea8c4599ffff28da47add335e482a1391b776c40a6a"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/91768bc4-9b7e-4432-8db5-a07befcdac23.json",
+      "bytes": 227430,
+      "sha256": "15e93e1f1669f43325b1ce3b3422d05b64dad3ed1caa966e23855febabd24660"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/91768bc4-9b7e-4432-8db5-a07befcdac23.txt",
+      "bytes": 211549,
+      "sha256": "8ab53089333dda1ef930ba53d513baef06d85960343164e93acba28f4943960f"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/d216335d-a06d-4f61-9027-ed85cb1ff183.json",
+      "bytes": 12645,
+      "sha256": "3c952f863ea3004ef46d1587868599b3a53fb660f549c66ddef13cad4d9a024b"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/d216335d-a06d-4f61-9027-ed85cb1ff183.txt",
+      "bytes": 11659,
+      "sha256": "024a5bcf0521f38bf5cf52f61ee85d5107f28603d64dd5bda2512ff5868c73d1"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/d4121546-72e5-4b63-a28c-95b210a0d15e.json",
+      "bytes": 8653,
+      "sha256": "f1df0e1d46ec8ba084be872fef0c526500224e3f0d94f1a93b74238d84966631"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/d4121546-72e5-4b63-a28c-95b210a0d15e.txt",
+      "bytes": 8018,
+      "sha256": "05e43fc8e37d9803e72bc6fc7b3d81cbff8a5bbec6578a1f4f0edf9011cd457a"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/d9001bda-01c6-4308-b97e-2c4a8ece3898.json",
+      "bytes": 9283,
+      "sha256": "2f19904dda4f43c4d780ea483f3b75e5c77d840513ad3ac22fa092305de661ff"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/d9001bda-01c6-4308-b97e-2c4a8ece3898.txt",
+      "bytes": 8525,
+      "sha256": "7553756dfbdead4c4dc69cf025fc1adfd8704b0909df30d5f8cf326524fc3b1f"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/db86d19d-6032-47db-a583-4f956907c829.json",
+      "bytes": 4060,
+      "sha256": "9123af271677512f50d6e776295dc1a1e71fcf07bea5808916ec5005460c436f"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/db86d19d-6032-47db-a583-4f956907c829.txt",
+      "bytes": 3530,
+      "sha256": "f419684d600cc19beb23b82e94b940765e04aab70368ade8250522abec4dc525"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/e8094680-e2fa-4090-95f6-160e0a7aebcb.json",
+      "bytes": 7988,
+      "sha256": "afae88cddfbd76afc5830ee0701f9bee01cd9d27ad74ee30f7f1552e7c9615ce"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/e8094680-e2fa-4090-95f6-160e0a7aebcb.txt",
+      "bytes": 7481,
+      "sha256": "b8978fdd7e0535863061bfdddc95be65d3a38b886926a24176a6dc53ed62317f"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/f099970f-4cf2-4c51-aa4d-e995d235bc13.json",
+      "bytes": 24445,
+      "sha256": "d33f56af6ffbdbe89d3793dfa6c1db076f4504db9b9bab022e26f632410873f0"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources/f099970f-4cf2-4c51-aa4d-e995d235bc13.txt",
+      "bytes": 23267,
+      "sha256": "b44d6a59bcdb34ee8ef44bba0915d07b1188981dc32a4a77bbdfa4ce5eae649d"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/sources.json",
+      "bytes": 12783,
+      "sha256": "21790503d6052e2dce16b9907f2efdbc65495835444315907b8c5311f5ac3403"
+    },
+    {
+      "path": "/home/finn-powers/.cache/nio-twincity-plan-20261121/studio.json",
+      "bytes": 31102,
+      "sha256": "b89c790b9b4698435e65fc0daaaa1db71e39e715a00411abc142652593529fec"
+    }
+  ]
+}

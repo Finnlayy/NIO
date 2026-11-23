@@ -274,12 +274,14 @@ def _runtime_of(spec: SandboxSpec) -> str:
     return str(parse_soul(spec.worker.soul_md).frontmatter.get("runtime", "noop")).strip().lower()
 
 
-def _opencode_mounts(config: KanbanConfig) -> list[str]:
+def _opencode_mounts(config: KanbanConfig, workspace_repo: str | None = None) -> list[str]:
     """Docker-Argumente für OpenCode: Konfiguration, Vault-MCP und Vault, alles nur lesend.
 
     Der Vault-MCP (``scripts/vault_mcp.py``) braucht ``core/`` und ``limbs/`` aus dem Repo.
     Der Vault wird nur eingebunden, wenn er existiert; sonst legt Docker einen leeren Ordner an.
     """
+    # Git-Repo bestimmen: Task-Repo wenn vorhanden, sonst NIO (config.repo_root).
+    git_repo = Path(workspace_repo) if workspace_repo else config.repo_root
     root = config.repo_root
     argv = [
         # Gemeinsames Git-Verzeichnis am selben absoluten Pfad einbinden: das Worktree-.git
@@ -287,7 +289,7 @@ def _opencode_mounts(config: KanbanConfig) -> list[str]:
         # Mount kann der Container keine Commits schreiben. Schreibend, da Commits Objekte
         # in den gemeinsamen Store legen; Ref-Manipulation blockt die Bash-Allowlist.
         "-v",
-        f"{root / '.git'}:{root / '.git'}",
+        f"{git_repo / '.git'}:{git_repo / '.git'}",
         "-v",
         f"{root / 'config' / 'opencode' / 'opencode.json'}:/nio/opencode/opencode.json:ro",
         "-v",
@@ -391,7 +393,7 @@ class DockerSandbox(_ProcessSandbox):
             argv.extend(["-e", k])
 
         if opencode:
-            argv.extend(_opencode_mounts(config))
+            argv.extend(_opencode_mounts(config, workspace_repo=getattr(spec.task, "workspace_repo", None)))
 
         argv.extend(
             [

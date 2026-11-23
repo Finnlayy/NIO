@@ -1,0 +1,33 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "tests/fixtures/rea/orbit-dodge/public/index.html"
+        ],
+        "createdAt": "2026-11-15T16:34:46.782Z",
+        "reason": "Agent: intentional Orbit Dodge arcade fixture; cyan halo is domain-appropriate game-canvas lighting"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          "tests/fixtures/rea/orbit-dodge/app/index.html"
+        ],
+        "createdAt": "2026-11-15T16:34:46.822Z",
+        "reason": "Agent: intentional Orbit Dodge arcade fixture; cyan halo is domain-appropriate game-canvas lighting"
+      }
+    ]
+  },
+  "hook": {
+    "enabled": false,
+    "limits": {
+      "maxFindings": 5,
+      "maxChars": 8000
+    }
+  }
+}

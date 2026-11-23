@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-11-13T02:02:56.892240Z",
+  "source": "gemini_deep",
+  "mode": "real",
+  "output": "This is a dummy response.",
+  "context_reference": "test_123",
+  "structured_insights": {
+    "summary": "This is a dummy response.",
+    "observations": [
+      "This is a dummy response."
+    ],
+    "anomalies": [],
+    "hypothesis": "This is a dummy response."
+  }
+}
