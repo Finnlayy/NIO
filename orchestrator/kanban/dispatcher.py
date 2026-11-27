@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import secrets
 import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from orchestrator.secret_manager import llm_worker_environment, secret_environment
@@ -25,7 +28,7 @@ from .vault import ObsidianVault
 if TYPE_CHECKING:
     from .service import KanbanService
 
-__all__ = ["Dispatcher", "TickReport"]
+__all__ = ["Dispatcher", "GateDecision", "TickReport"]
 
 
 @dataclass
@@ -35,6 +38,19 @@ class TickReport:
     rolled_up: int = 0
     assigned: int = 0
     spawned: int = 0
+
+
+@dataclass(frozen=True)
+class GateDecision:
+    """Ergebnis von Gate und Merge eines Worker-Branches.
+
+    ``merged``: Gate gruen, Branch ist im Zielzweig.
+    ``rejected``: der Code ist rot (Test/Compile/Smoke, Merge-Konflikt, Uncommittetes) -> Retry.
+    ``parked``: Umgebung oder Policy verhindert die Pruefung -> Task blockiert, kein Retry.
+    """
+
+    kind: str
+    reason: str = ""
 
 
 class Dispatcher:
@@ -66,6 +82,8 @@ class Dispatcher:
         self.owner_id = owner_id
         self.log = logging.getLogger(__name__)
         self._active: dict[str, asyncio.Task[Any]] = {}
+        # Merges in dasselbe Repo laufen nacheinander (max_concurrent > 1).
+        self._merge_locks: dict[str, asyncio.Lock] = {}
 
     async def tick(self, wait: bool = False) -> TickReport:
         report = TickReport()
@@ -220,6 +238,10 @@ class Dispatcher:
         # Vor dem ``try`` gebunden: das ``finally`` raeumt auch nach einem fruehen
         # Fehler auf, ohne an einer ungebundenen Variable zu scheitern.
         token: str | None = None
+        branch = f"kanban/{run_id}"
+        worktree_created = False
+        base_branch: str | None = None
+        keep_branch = False  # nicht gemergte, aber abgeschlossene Arbeit bleibt zur Analyse erhalten
 
         try:
             in_dir = run_dir / "in"
@@ -250,11 +272,14 @@ class Dispatcher:
             if task.workspace_repo:
                 git_repo = task.workspace_repo
                 try:
+                    # Zielzweig fuer den spaeteren Merge festhalten; detached HEAD -> None -> kein Merge.
+                    base_branch = await self._current_branch(git_repo)
                     subprocess.run(
-                        ["git", "-C", git_repo, "worktree", "add", str(work_dir), "-b", f"kanban/{run_id}"],
+                        ["git", "-C", git_repo, "worktree", "add", str(work_dir), "-b", branch],
                         check=True,
                         capture_output=True
                     )
+                    worktree_created = True
                 except subprocess.CalledProcessError as e:
                     self.log.error(f"Failed to setup git worktree: {e.stderr.decode()}")
                     await self.breaker.record_failure(task.id, worker.uid, "git worktree setup failed")
@@ -311,8 +336,25 @@ class Dispatcher:
             curr_task = await self.store.get_task(task.id)
 
             if curr_task and curr_task.status == TaskStatus.IN_PROGRESS:
-                if outcome.status == "completed":
-                    await self.service.complete(task.id, outcome.result_payload or {}, actor=f"worker:{worker.uid}")
+                decision = GateDecision("merged")
+                if outcome.status == "completed" and worktree_created and task.workspace_repo:
+                    decision = await self._gate_and_merge(
+                        repo=task.workspace_repo, work_dir=work_dir, branch=branch, base_branch=base_branch,
+                        run_id=run_id, task_id=task.id,
+                    )
+                    keep_branch = decision.kind != "merged"
+                if outcome.status == "completed" and decision.kind == "parked":
+                    # Umgebung/Policy: ein Retry wuerde nur Versuche verbrennen -> Mensch muss ran.
+                    await self.service.block(task.id, f"sandbox gate parked: {decision.reason}", actor="system")
+                elif outcome.status == "completed" and decision.kind == "rejected":
+                    # Fail-closed: kein Merge, der Task geht ueber den Breaker in den Retry.
+                    await self.breaker.record_failure(task.id, worker.uid, decision.reason, exit_code=result.exit_code)
+                elif outcome.status == "completed":
+                    payload = dict(outcome.result_payload or {})
+                    if worktree_created:
+                        # Sichtbar machen, dass die Arbeit im Zielzweig gelandet ist (Gate gruen + Merge ok).
+                        payload["merge"] = {"merged": True, "branch": branch, "target": base_branch}
+                    await self.service.complete(task.id, payload, actor=f"worker:{worker.uid}")
                     await self.breaker.record_success(worker.uid)
                 elif outcome.status == "blocked":
                     await self.service.block(task.id, outcome.reason, actor=f"worker:{worker.uid}")
@@ -342,15 +384,128 @@ class Dispatcher:
             if curr_worker and curr_worker.status == WorkerStatus.BUSY:
                 await self.store.cas_worker(worker.uid, WorkerStatus.BUSY, {"status": WorkerStatus.IDLE})
 
-            if task.workspace_repo:
-                try:
-                    subprocess.run(
-                        ["git", "worktree", "remove", "--force", str(work_dir)],
-                        check=True,
-                        capture_output=True
-                    )
-                except Exception as e:
-                    self.log.warning(f"Could not remove git worktree {work_dir}: {e}")
+            # Erst nach Gate/Merge aufraeumen. ``git -C <repo>``: der Dispatcher-cwd ist nicht das Ziel-Repo.
+            if worktree_created and task.workspace_repo:
+                branch_step = (["branch", "-m", branch, f"kanban/rejected/{run_id}"] if keep_branch
+                               else ["branch", "-D", branch])
+                for argv in (["worktree", "remove", "--force", str(work_dir)], branch_step):
+                    try:
+                        rc, _out, err = await self._git(task.workspace_repo, *argv)
+                        if rc != 0:
+                            self.log.warning(f"git {' '.join(argv)} failed: {err.strip()}")
+                    except Exception as e:
+                        self.log.warning(f"git {' '.join(argv)} failed: {e}")
+
+    # -- Sandbox-Gate und Merge ------------------------------------------------
+
+    async def _current_branch(self, repo: str) -> str | None:
+        rc, out, _err = await self._git(repo, "symbolic-ref", "--quiet", "--short", "HEAD")
+        return (out.strip() or None) if rc == 0 else None
+
+    async def _git(self, repo: str | Path, *args: str) -> tuple[int, str, str]:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "-C", str(repo), *args,
+            stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await proc.communicate()
+        return proc.returncode or 0, out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
+
+    async def run_sandbox_gate(self, work_dir: Path, run_id: str, live_repo: str) -> GateDecision:
+        """Ruft ``sandbox_gate.py --worktree --run-id --live-repo`` auf. Fail-closed: nur Exit 0 ist gruen.
+
+        Rot durch den Code (Exit 1 mit ``failed_stage`` compile/unittest/smoke) -> ``rejected``.
+        Alles andere -- Skript fehlt, Timeout, Ausnahme, Exit 2, Vorbereitungsfehler, Policy -> ``parked``.
+        """
+        script = self.config.gate_script
+        if not script.is_file():
+            return GateDecision("parked", f"sandbox gate missing: {script}")
+        proc: asyncio.subprocess.Process | None = None
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, str(script), "--worktree", str(work_dir), "--run-id", run_id, "--live-repo", live_repo,
+                stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            out, err = await asyncio.wait_for(proc.communicate(), timeout=self.config.gate_timeout_s)
+        except TimeoutError:
+            return GateDecision("parked", f"sandbox gate timeout (>{self.config.gate_timeout_s:g}s)")
+        except Exception as e:
+            return GateDecision("parked", f"sandbox gate error: {e}")
+        finally:
+            if proc is not None and proc.returncode is None:
+                with contextlib.suppress(ProcessLookupError):
+                    proc.kill()
+                await proc.wait()
+        report = self._gate_report(out)
+        if proc.returncode == 0:
+            if report is not None and report.get("passed") is False:
+                return GateDecision("parked", "sandbox gate exit 0 but report says not passed")
+            return GateDecision("merged")
+        tail = (out + err).decode("utf-8", "replace").strip()[-500:]
+        reason = f"sandbox gate failed (exit {proc.returncode}): {tail}"
+        if (proc.returncode == 1 and report is not None and not report.get("error")
+                and isinstance(report.get("failed_stage"), str) and report["failed_stage"] != "policy"):
+            return GateDecision("rejected", reason)
+        return GateDecision("parked", reason)
+
+    @staticmethod
+    def _gate_report(stdout: bytes) -> dict[str, Any] | None:
+        """Letzte JSON-Zeile des Gates (Vertrag: genau eine), sonst None."""
+        for line in reversed(stdout.decode("utf-8", "replace").splitlines()):
+            with contextlib.suppress(ValueError):
+                data = json.loads(line)
+                if isinstance(data, dict):
+                    return data
+        return None
+
+    async def _gate_and_merge(
+        self, *, repo: str, work_dir: Path, branch: str, base_branch: str | None, run_id: str, task_id: str
+    ) -> GateDecision:
+        """Gate pruefen und Branch per ``--no-ff`` mergen."""
+        try:
+            decision = await self._gate_and_merge_inner(
+                repo=repo, work_dir=work_dir, branch=branch, base_branch=base_branch, run_id=run_id
+            )
+        except Exception as e:
+            decision = GateDecision("parked", f"gate/merge error: {e}")
+        with contextlib.suppress(Exception):
+            await self.service.ledger.append(
+                actor="system", action=f"worker.{decision.kind}", category="worker", subject=task_id,
+                payload={"run_id": run_id, "branch": branch, "target": base_branch, "reason": decision.reason},
+            )
+        if decision.kind != "merged":
+            self.log.warning(f"Run {run_id} {decision.kind}: {decision.reason}")
+        return decision
+
+    async def _gate_and_merge_inner(
+        self, *, repo: str, work_dir: Path, branch: str, base_branch: str | None, run_id: str
+    ) -> GateDecision:
+        # Getestet wird der committete Stand, gemerged der Branch: Uncommittetes waere ungeprueft.
+        rc, out, err = await self._git(work_dir, "status", "--porcelain", "--untracked-files=no")
+        if rc != 0:
+            return GateDecision("parked", f"worktree status failed: {err.strip()}")
+        if out.strip():
+            return GateDecision("rejected", "worktree has uncommitted changes to tracked files")
+
+        decision = await self.run_sandbox_gate(work_dir, run_id, repo)
+        if decision.kind != "merged":
+            return decision
+
+        if base_branch is None:
+            return GateDecision("parked", "target checkout had no branch (detached HEAD)")
+
+        lock = self._merge_locks.setdefault(str(Path(repo).resolve()), asyncio.Lock())
+        async with lock:
+            if await self._current_branch(repo) != base_branch:
+                return GateDecision("parked", f"target checkout is no longer on {base_branch}")
+            rc, out, err = await self._git(repo, "status", "--porcelain", "--untracked-files=no")
+            if rc != 0 or out.strip():
+                return GateDecision("parked", "target checkout is not clean")
+            rc, out, err = await self._git(repo, "merge", "--no-ff", "--no-edit", "-m", f"Auto-merge Kanban Run {run_id}", branch)
+            if rc != 0:
+                await self._git(repo, "merge", "--abort")
+                # Konflikt mit neuerem Zielstand: ein neuer Lauf zweigt vom aktuellen Stand ab.
+                return GateDecision("rejected", f"git merge failed: {(err or out).strip()[-500:]}")
+        return GateDecision("merged")
 
     async def run(self, stop: asyncio.Event) -> None:
         while not stop.is_set():
